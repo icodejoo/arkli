@@ -6,7 +6,7 @@ summary: 六份工具设计共同依赖的底层能力：bridge 协议 v2、统�
 ---
 ## TL;DR
 - 六份工具设计都卡在同几件事：页面传不了二进制、处理器只能同步返回、没有取消和订阅约定、联网口子没定。本文一次性补上。
-- 方向：bridge 协议升到 v2（向后兼容 v1），通道建议换成 `WebMessageListener`（可限来源、能传 ArrayBuffer）；联网统一收口到原生，页面不能直连外网。
+- 方向：bridge 协议升到 v2（向后兼容 v1），通道建议换成 `WebMessageListener`（可限来源、能传 ArrayBuffer）；联网以原生为主，页面出站只放行少数支持 CORS 的白名单接口（汇率）。
 - 前提：[工具总览](tools-overview.md) 的两个阻塞决定已由用户确认（2026-10-13）：通道升级为 `WebMessageListener`，加 INTERNET。标了"待 spike 验证"的点要先在真机上验证再动工。
 - 现有协议见 [Bridge 协议](bridge-protocol.md)，确认后在那里更新，本文不重复 v1 内容。
 
@@ -52,14 +52,18 @@ summary: 六份工具设计共同依赖的底层能力：bridge 协议 v2、统�
 | `native.alarm.*` / `native.notify.*` | 番茄钟、通知自己 | 闹钟加通知；点击通知通过 deep link 路由到指定工具 |
 | `native.shortcut.pin` | 网页转应用 | |
 | `native.sensor.subscribe` / `unsubscribe` | 尺子、指南针、水平仪等 | 原生 SensorHub 只保留每个传感器的最新值，按设定频率（上限 60Hz）发一条消息；页面退出或切后台自动注销 |
-| `native.net.http` / `resolve` / `whois` | 汇率、网址探查、IP 查询 | 调用方声明域名策略：固定白名单或任意；统一超时、2MB 读取上限、手动跟随跳转、并发上限 |
+| `native.net.http` / `resolve` / `whois` | 网址探查、IP 查询、Whois、端口与 DNS | 可访问任意域名；统一超时、2MB 读取上限、手动跟随跳转、并发上限。汇率不走它，页面直接请求白名单接口 |
 | `native.pack.ensure` / `list` / `delete` | AI 模型、词典与数据包 | 见第四节；事件 `pack.progress` |
 | `native.task.status` / `cancel` | 视频、AI、下载 | 事件 `task.progress` / `task.done` / `task.error`，进度节流不超过 10Hz |
 | `rust.*` | 计算类 | 同步短任务直接返回；长任务走 task |
 
 ## 三、安全
 - **通道来源**：`WebMessageListener` 的 `allowedOriginRules` 只放 `https://appassets.androidplatform.net`，bridge 不会注入到其他来源的 frame。
-- **页面不能直连外网**：一旦加 INTERNET，必须在 `shouldInterceptRequest` 里拦掉所有非 appassets 域的请求，并设 CSP `default-src 'self'; connect-src 'self'; img-src 'self' blob: data:`。联网只能走 `native.net.*` 和 `native.pack.*`。
+- **页面出站只开白名单（2026-10-13 用户选定折中方案 B）**：一旦加 INTERNET，必须在 `shouldInterceptRequest` 里拦掉所有"非 appassets 域且不在白名单"的请求，CSP 为 `default-src 'self'; connect-src 'self' <白名单域名>; img-src 'self' blob: data:`。
+  - **走原生**（`native.net.*`、`native.pack.*`）：ping、DNS、端口、Whois、任意网址请求（网址探查、网页源码、短链还原）、模型与数据包下载。浏览器做不了或会被跨域拦住。
+  - **页面直接请求**：只放行少数**明确支持 CORS** 的 JSON 接口，目前只有汇率（Frankfurter 为主、ExchangeRate-API 为备）；落地前要逐个实测 CORS 头，不支持的退回原生。
+  - 白名单写死在 CSP 和拦截规则里，改域名要发版。
+  - JS 解释器所在的 Worker 单独加 `connect-src 'none'`，禁止出站。
 - **JS 解释器工具**：必须跑在 Web Worker 里，不能放 iframe。
 - **路径**：原生方法收到的路径一律归一化，限制在缓存目录内；SAF 和大文件只用不透明句柄。
 - **明文 HTTP**：默认不放开；API 24 机型补根证书的 network security config 要单独评估。

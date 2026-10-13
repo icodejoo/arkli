@@ -61,7 +61,7 @@ summary: 六份工具设计的汇总：优先级统计、体积估计、全部�
 | 2 | life-fun 说不需要 INTERNET；dev-net、text-calc、模型与数据包下载都要联网 | 只要有一个按需下载功能就必须加 INTERNET。结论：**加**（用户已确认），同时 WebView 只允许 appassets 域，所有联网只走原生 `native.net.*` / `native.pack.*`，页面无法直接 fetch 外网（见基础设施文档） |
 | 3 | 屏幕方法命名不一：`keepAwake` / `keepOn` / `immersive` / `fullscreen` | 统一 `native.screen.keepAwake`、`.orientation`、`.immersive`、`.brightness` |
 | 4 | 模型下载（`native.model.*`）与数据包下载（`native.download.*`）各设计一套 | 合并为 `native.pack.*`，模型和词典数据包共用 manifest、断点续传、校验 |
-| 5 | 汇率用 `native.http.get`（白名单），dev-net 用 `native.net.http` | 合并为 `native.net.*`，调用方声明域名策略：固定白名单（汇率）或任意（网址探查） |
+| 5 | 汇率用 `native.http.get`（白名单），dev-net 用 `native.net.http` | 用户选定折中方案：`native.net.*` 管任意域名与 ping/DNS/端口/Whois；汇率这类支持 CORS 的 JSON 接口由页面直接请求，域名写进 CSP 白名单，不再需要 `native.http.get` |
 | 6 | 通知：life-fun 用闹钟加通知；media-ai 的视频任务用前台服务通知 | 公共层只做一个通知封装；长任务走前台服务，提醒类走闹钟，互不替代 |
 
 另有几处入口要对齐：打字板与手持弹幕同页两种模式；随机数与"做个决定、抛硬币、掷骰子"共用抽签引擎；文本类的 `native.clipboard.write` 增加 `sensitive: true`（给密码生成器和加解密用）。
@@ -70,7 +70,7 @@ summary: 六份工具设计的汇总：优先级统计、体积估计、全部�
 
 ### A. 阻塞级（已定，2026-10-13 用户确认）
 1. **bridge 通道升级为 androidx.webkit 的 `WebMessageListener`**（可限定来源，支持 ArrayBuffer 二进制），取代 `@JavascriptInterface`。落地前先在真机做 spike 验证 ArrayBuffer 消息可用与吞吐；若某些 WebView 不支持，按基础设施文档的 base64 分块兜底。
-2. **加 INTERNET 权限**，并按基础设施文档的方式锁死页面直连外网（拦截非 appassets 域请求 + CSP），联网只走原生。
+2. **加 INTERNET 权限**。出站策略选定折中方案：联网以原生为主，页面只对少数支持 CORS 的白名单接口（汇率）直接请求，其余域一律在 `shouldInterceptRequest` 和 CSP 里拦掉。
 
 ### B. 不反对就按默认执行
 | 事项 | 默认 |
@@ -81,7 +81,7 @@ summary: 六份工具设计的汇总：优先级统计、体积估计、全部�
 | 视觉 AI 的 spike | 先验证 `ort` 与 sherpa 自带 ORT 是否兼容，及其算子能否跑 OCR 模型，再排 OCR |
 | 字典释义 | 先只做基础查字（拼音、部首、笔画），入口叫「查字」 |
 | 文章摘要、翻译 | 摘要不做，翻译只转交已装的翻译 App |
-| 汇率 | 走原生 `native.net`，断网可手填 |
+| 汇率 | 页面直接请求（CSP 白名单），落地前实测 CORS；断网可手填 |
 | 日期计算 | 不带农历 |
 | 文本编辑器 | 先只读打开大文件 |
 | 清理类 | 三个合成「文件夹清理」，全程不要存储权限 |

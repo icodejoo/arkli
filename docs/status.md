@@ -21,7 +21,7 @@ summary: 项目做到哪一步、下一步做什么、哪些依赖等用户确�
 | 前端 | Vue 3 + Vite + vue-router + Pinia + SCSS，TypeScript，SPA 路由懒加载 |
 | Kotlin 调 Rust | UniFFI |
 | WebView 通道 | **升级为 `WebMessageListener`**（2026-10-13 确认，取代 `@JavascriptInterface`）；落地前先做 ArrayBuffer 的真机 spike |
-| INTERNET 权限 | **加**（2026-10-13 确认）；页面不得直连外网，联网只走原生 |
+| INTERNET 权限 | **加**（2026-10-13 确认）；出站采用折中方案：联网以原生为主，页面只对 CSP 白名单里支持 CORS 的接口（汇率）直接请求 |
 | 安卓 ABI / minSdk | 只发 arm64-v8a；minSdk 24 |
 | 包名 | `com.let188.arkli`（由域名 arkli.let188.com 反写） |
 | 原生 UI / Rust 交叉编译 | Compose、cargo-ndk（沿用推荐，用户未反对） |
