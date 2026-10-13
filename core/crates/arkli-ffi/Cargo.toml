@@ -1,0 +1,14 @@
+[package]
+name = "arkli-ffi"
+version = "0.1.0"
+edition = "2021"
+description = "Arkli 的 UniFFI 桥接层：把 arkli-core 暴露给 Kotlin"
+
+[lib]
+# cdylib 供安卓加载，lib 供单测与 bindgen
+name = "arkli_ffi"
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+arkli-core = { path = "../arkli-core" }
+uniffi = "0.32.2"

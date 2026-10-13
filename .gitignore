@@ -1,0 +1,26 @@
+# Rust
+core/target/
+
+# Android / Gradle
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+
+# Web
+web/node_modules/
+web/dist/
+
+# Rust 产物同步进 jniLibs，由构建脚本生成，不入库
+app/src/main/jniLibs/
+
+# 前端产物同步进 assets，由构建脚本生成，不入库
+app/src/main/assets/web/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# UniFFI 生成的 Kotlin 绑定，由构建脚本生成，不入库
+app/src/main/kotlin/uniffi/

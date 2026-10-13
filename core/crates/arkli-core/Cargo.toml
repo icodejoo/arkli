@@ -1,0 +1,8 @@
+[package]
+name = "arkli-core"
+version = "0.1.0"
+edition = "2021"
+description = "Arkli 核心计算库：只出数据，不碰 UI，不依赖安卓类型"
+
+# 刻意不加第三方依赖；引入前先问用户，见 docs/status.md
+[dependencies]

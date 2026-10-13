@@ -1,0 +1,6 @@
+<resources>
+    <!-- 最简系统主题，无 ActionBar，不依赖任何组件库 -->
+    <style name="Theme.Arkli" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@android:color/white</item>
+    </style>
+</resources>

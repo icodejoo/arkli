@@ -1,0 +1,11 @@
+[workspace]
+resolver = "2"
+members = ["crates/arkli-core", "crates/arkli-ffi", "crates/uniffi-bindgen"]
+
+# release 瘦身：体积优先，见 docs/design/architecture.md
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

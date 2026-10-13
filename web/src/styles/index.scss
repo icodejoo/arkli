@@ -1,0 +1,49 @@
+// 全局样式与主题色（CSS 变量，随系统深浅色切换），不依赖外链字体
+:root {
+  --c-bg: #f5f6f8;
+  --c-surface: #ffffff;
+  --c-surface-active: #eceef2;
+  --c-border: #e1e4ea;
+  --c-text: #1b1d22;
+  --c-text-muted: #6b7280;
+  --c-primary: #3b6cf6;
+  --c-on-primary: #ffffff;
+  --c-ok: #15803d;
+  --c-error: #b91c1c;
+  --c-warn-bg: #fff4d6;
+  --c-warn-text: #7a5a00;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --c-bg: #121316;
+    --c-surface: #1b1d22;
+    --c-surface-active: #262930;
+    --c-border: #2c2f37;
+    --c-text: #e8eaee;
+    --c-text-muted: #9aa1ae;
+    --c-primary: #7b9cff;
+    --c-on-primary: #10131a;
+    --c-ok: #4ade80;
+    --c-error: #f87171;
+    --c-warn-bg: #3a3010;
+    --c-warn-text: #f5d77a;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--c-bg);
+  color: var(--c-text);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans SC', sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-text-size-adjust: 100%;
+}
