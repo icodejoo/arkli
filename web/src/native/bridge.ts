@@ -59,6 +59,16 @@ function getHost(): NativeHost | null {
   return host ? (host as NativeHost) : null
 }
 
+/**
+ * 当前是否在 Arkli 容器内（有原生宿主对象）。
+ *
+ * @returns 在容器内为 true；浏览器调试时为 false
+ * @example if (!isNativeAvailable()) useBrowserFallback()
+ */
+export function isNativeAvailable(): boolean {
+  return getHost() !== null
+}
+
 /** 生成一个新的请求编号 */
 function nextId(): string {
   return `${Date.now().toString(36)}-${(seq++).toString(36)}`
@@ -107,6 +117,8 @@ export function call<T = unknown>(
       timeoutMs > 0
         ? setTimeout(() => {
             settle()
+            // 页面放弃等待后，原生那边的任务可能还在跑（如选择器），通知它取消；取消调用本身超时不再追加取消
+            if (method !== METHOD_CANCEL) void call(METHOD_CANCEL, { id }).catch(() => undefined)
             reject({ code: 'TIMEOUT', message: `${method} 超时` } satisfies BridgeError)
           }, timeoutMs)
         : null

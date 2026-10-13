@@ -23,6 +23,10 @@ const ICONS: Record<string, string> = {
   'clock-screen': '🕒',
   danmaku: '📣',
   'device-info': '📱',
+  'image-compress': '🗜️',
+  'image-convert': '🔄',
+  'image-stitch': '🧩',
+  'image-grid': '🔳',
 }
 
 /**
