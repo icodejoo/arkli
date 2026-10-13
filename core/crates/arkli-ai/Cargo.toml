@@ -1,0 +1,17 @@
+[package]
+name = "arkli-ai"
+version = "0.1.0"
+edition = "2021"
+description = "Arkli AI 运行时：推理后端抽象、provider 探测、PP-OCR 管线（纯逻辑 + 可选 ort 后端）"
+
+[features]
+# 默认不带 ORT：宿主机单测全部走 mock 后端，不需要 onnxruntime 动态库
+default = []
+# 真实 ORT 后端，运行时通过 load-dynamic 加载 sherpa 自带的 libonnxruntime.so
+ort-backend = ["dep:ort"]
+
+[dependencies]
+# 钉死版本：这是 RC 版，API 可能随版本变动。
+# 升级 ort 或 sherpa（即内置 ORT）前，必须重跑 OCR 端到端回归，见 docs/research/spike-ort-sherpa.md。
+# 关闭默认特性、只开 load-dynamic，与 spike B 的配置一致；不开任何 EP 特性（该 ORT 无 XNNPACK）。
+ort = { version = "=2.0.0-rc.14", default-features = false, features = ["std", "load-dynamic"], optional = true }

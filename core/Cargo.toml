@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/arkli-core", "crates/arkli-ffi", "crates/uniffi-bindgen"]
+members = ["crates/arkli-core", "crates/arkli-ai", "crates/arkli-ffi", "crates/uniffi-bindgen"]
 
 # release 瘦身：体积优先，见 docs/design/architecture.md
 [profile.release]
