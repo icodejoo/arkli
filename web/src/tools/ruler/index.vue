@@ -50,14 +50,16 @@ const HEADER_SELECTOR = '.van-nav-bar'
 const CAL_CAP = 8
 /** 刻度数字离刻度线的偏移（像素） */
 const LABEL_OFFSET = 12
-/** 刻度数字的旋转角（弧度）：靠右逆时针 90°（从下往上读），靠左顺时针 90°（从上往下读） */
+/** 刻度数字的旋转角（弧度）：靠右顺时针 90°（从上往下读），靠左逆时针 90°（从下往上读） */
 const LABEL_ROTATE = Math.PI / 2
 /** 数字标签离两端的最小距离（像素），避免被裁掉 */
 const LABEL_MARGIN = 8
-/** 游标线与标记线的长度：从屏幕边缘画到刻度数字之前，不穿过数字 */
-const LINE_LEN = TICK_LEN.major + LABEL_OFFSET - LABEL_FONT / 2 - LINE_GAP
-/** 读数小字离屏幕边缘的距离：放在数字带外侧的空白带里 */
-const TAG_OFFSET = TICK_LEN.major + LABEL_OFFSET + LABEL_FONT / 2 + LINE_GAP
+/** 游标线比数字带再多伸出去的一点（像素） */
+const LINE_OVERSHOOT = 4
+/** 游标线与标记线的长度：从屏幕边缘画过整个数字带，再多伸出一点点 */
+const LINE_LEN = TICK_LEN.major + LABEL_OFFSET + LABEL_FONT / 2 + LINE_OVERSHOOT
+/** 读数小字离屏幕边缘的距离：紧挨着线的外端，放在空白带里 */
+const TAG_OFFSET = LINE_LEN + LINE_GAP
 /** 校准线距尺子基线（贴屏幕边缘的那一边）的距离（像素） */
 const CAL_LINE_OFFSET = THICKNESS - 18
 /** 尺面底色的不透明度 */
@@ -252,10 +254,10 @@ function draw(): void {
     if (t.label != null) {
       const lp = Math.max(LABEL_MARGIN, Math.min(along.value - LABEL_MARGIN, t.pos))
       const [x, y] = toXY(lp, TICK_LEN.major + LABEL_OFFSET)
-      // 数字顺着尺子的方向书写：字头朝向屏幕中间（刻度线的另一侧）
+      // 数字顺着尺子的方向书写：字头朝向屏幕边缘（刻度线一侧）
       ctx.save()
       ctx.translate(x, y)
-      ctx.rotate(side.value === 'right' ? -LABEL_ROTATE : LABEL_ROTATE)
+      ctx.rotate(side.value === 'right' ? LABEL_ROTATE : -LABEL_ROTATE)
       ctx.fillText(t.label, 0, 0)
       ctx.restore()
     }
@@ -564,16 +566,16 @@ onUnmounted(() => {
   }
 }
 
-/* 靠右：线从右边缘向内画，竖排文字翻 180° 变成逆时针（从下往上读），把手在左端 */
-.ruler-box--right .ruler-line__tag {
-  transform: translateY(-50%) rotate(180deg);
-}
-
+/* 靠右：线从右边缘向内画，竖排文字顺时针（从上往下读），把手在左端 */
 .ruler-box--right .ruler-line__knob {
   left: -4px;
 }
 
-/* 靠左：线从左边缘向内画，竖排文字顺时针（从上往下读），把手在右端 */
+/* 靠左：线从左边缘向内画，竖排文字翻 180° 变成逆时针（从下往上读），把手在右端 */
+.ruler-box--left .ruler-line__tag {
+  transform: translateY(-50%) rotate(180deg);
+}
+
 
 .ruler-box--left .ruler-line__knob {
   right: -4px;
