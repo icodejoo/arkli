@@ -2,6 +2,14 @@
 // 阳历/阴历互转：上阳历下阴历，输入与选择器都能改，改任一块另一块立刻联动
 import { computed, ref } from 'vue'
 import {
+  HistoryError,
+  classifyError,
+  formatHistoryYear,
+  historyErrorText,
+  loadHistory,
+  type HistoryEvent,
+} from './history-today'
+import {
   CALENDAR_NOTE,
   MAX_YEAR,
   MIN_YEAR,
@@ -37,9 +45,26 @@ const NOTE_FOOT = '通俗说明，仅供参考'
 /** 说明待核对时的提示 */
 const NOTE_VERIFY = '此条说明待进一步核对'
 
+/** 历史面板底部来源说明 */
+const HISTORY_FOOT = '来源：维基百科（CC BY-SA 4.0）'
+
 /** 阳历月份选项（固定不变，只算一次） */
 const SOLAR_MONTHS = solarMonthOptions()
 
+/** 当前生效的阳历日期（历史上的今天按它的月日查） */
+const curSolar = ref<SolarDate>(todaySolar())
+/** 历史面板是否显示 */
+const showHistory = ref(false)
+/** 历史数据状态：加载中 / 成功 / 失败 */
+const histStatus = ref<'loading' | 'ok' | 'error'>('loading')
+/** 历史事件列表 */
+const histEvents = ref<HistoryEvent[]>([])
+/** 历史加载失败时的提示 */
+const histError = ref('')
+/** 历史面板里已展开的条目下标 */
+const histOpen = ref<Record<number, boolean>>({})
+/** 历史面板标题 */
+const histTitle = computed(() => `${curSolar.value.month} 月 ${curSolar.value.day} 日 · 历史上的今天`)
 /** 阳历输入框文本 */
 const solarText = ref('')
 /** 阴历输入框文本 */
@@ -78,12 +103,38 @@ function openNote(name: string, key: TabooKey): void {
   showNote.value = true
 }
 
+/** 打开历史面板并加载当前阳历日期的月日（有缓存则不再请求） */
+async function openHistory(): Promise<void> {
+  showHistory.value = true
+  histStatus.value = 'loading'
+  histOpen.value = {}
+  const { month, day } = curSolar.value
+  try {
+    const list = await loadHistory(month, day)
+    histEvents.value = list
+    histStatus.value = 'ok'
+  } catch (e) {
+    histError.value = historyErrorText(e instanceof HistoryError ? e.kind : classifyError(e))
+    histStatus.value = 'error'
+  }
+}
+
+/**
+ * 切换某条历史事件的展开状态。
+ *
+ * @param i 条目下标
+ */
+function toggleHist(i: number): void {
+  histOpen.value = { ...histOpen.value, [i]: !histOpen.value[i] }
+}
+
 /**
  * 应用一个合法阳历：回填两个输入框、重算阴历详情、清掉错误。
  *
  * @param d 合法阳历日期
  */
 function applySolar(d: SolarDate): void {
+  curSolar.value = d
   solarText.value = formatSolar(d)
   solarError.value = ''
   const r = solarToLunar(d)
@@ -308,6 +359,42 @@ applySolar(todaySolar())
     <p class="tool-hint">{{ CALENDAR_NOTE }}</p>
     <p class="tool-hint">{{ TABOO_NOTE }}</p>
 
+    <van-button class="history-btn" block plain type="primary" icon="underway-o" @click="openHistory">查看历史上的今天</van-button>
+
+    <van-popup v-model:show="showHistory" position="bottom" round closeable style="height: 80%">
+      <div class="hist">
+        <div class="hist__head">{{ histTitle }}</div>
+        <div class="hist__body">
+          <div v-if="histStatus === 'loading'" class="hist__state"><van-loading size="24" vertical>加载中…</van-loading></div>
+          <div v-else-if="histStatus === 'error'" class="hist__state">
+            <p class="hist__err">{{ histError }}</p>
+            <van-button size="small" type="primary" plain @click="openHistory">重试</van-button>
+          </div>
+          <p v-else-if="!histEvents.length" class="hist__state tool-hint">这一天没有查到记录。</p>
+          <ul v-else class="hist__list">
+            <li v-for="(e, i) in histEvents" :key="i" class="hist__item">
+              <button
+                type="button"
+                class="hist__row"
+                :aria-expanded="e.note ? !!histOpen[i] : undefined"
+                :disabled="!e.note"
+                @click="toggleHist(i)"
+              >
+                <span class="hist__year">{{ formatHistoryYear(e.year) }}</span>
+                <span class="hist__text">{{ e.text }}</span>
+              </button>
+              <div v-if="e.note && histOpen[i]" class="hist__note">
+                <b>{{ e.note.title }}</b>
+                <span v-if="e.note.desc">：{{ e.note.desc }}</span>
+                <p v-if="e.note.extract">{{ e.note.extract }}</p>
+              </div>
+            </li>
+          </ul>
+        </div>
+        <p class="hist__foot">{{ HISTORY_FOOT }}</p>
+      </div>
+    </van-popup>
+
     <van-popup v-model:show="showNote" position="bottom" round closeable>
       <div class="taboo-note">
         <div class="taboo-note__head">
@@ -456,6 +543,118 @@ applySolar(todaySolar())
     margin: 14px 0 0;
     font-size: 12px;
     color: var(--c-text-muted);
+  }
+}
+
+// 历史上的今天：按钮与面板
+.history-btn {
+  margin-top: 4px;
+}
+
+.hist {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--c-surface);
+
+  &__head {
+    flex: none;
+    padding: 16px 48px 12px 16px;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--c-text);
+  }
+
+  &__body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  &__state {
+    padding: 48px 16px;
+    text-align: center;
+  }
+
+  &__err {
+    margin: 0 0 12px;
+    font-size: 14px;
+    color: var(--c-text-muted);
+  }
+
+  &__list {
+    margin: 0;
+    padding: 0 16px;
+    list-style: none;
+  }
+
+  &__item {
+    border-top: 1px solid var(--c-border);
+  }
+
+  &__row {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+    padding: 9px 0;
+    font: inherit;
+    text-align: left;
+    color: var(--c-text);
+    background: none;
+    border: 0;
+    cursor: pointer;
+
+    &:disabled {
+      cursor: default;
+    }
+
+    &:not(:disabled):active {
+      opacity: 0.6;
+    }
+  }
+
+  &__year {
+    flex: none;
+    min-width: 76px;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.6;
+    color: var(--c-primary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  &__text {
+    flex: 1;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  &__note {
+    margin: 0 0 10px 86px;
+    padding: 8px 10px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--c-text-muted);
+    background: var(--c-bg);
+    border-radius: 8px;
+
+    b {
+      color: var(--c-text);
+    }
+
+    p {
+      margin: 4px 0 0;
+    }
+  }
+
+  &__foot {
+    flex: none;
+    margin: 0;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+    font-size: 12px;
+    color: var(--c-text-muted);
+    border-top: 1px solid var(--c-border);
   }
 }
 
