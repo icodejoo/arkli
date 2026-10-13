@@ -12,6 +12,7 @@ import {
   formatLength,
   formatReading,
   formatReadingAlt,
+  gapMm,
   hexFromWheel,
   isValidScale,
   loadScale,
@@ -21,9 +22,11 @@ import {
   pxToMm,
   saveScale,
   scaleFromCalibration,
+  sortMarksByPosition,
   STEP_MM,
   STORAGE_PREFIX,
   SCALE_KEY,
+  togglePick,
   type RulerMark,
   type RulerUnit,
 } from './logic'
@@ -48,6 +51,30 @@ const CURSOR_INIT_PX = 120
 const HEADER_FALLBACK = 46
 /** 顶栏选择器：尺子要从它的下沿开始，不盖住顶栏 */
 const HEADER_SELECTOR = '.van-nav-bar'
+/** 间距对比图（SVG）的画布宽度，用户单位；实际宽度随弹窗自适应 */
+const CMP_W = 340
+/** 对比图每一行的高度 */
+const CMP_ROW_H = 44
+/** 对比图上下留白 */
+const CMP_PAD_Y = 12
+/** 对比图里圆点或 A/B 徽标的圆心 x */
+const CMP_DOT_X = 18
+/** 对比图里读数文字的起点 x */
+const CMP_TEXT_X = 36
+/** 对比图里每条标记横线的起点 x */
+const CMP_LINE_X1 = 112
+/** 对比图里每条标记横线的终点 x */
+const CMP_LINE_X2 = 236
+/** 对比图里尺寸标注竖线所在的 x */
+const CMP_BRACKET_X = 322
+/** 尺寸标注两端小横线的半长 */
+const CMP_TICK = 6
+/** 尺寸标注文字的右端 x，紧挨着竖线左侧 */
+const CMP_LABEL_X = 310
+/** 选中行的底色不透明度 */
+const CMP_PICK_FILL = 0.14
+/** 选中行的描边不透明度 */
+const CMP_PICK_STROKE = 0.55
 /** 彩虹盘小圆点离盘边缘的最小距离（像素），避免圆点被盘边切掉 */
 const WHEEL_DOT_MARGIN = 6
 /** 校准线两端小竖线的半长（像素） */
@@ -123,6 +150,10 @@ const wheelDot = ref<{ x: number; y: number } | null>(null)
 let wheelDragging = false
 /** 是否把尺子上的标记线藏起来（只影响显示，标记数据和列表都保留） */
 const marksHidden = ref(false)
+/** 间距对比弹窗是否打开 */
+const compareOpen = ref(false)
+/** 在对比弹窗里选中的标记编号，最多两个，先选的在前 */
+const picked = ref<number[]>([])
 /** 已打下的标记，不限数量 */
 const marks = ref<RulerMark[]>([])
 /** 标记编号自增序号 */
@@ -198,6 +229,58 @@ function lineStyle(px: number, color: string): Record<string, string> {
  */
 function tagStyle(color: string): Record<string, string> {
   return { color, [side.value]: `${TAG_OFFSET}px` }
+}
+
+/** 对比图的一行：一条标记加它在图上的位置与选中序号（0=A，1=B，-1 未选） */
+interface CompareRow {
+  id: number
+  mm: number
+  color: string
+  text: string
+  /** 行中线的 y */
+  y: number
+  /** 选中序号 */
+  order: number
+}
+/** 选中序号对应的字母 */
+const ORDER_LETTERS = ['A', 'B'] as const
+/** 仍然存在的已选标记编号（标记被删后自动剔除） */
+const pickedIds = computed(() => picked.value.filter((id) => marks.value.some((m) => m.id === id)))
+/** 对比图的行：按位置从小到大、自上而下，行距均匀 */
+const compareRows = computed<CompareRow[]>(() =>
+  sortMarksByPosition(marks.value).map((m, i) => ({
+    id: m.id,
+    mm: m.mm,
+    color: m.color,
+    text: formatReading(m.mm, unit.value),
+    y: CMP_PAD_Y + i * CMP_ROW_H + CMP_ROW_H / 2,
+    order: pickedIds.value.indexOf(m.id),
+  })),
+)
+/** 对比图的总高度 */
+const compareHeight = computed(() => CMP_PAD_Y * 2 + compareRows.value.length * CMP_ROW_H)
+/** 选满两条后，上方那条与下方那条（按图上位置） */
+const comparePair = computed(() => {
+  if (pickedIds.value.length < 2) return null
+  const rows = compareRows.value.filter((r) => r.order >= 0).sort((a, b) => a.y - b.y)
+  return rows.length === 2 ? { top: rows[0], bottom: rows[1] } : null
+})
+/** 两条标记之间的间距（毫米） */
+const compareGapMm = computed(() => (comparePair.value ? gapMm(comparePair.value.top.mm, comparePair.value.bottom.mm) : 0))
+/** 间距的主读数 */
+const compareGapMain = computed(() => formatReading(compareGapMm.value, unit.value))
+/** 间距的辅助读数 */
+const compareGapAlt = computed(() => formatReadingAlt(compareGapMm.value, unit.value))
+
+/** 点选对比图里的一行 */
+function pickRow(id: number): void {
+  picked.value = togglePick(pickedIds.value, id)
+}
+
+/** 打开间距对比弹窗，每次从没选开始 */
+function openCompare(): void {
+  picked.value = []
+  compareOpen.value = true
 }
 
 /** 读 CSS 变量，读不到用兜底色 */
@@ -555,6 +638,7 @@ onUnmounted(() => {
         </van-button>
         <van-button size="small" :disabled="!marks.length" @click="clearMarks">清除标记</van-button>
       </div>
+      <van-button class="ruler-gap" size="small" plain block :disabled="marks.length < 2" @click="openCompare">间距对比</van-button>
       <van-cell-group v-if="marks.length" :border="false" class="ruler-gap">
         <van-cell v-for="m in marks" :key="m.id" center>
           <template #title>
@@ -568,6 +652,66 @@ onUnmounted(() => {
       </van-cell-group>
       <p v-else class="tool-hint ruler-gap">点"标记"会在游标当前位置留下一条选中颜色的线，并标出读数，可以连续标记。</p>
     </div>
+
+    <van-popup v-model:show="compareOpen" position="bottom" round :style="{ height: '78%' }" safe-area-inset-bottom>
+      <div class="cmp">
+        <h3 class="tool-card__title cmp__title">标记间距</h3>
+        <template v-if="comparePair">
+          <p class="cmp__gap">{{ compareGapMain }}</p>
+          <p class="tool-hint cmp__alt">{{ compareGapAlt }}</p>
+        </template>
+        <p v-else class="tool-hint">点选两条标记，查看它们之间的间距（已选 {{ pickedIds.length }}/2）。再点已选的取消，选第三条会替换最早选的。</p>
+        <div class="cmp__scroll">
+          <svg class="cmp__svg" :viewBox="`0 0 ${CMP_W} ${compareHeight}`" role="group" aria-label="标记列表，点选两条查看间距">
+            <g
+              v-for="r in compareRows"
+              :key="r.id"
+              class="cmp__row"
+              role="button"
+              tabindex="0"
+              :aria-pressed="r.order >= 0"
+              :aria-label="`标记 ${r.text}`"
+              @click="pickRow(r.id)"
+              @keydown.enter.prevent="pickRow(r.id)"
+              @keydown.space.prevent="pickRow(r.id)"
+            >
+              <rect
+                v-if="r.order >= 0"
+                :x="4"
+                :y="r.y - CMP_ROW_H / 2 + 2"
+                :width="CMP_W - 8"
+                :height="CMP_ROW_H - 4"
+                rx="8"
+                :fill="r.color"
+                :fill-opacity="CMP_PICK_FILL"
+                :stroke="r.color"
+                :stroke-opacity="CMP_PICK_STROKE"
+              />
+              <rect :x="0" :y="r.y - CMP_ROW_H / 2" :width="CMP_W" :height="CMP_ROW_H" fill="transparent" />
+              <circle :cx="CMP_DOT_X" :cy="r.y" :r="r.order >= 0 ? 10 : 5" :fill="r.color" />
+              <text v-if="r.order >= 0" class="cmp__badge" :x="CMP_DOT_X" :y="r.y" text-anchor="middle" dominant-baseline="central">{{ ORDER_LETTERS[r.order] }}</text>
+              <text class="cmp__text" :x="CMP_TEXT_X + (r.order >= 0 ? 6 : 0)" :y="r.y" dominant-baseline="central">{{ r.text }}</text>
+              <line :x1="CMP_LINE_X1" :x2="CMP_LINE_X2" :y1="r.y" :y2="r.y" :stroke="r.color" stroke-width="1.5" />
+            </g>
+            <g v-if="comparePair" class="cmp__dim" aria-hidden="true">
+              <line :x1="CMP_LINE_X2" :x2="CMP_BRACKET_X + CMP_TICK" :y1="comparePair.top.y" :y2="comparePair.top.y" class="cmp__guide" />
+              <line :x1="CMP_LINE_X2" :x2="CMP_BRACKET_X + CMP_TICK" :y1="comparePair.bottom.y" :y2="comparePair.bottom.y" class="cmp__guide" />
+              <line :x1="CMP_BRACKET_X" :x2="CMP_BRACKET_X" :y1="comparePair.top.y" :y2="comparePair.bottom.y" class="cmp__bracket" />
+              <polygon
+                :points="`${CMP_BRACKET_X - 4},${comparePair.top.y + 8} ${CMP_BRACKET_X + 4},${comparePair.top.y + 8} ${CMP_BRACKET_X},${comparePair.top.y}`"
+                class="cmp__arrow"
+              />
+              <polygon
+                :points="`${CMP_BRACKET_X - 4},${comparePair.bottom.y - 8} ${CMP_BRACKET_X + 4},${comparePair.bottom.y - 8} ${CMP_BRACKET_X},${comparePair.bottom.y}`"
+                class="cmp__arrow"
+              />
+              <rect :x="CMP_LABEL_X - 62" :y="(comparePair.top.y + comparePair.bottom.y) / 2 - 11" width="64" height="22" rx="6" class="cmp__label-bg" />
+              <text class="cmp__label" :x="CMP_LABEL_X" :y="(comparePair.top.y + comparePair.bottom.y) / 2" text-anchor="end" dominant-baseline="central">{{ compareGapMain }}</text>
+            </g>
+          </svg>
+        </div>
+      </div>
+    </van-popup>
 
     <div class="tool-card">
       <h3 class="tool-card__title">怎么用</h3>
@@ -687,6 +831,89 @@ onUnmounted(() => {
   height: 100%;
   pointer-events: auto;
   touch-action: none;
+}
+
+/* 间距对比弹窗：标题、结果在上，下面是可滚动的 SVG */
+.cmp {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: $space-4;
+  box-sizing: border-box;
+
+  &__title {
+    margin: 0 0 $space-2;
+  }
+
+  &__gap {
+    margin: 0;
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--c-text);
+    font-variant-numeric: tabular-nums;
+  }
+
+  &__alt {
+    margin: $space-1 0 $space-2;
+  }
+
+  &__scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    margin-top: $space-2;
+  }
+
+  &__svg {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  &__row {
+    cursor: pointer;
+    outline: none;
+  }
+
+  &__text {
+    fill: var(--c-text);
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  &__badge {
+    fill: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    pointer-events: none;
+  }
+
+  &__guide {
+    stroke: var(--c-text-muted);
+    stroke-width: 1;
+    stroke-dasharray: 3 3;
+  }
+
+  &__bracket {
+    stroke: var(--c-text);
+    stroke-width: 1.5;
+  }
+
+  &__arrow {
+    fill: var(--c-text);
+  }
+
+  &__label-bg {
+    fill: var(--c-surface);
+    fill-opacity: 0.95;
+  }
+
+  &__label {
+    fill: var(--c-text);
+    font-size: 13px;
+    font-weight: 700;
+  }
 }
 
 /* 预览区的大数字 */

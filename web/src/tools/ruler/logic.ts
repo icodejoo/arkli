@@ -298,3 +298,42 @@ export function hslToHex(h: number, s: number, l: number): string {
 export function hexFromWheel(dx: number, dy: number): string {
   return hslToHex(angleToHue(dx, dy), WHEEL_SATURATION, WHEEL_LIGHTNESS)
 }
+
+/** 间距对比最多同时选中的标记数 */
+export const COMPARE_MAX = 2
+
+/**
+ * 按在尺上的位置从小到大排列标记（不改动原数组）。
+ *
+ * @param marks 标记列表
+ * @returns 新数组，位置相同的保持原有先后顺序
+ * @example sortMarksByPosition([{ id: 1, mm: 30, color: '#f00' }, { id: 2, mm: 10, color: '#0f0' }]).map(m => m.id) // [2, 1]
+ */
+export function sortMarksByPosition(marks: readonly RulerMark[]): RulerMark[] {
+  return marks.map((m, i) => ({ m, i })).sort((a, b) => a.m.mm - b.m.mm || a.i - b.i).map((x) => x.m)
+}
+
+/**
+ * 点选标记：已选的再点就取消；没选的就加入，超过上限时挤掉最早选的那条。
+ *
+ * @param picked 当前已选的标记编号（先选的在前）
+ * @param id 刚点的标记编号
+ * @returns 新的已选编号数组（不改动入参）
+ * @example togglePick([1, 2], 3) // [2, 3]
+ */
+export function togglePick(picked: readonly number[], id: number): number[] {
+  if (picked.includes(id)) return picked.filter((p) => p !== id)
+  return [...picked, id].slice(-COMPARE_MAX)
+}
+
+/**
+ * 两个位置之间的间距（取绝对值）。
+ *
+ * @param aMm 位置 A，毫米
+ * @param bMm 位置 B，毫米
+ * @returns 间距，毫米，非负
+ * @example gapMm(30, 12.5) // 17.5
+ */
+export function gapMm(aMm: number, bMm: number): number {
+  return Math.abs(aMm - bMm)
+}

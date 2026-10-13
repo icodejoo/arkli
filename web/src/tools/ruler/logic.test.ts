@@ -3,10 +3,12 @@ import {
   buildTicks,
   CARD_MM,
   clampPos,
+  COMPARE_MAX,
   DEFAULT_PX_PER_MM,
   formatLength,
   formatReading,
   formatReadingAlt,
+  gapMm,
   hexFromWheel,
   hslToHex,
   angleToHue,
@@ -17,8 +19,11 @@ import {
   pxToMm,
   saveScale,
   scaleFromCalibration,
+  sortMarksByPosition,
   STEP_MM,
+  togglePick,
   type KvStorage,
+  type RulerMark,
 } from './logic'
 
 /** 内存版存储 */
@@ -187,5 +192,40 @@ describe('彩虹循环与色相环', () => {
     expect(hexFromWheel(0, -10)).toBe('#ff0000')
     expect(hexFromWheel(10, 0)).toBe(hslToHex(90, 100, 50))
     expect(hexFromWheel(0, 10)).toBe(hslToHex(180, 100, 50))
+  })
+})
+
+describe('标记间距对比', () => {
+  const mk = (id: number, mm: number): RulerMark => ({ id, mm, color: '#000000' })
+
+  it('按位置从小到大排，不改动原数组，位置相同保持原顺序', () => {
+    const src = [mk(1, 30), mk(2, 10), mk(3, 10), mk(4, 20)]
+    expect(sortMarksByPosition(src).map((m) => m.id)).toEqual([2, 3, 4, 1])
+    expect(src.map((m) => m.id)).toEqual([1, 2, 3, 4])
+  })
+
+  it('空列表排序得空数组', () => {
+    expect(sortMarksByPosition([])).toEqual([])
+  })
+
+  it('点选：加入、取消、满员时挤掉最早选的', () => {
+    expect(togglePick([], 1)).toEqual([1])
+    expect(togglePick([1], 2)).toEqual([1, 2])
+    expect(togglePick([1, 2], 3)).toEqual([2, 3])
+    expect(togglePick([1, 2], 1)).toEqual([2])
+    expect(togglePick([2, 3], 3)).toEqual([2])
+  })
+
+  it('点选不改动入参，且上限为 2', () => {
+    const picked = [1, 2]
+    togglePick(picked, 3)
+    expect(picked).toEqual([1, 2])
+    expect(COMPARE_MAX).toBe(2)
+  })
+
+  it('间距取绝对值，与选择先后无关', () => {
+    expect(gapMm(30, 12.5)).toBeCloseTo(17.5, 9)
+    expect(gapMm(12.5, 30)).toBeCloseTo(17.5, 9)
+    expect(gapMm(5, 5)).toBe(0)
   })
 })
