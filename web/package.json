@@ -11,7 +11,9 @@
     "build:app": "pnpm build && node scripts/sync-to-app.mjs"
   },
   "dependencies": {
+    "@noble/hashes": "2.4.0",
     "pinia": "4.0.3",
+    "pinyin-pro": "3.29.5",
     "tyme4ts": "1.5.3",
     "vant": "4.10.2",
     "vue": "3.5.43",

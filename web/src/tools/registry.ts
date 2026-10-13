@@ -45,6 +45,9 @@ export const tools: ToolMeta[] = [
   { id: 'image-convert', name: '图片格式转换', description: 'PNG、JPEG、WebP 互转，可批量', load: () => import('./image-convert/index.vue') },
   { id: 'image-stitch', name: '图片拼接', description: '多图纵向或横向拼成一张长图', load: () => import('./image-stitch/index.vue') },
   { id: 'image-grid', name: '九宫格切图', description: '把图片切成 2×2、3×3 等多张', load: () => import('./image-grid/index.vue') },
+  { id: 'hash', name: '哈希计算', description: 'MD5、SHA-1、SHA-256、SHA-512，支持文件', load: () => import('./hash/index.vue') },
+  { id: 'pinyin', name: '中文转拼音', description: '带声调、数字声调、首字母，多音字提示', load: () => import('./pinyin/index.vue') },
+  { id: 'qrcode-gen', name: '二维码生成', description: '自定义纠错、颜色与尺寸，导出 PNG', load: () => import('./qrcode-gen/index.vue') },
 ]
 
 /**
