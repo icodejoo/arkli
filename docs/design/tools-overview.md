@@ -39,7 +39,7 @@ summary: 六份工具设计的汇总：优先级统计、体积估计、全部�
 | sherpa-onnx（取 so + Kotlin API） | 1.13.8 | Apache-2.0 | 原生 | AI 基座、语音类 | media-ai / 0002 |
 | ort（Rust） | 2.0.0-rc.14 | MIT/Apache-2.0 | Rust | 视觉模型推理，需验证与 sherpa 自带 ORT 对得上 | media-ai |
 | sherpa-onnx（Rust crate） | 1.13.8 | Apache-2.0 | Rust | 仅离线 TTS，P2 | media-ai |
-| imageproc | 待定 | MIT | Rust | 图像后处理 | media-ai |
+| imageproc | 待定 | MIT | Rust | 图像后处理（是否会带入 `image` 待核，见 media-ai 未决问题 10） | media-ai |
 | pinyin-pro | 3.29.5 | MIT | Web | 拼音 | text-calc |
 | relationship.js | 1.2.9 | MIT | Web | 亲戚关系 | text-calc |
 | @noble/hashes | 2.4.0 | MIT | Web | MD5 等哈希 | dev-net |
@@ -57,13 +57,13 @@ summary: 六份工具设计的汇总：优先级统计、体积估计、全部�
 
 | # | 冲突 | 统一结论 |
 |---|---|---|
-| 1 | image 只在 Rust 读写 PNG、不引 `image` 系；media-ai 假设与图片类共用 `image` / `fast_image_resize` | 以 image 为准：Rust 侧不引 `image` 系，视觉模型的缩放与前后处理自己写，媒体帧用 Media3 / Canvas；media-ai 里相关依赖在落地前改掉 |
+| 1 | image 只在 Rust 读写 PNG、不引 `image` 系；media-ai 假设与图片类共用 `image` / `fast_image_resize` | 以 image 为准：Rust 侧不引 `image` 系，视觉模型的缩放与前后处理自己写，媒体帧用 Media3 / Canvas；JPEG 解码与 EXIF 由原生做，Rust 只读 PNG。media-ai 已按此改完（2026-10-13）。另：Canvas 只管中小图，超大图交原生或 Rust（见 image 的「大图分流」） |
 | 2 | life-fun 说不需要 INTERNET；dev-net、text-calc、模型与数据包下载都要联网 | 只要有一个按需下载功能就必须加 INTERNET。结论：**加**（用户已确认），同时 WebView 只允许 appassets 域，所有联网只走原生 `native.net.*` / `native.pack.*`，页面无法直接 fetch 外网（见基础设施文档） |
 | 3 | 屏幕方法命名不一：`keepAwake` / `keepOn` / `immersive` / `fullscreen` | 统一 `native.screen.keepAwake`、`.orientation`、`.immersive`、`.brightness` |
 | 4 | 模型下载（`native.model.*`）与数据包下载（`native.download.*`）各设计一套 | 合并为 `native.pack.*`，模型和词典数据包共用 manifest、断点续传、校验 |
 | 5 | 汇率用 `native.http.get`（白名单），dev-net 用 `native.net.http` | 用户选定折中方案：`native.net.*` 管任意域名与 ping/DNS/端口/Whois；汇率这类支持 CORS 的 JSON 接口由页面直接请求，域名写进 CSP 白名单，不再需要 `native.http.get` |
 | 6 | 通知：life-fun 用闹钟加通知；media-ai 的视频任务用前台服务通知 | 公共层只做一个通知封装；长任务走前台服务，提醒类走闹钟，互不替代 |
-| 7 | media-ai 把 provider 链写成 `xnnpack → cpu` | 实测 sherpa 自带的 ORT 没有 XNNPACK，只有 NNAPI 与 CPU，NNAPI 无收益。改为启动时用 `GetAvailableProviders` 探测，实际就是 CPU，默认 4 线程，低电量或后台降到 2 |
+| 7 | media-ai 把 provider 链写成 `xnnpack → cpu` | 实测 sherpa 自带的 ORT 没有 XNNPACK，只有 NNAPI 与 CPU，NNAPI 无收益。改为启动时用 `GetAvailableProviders` 探测，实际就是 CPU，默认 4 线程，低电量或后台降到 2。media-ai 已按此改完（2026-10-13） |
 
 另有几处入口要对齐：打字板与手持弹幕同页两种模式；随机数与"做个决定、抛硬币、掷骰子"共用抽签引擎；文本类的 `native.clipboard.write` 增加 `sensitive: true`（给密码生成器和加解密用）。
 

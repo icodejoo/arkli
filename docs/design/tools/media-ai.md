@@ -48,8 +48,8 @@ summary: 「音视频」「AI 与识别」分类全部工具的落地方案：�
 ### D. Rust「AI 运行时」（core 里新开 `arkli-ai` crate）
 - **ORT 只有一份**：用 `ort` crate 的动态加载方式加载 sherpa-onnx 1.13.8 带的 `libonnxruntime.so`（ORT 1.28.2）。`ort` 2.0.0-rc.14 与 1.28.2 的 C API 版本能不能对上还没验证，这是第一个要做的技术验证（推测可行）。
 - **会话复用**：进程内一个 `Environment` 单例，会话按模型 id 放进 LRU，最多同时留 2 个；空闲 60 秒或原生收到 `onTrimMemory` 时释放。
-- **provider 链**：配置项 `["xnnpack", "cpu"]`，按顺序尝试，失败自动回退，CPU 必须永远可用。XNNPACK 是否编进了 sherpa 那份 ORT 未验证；NPU 先不做，只留枚举位。线程数默认 `min(4, 大核数)`。
-- **公共前后处理**：图片解码与 EXIF 方向（`image` crate，与图片类共用）、缩放（`fast_image_resize`）、NCHW 归一化、分块推理与拼接（超分用，OCR 大图也可用）、取消令牌和进度回调。
+- **provider 探测**：不写死链。运行时初始化时调一次 `GetAvailableProviders`，列出什么用什么，CPU 必须永远可用。spike B 实测 sherpa 自带的 ORT 1.28.2 只含 NNAPI 与 CPU，没有 XNNPACK（显式注册会报错）；NNAPI 能注册但无加速、多占内存，默认不开。所以现阶段实际就是 CPU，靠 ORT 自带的 MLAS。NPU 先不做，只留枚举位。线程数默认 4，低电量或后台任务降到 2。想要 XNNPACK 只能自编 ORT，与「ORT 只带一份」冲突，不做。
+- **公共前后处理**：Rust 侧不引 `image` 系（`image`、`fast_image_resize` 等），以图片类设计为准，只用 `png` 读 PNG。EXIF 方向和 JPEG/WebP/HEIC 解码交给原生（平台 `BitmapFactory` / `ImageDecoder` + `ExifInterface`，按需 `inSampleSize` 降采样），原生把摆正后的图以 PNG 写缓存再交给 `rust.ai.*`（见未决问题 9）。缩放（双线性 / Lanczos）、NCHW 归一化、分块推理与拼接（超分用，OCR 大图也可用）都自己写，各几十行；取消令牌和进度回调同理。
 - **输入上限**：所有 AI 接口先把图片长边压到各自上限（OCR 4096、超分 1024、分类 512 内部再缩），防止 OOM。
 
 ### E. 音视频公共探测
@@ -128,7 +128,7 @@ summary: 「音视频」「AI 与识别」分类全部工具的落地方案：�
 ### 9. 图像分辨率提升（P1，难度 M）
 - **能否本地化**：能，而且很划算。
 - **模型**：Real-ESRGAN `realesr-general-x4v3`（SRVGGNetCompact，约 1.2M 参数，fp32 约 4.7MB，BSD-3-Clause，已查证；有 int8 版约 1.25MB，在 CPU 上的画质与速度未验证）。
-- **流程**：输入长边上限 1024（超过就提示先缩）→ 切 192px 小块、每边重叠 16px → 逐块推理 x4 → 羽化拼接 → 要 2 倍时，把 4 倍结果用 `fast_image_resize` 的 Lanczos 缩回去 → 写 PNG/JPEG 到缓存。走共用部件 B 的任务服务，可取消，按块数报进度。
+- **流程**：输入长边上限 1024（超过就提示先缩）→ 切 192px 小块、每边重叠 16px → 逐块推理 x4 → 羽化拼接 → 要 2 倍时，把 4 倍结果用共用部件 D 里自写的 Lanczos 缩回去 → 写 PNG/JPEG 到缓存。走共用部件 B 的任务服务，可取消，按块数报进度。
 - **Bridge**：`rust.ai.upscale { path, scale: 2|4, format?: "png"|"jpg", taskId }` → `{ outPath, width, height, costMs }`。
 - **耗时（推测，粗算）**：每个输入像素约 2.4 MFLOP，512×512 输入约 0.6 TFLOP，中端机 CPU 大约 10~30 秒；1024×1024 要 1~2 分钟。所以默认建议 ≤768。
 - **风险/测试**：拼接缝、JPEG 噪点被放大（可以加一个 wdn 降噪版模型作为第二选择，先不做）、大图内存（输出 4096² RGBA 约 64MB）。
@@ -152,7 +152,8 @@ summary: 「音视频」「AI 与识别」分类全部工具的落地方案：�
 | gif | 0.14.2 | MIT OR Apache-2.0 | GIF 编码（与图片类共用） | core |
 | color_quant | 随 gif 默认 feature | MIT（推测） | NeuQuant 量化 | core |
 | imageproc | 0.27.0 | MIT | OCR 后处理（轮廓、最小外接矩形）、对象计数 | core（与图片类共用） |
-| image / fast_image_resize | 0.25.10 / 6.1.0 | MIT OR Apache-2.0 | 解码、EXIF、缩放 | core（图片类已列，不重复计） |
+
+本类 Rust 侧**不引** `image`、`fast_image_resize`：PNG 读写复用图片类的 `png`，JPEG 解码与 EXIF 由原生做，缩放自写。`imageproc` 在上面保留，但它是否会把 `image` 带进依赖树还没核实（见未决问题 10）。
 
 模型资源（不进 APK，manifest 管理，许可证要逐个核实）：
 
@@ -195,3 +196,5 @@ summary: 「音视频」「AI 与识别」分类全部工具的落地方案：�
 6. **「图片文字化」**到底是 OCR 的别名还是字符画？
 7. **模型托管**：自建 CDN、HuggingFace 还是 ModelScope（国内可达性不同，本次 Bash 直连 ModelScope API 也没通）？manifest 要不要签名防篡改？
 8. **视频压缩默认编码**：H.264（兼容最好）还是 HEVC（体积约小三成，推测，部分旧设备和平台播放有问题）？默认 H.264。
+9. **AI 工具的输入图格式**：Rust 只读 PNG，那 `rust.ai.*` 收到 JPEG 缓存路径怎么办？可选 (a) 原生在 `native.file.pick` / 拍照后统一转 PNG 写缓存（简单，大图多一次写盘）；(b) 原生解码成 RGBA，经 UniFFI 进程内交给 Rust（不落盘，视频转 GIF 同款，但要多一套接口）。默认 (a)，待与 bridge 公共方案对齐。
+10. **`imageproc` 是否违反「不引 `image` 系」**：本文 OCR 后处理和对象计数用 `imageproc` 0.27.0，我印象里它依赖 `image` crate（推测，未核实）。如属实，要么自写轮廓 / 最小外接矩形 / Otsu / 连通域（几百行），要么放宽约束，请拍板。
