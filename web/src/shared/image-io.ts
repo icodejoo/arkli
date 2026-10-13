@@ -37,6 +37,8 @@ export interface PickedImage {
   height: number
   /** 可直接给 img / fetch 用的同源地址 */
   url: string
+  /** 原生缓存相对路径（如 cache/pick/a.jpg），仅有宿主时有值，可交给 native.image.compress */
+  path?: string
   /** 释放 ObjectURL 等资源（原生路径下为空操作） */
   release: () => void
 }
@@ -179,7 +181,7 @@ export async function pickImages(
     for (const it of res.items.filter((i) => i.kind === 'image')) {
       const url = it.url || FILES_URL_PREFIX + (it.path ?? '')
       const size = it.width && it.height ? { width: it.width, height: it.height } : await probeSize(url)
-      list.push({ name: it.name, mime: it.mime, size: it.size, ...size, url, release: () => undefined })
+      list.push({ name: it.name, mime: it.mime, size: it.size, ...size, url, path: it.path, release: () => undefined })
     }
     return list
   }

@@ -24,7 +24,6 @@ const ICONS: Record<string, string> = {
   danmaku: '📣',
   'device-info': '📱',
   'image-compress': '🗜️',
-  'image-convert': '🔄',
   'image-stitch': '🧩',
   'image-grid': '🔳',
   hash: '🧬',
