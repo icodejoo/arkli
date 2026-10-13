@@ -15,5 +15,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- spike：WebMessageListener 验证用，结论出来后由主会话决定去留 -->
+        <activity
+            android:name=".spike.SpikeActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode" />
     </application>
 </manifest>

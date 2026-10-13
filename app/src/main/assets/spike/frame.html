@@ -1,0 +1,13 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>frame</title></head>
+<body>
+<script>
+// 跨源 frame 探针：检查两个注入对象是否存在，并尝试调用，结果回报给父页面
+(function () {
+  var r = { n: typeof ArkliNative, l: typeof ArkliLegacy, o: String(location.origin) };
+  try { if (typeof ArkliLegacy !== 'undefined') ArkliLegacy.postMessage(JSON.stringify({ id: 'xf', method: 'native.ping', params: {} })); } catch (e) { r.legacyErr = String(e); }
+  try { if (typeof ArkliNative !== 'undefined') ArkliNative.postMessage(JSON.stringify({ id: 'xf', method: 'native.ping', params: {} })); } catch (e) { r.nativeErr = String(e); }
+  parent.postMessage({ spikeFrame: 'cross-origin', r: r }, '*');
+})();
+</script>
+</body></html>

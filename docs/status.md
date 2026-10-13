@@ -42,6 +42,7 @@ Node 24、JDK 21、`ANDROID_HOME=E:\sdk\android`（platforms 35/36、build-tools
 - R8 的 keep 规则偏宽（JNA 与 uniffi 整包），classes.dex 1.2MB 里有多少是它造成的没拆开看，后续可收窄。
 - Compose 等版本偏旧，升级前要重跑真机验证。
 - web 侧没有测试框架，vitest 等用户确认。
+- **发版前必须处理 spike 代码**：`app/src/main/kotlin/com/let188/arkli/spike/`、`assets/spike/`、`res/xml/spike_network_security_config.xml`，以及清单里 `exported=true` 的 `.spike.SpikeActivity` 声明。移除，或挪进 `debug` 源集，不得随 release 包发布。代码保留的目的是以后复测（如换到支持 ArrayBuffer 的设备补测）。
 - 工具设计见 `docs/design/tools/`（6 份并行产出中），完成后要统一复审、汇总新增依赖和公共基础设施需求。
 
 ## 待办（按顺序）
