@@ -6,7 +6,7 @@ summary: 「图片」分类全部工具的落地方案：层归属、所用库�
 ---
 ## TL;DR
 - 覆盖功能清单「图片」分类全部 21 项：P0 5 项、P1 7 项、P2 7 项、建议不做 2 项（以图搜图、B 站封面获取）。
-- **WebView 的 Canvas 当中小图的编解码器**：JPG/PNG/WebP 的解码、缩放、绘制、编码在 Web 做，零体积；Rust 只管 Canvas 做不了的（GIF 编解码、PNG 调色板量化、视觉模型），而且 Rust 只吃 PNG/GIF，不引入 `image` 全家桶（AI 类同此约束）。
+- **压缩与格式转换合并，统一由原生（Kotlin）做**：解码用 `ImageDecoder`/`BitmapFactory`，JPEG/WebP 用平台 `Bitmap.compress`，PNG 自写（缩色量化 + 索引色编码，IDAT 走 `java.util.zip.Deflater`），零新增依赖，不经过 Rust。拼接、九宫格等需要即时预览/绘制的工具仍用 WebView 的 Canvas，零体积；Rust 只管 Canvas 与原生都不合适的（GIF 编解码、视觉模型），不引入 `image` 全家桶（AI 类同此约束）。
 - **Canvas 只限中小图**：超过 `MAX_CANVAS_PIXELS` 的大图（几千万像素起）不往页面里塞，免得 WebView 里出现几百 MB 的位图和 Blob；这类图交原生降采样或编码、Rust 做 PNG 像素运算，页面只拿缩略预览和结果路径（见共用部件的「大图分流」）。
 - 二维码扫码走原生（CameraX + zxing-cpp），相册识别也用同一个 zxing-cpp，不再加 Rust 二维码库。
 - APK 增量约 1.5–2.5MB（大头是 zxing-cpp 0.73MB deflate 和 CameraX，推测），不含 AI 运行时；证件照模型约 25MB，按需下载。
@@ -17,12 +17,12 @@ summary: 「图片」分类全部工具的落地方案：层归属、所用库�
 |---|---|---|---|---|---|
 | 1 | 二维码工具 | 组合：Web 生成 + 原生扫码 | nayuki 生成；CameraX + zxing-cpp 识别 | ~1.2–1.7MB | P0 |
 | 2 | 文字转图 | Web | Canvas 排版，系统字体 | ~0 | P1 |
-| 3 | 图片压缩 | Web（PNG 量化走 Rust） | Canvas 重编码 + 质量二分；color_quant | ~0 | P0 |
+| 3 | 图片压缩（含格式转换，与 8 合并） | 原生 | `native.image.compress`；平台编解码 + 自写 PNG 缩色 | ~0 | P0 |
 | 4 | 图片拼接 | Web | Canvas，超限分段导出 | ~0 | P0 |
 | 5 | 九宫格切图 | Web | Canvas + 共用裁剪框 | ~0 | P0 |
 | 6 | GIF 合成/分解 | Web + Rust | Rust `gif` + `png` | ~0.2–0.4MB 未压缩（推测） | P1 |
 | 7 | 取色器 | Web | Canvas 取像素 + 自写 median-cut | ~0 | P1 |
-| 8 | 图片格式转换 | Web | Canvas 出 JPG/PNG/WebP，BMP/ICO 自写封装 | ~0 | P0 |
+| 8 | 图片格式转换 | 并入 3 | 输出格式是 `native.image.compress` 的参数；BMP/ICO 后续另议 | ~0 | P0 |
 | 9 | 图片水印 | Web | Canvas | ~0 | P1 |
 | 10 | 图片转 Base64 | Web | FileReader / atob | ~0 | P1 |
 | 11 | 纯色图制作 | Web（与 12 合并） | Canvas | ~0 | P2 |
@@ -66,15 +66,16 @@ summary: 「图片」分类全部工具的落地方案：层归属、所用库�
 - HEIC/HEIF 交给原生在选图时转成 JPEG（见文末的公共需求），Web 只处理 JPG/PNG/WebP/GIF/BMP，AVIF 看 WebView 版本（推测 Chromium 85+ 支持解码）。
 
 ### Rust：`core/crates/arkli-image`（新 crate）
-- 只依赖 `gif`、`png`、`color_quant`，不引 `image`、`fast_image_resize`、`oxipng`、`jpeg-encoder`。理由：JPEG/WebP 编解码和缩放 Canvas 已经免费提供，Rust 再带一套就是为同一件事付两次体积。选型文档推荐的 `image` 系不用，AI 类（media-ai）也已对齐为不引：JPEG 解码与 EXIF 由原生做，Rust 只收 PNG，缩放等前后处理自写。
+- 只依赖 `gif`、`png`、`color_quant`（用于 GIF 与后续工具，PNG 压缩已改由原生自写，不再走 Rust），不引 `image`、`fast_image_resize`、`oxipng`、`jpeg-encoder`。理由：JPEG/WebP 编解码和缩放 Canvas 已经免费提供，Rust 再带一套就是为同一件事付两次体积。选型文档推荐的 `image` 系不用，AI 类（media-ai）也已对齐为不引：JPEG 解码与 EXIF 由原生做，Rust 只收 PNG，缩放等前后处理自写。
 - 约定：Web 和 Rust 之间的像素只用 PNG 文件交换（GIF 本身除外）。Rust 读 PNG、写 PNG，从不碰 JPEG。
 - 大任务逐帧流式处理：GIF 解码一帧写一帧，不把整个动图读进内存。
 - 长任务经原生转成 `image.progress` 事件（`{ task, percent }`）推给页面，支持取消。
 - 视觉模型（人脸检测、人像抠图）不在本 crate，放到和 OCR 共用的视觉推理 crate（由 AI 类方案定义，复用 sherpa-onnx 自带的那份 ORT），本文只定义方法。
 
-### 原生：本类只新增两个模块
+### 原生：本类新增三个模块
 - `native.qrcode.*`：扫码页（Compose + CameraX）和相册图识别，都用 zxing-cpp。
 - `native.image.exif`：用平台 `android.media.ExifInterface` 读 EXIF，零依赖。
+- `native.image.compress`：图片压缩与格式转换，见下文第 3 项与 bridge-protocol.md 的"图片方法"。代码在 `com.let188.arkli.image`。
 
 ## 逐工具方案
 
@@ -95,12 +96,14 @@ summary: 「图片」分类全部工具的落地方案：层归属、所用库�
 - Bridge：只用公共的保存/分享。体积约 0；离线。
 - 测试：emoji、长英文单词、全角半角混排时的断行。
 
-### 3. 图片压缩｜Web（PNG 量化走 Rust）｜S/M｜P0
-- 三种模式：质量滑杆；目标体积（如"压到 200KB 以内"，由 `encodeCanvas` 二分）；限制最长边。可批量，列表显示压缩前后体积和比例。
-- 输出格式：保持原格式或转 JPEG/WebP。PNG 用 Canvas 重编码基本压不小，所以给 PNG 提供"有损压缩到 256 色"：调 Rust，用 `color_quant`（NeuQuant）量化后输出索引色 PNG，效果接近 TinyPNG。没有选 libimagequant（pngquant 的核心），因为它是 GPL-3.0/商业双许可。
-- Bridge：`rust.image.pngQuantize` `{ path, colors?: 2..256, dither?: boolean }` → `{ path, bytes }`
-- 体积：Canvas 部分 0；量化复用 GIF 已经引入的 `color_quant` 和 `png`，不再新增依赖。离线。
-- 风险/测试：超大图（1 亿像素级）不进 Canvas，按「大图分流」提示缩小或交原生；带透明的 PNG 转 JPEG 时用白底填充；目标体积二分的上限次数（定为 8 次）。
+### 3. 图片压缩（含格式转换）｜原生｜M｜P0
+- 原有的"图片压缩"和"图片格式转换"合并成一个工具，保留 id `image-compress`；输出格式 JPEG/WebP/PNG 在页面里选，是 `native.image.compress` 的参数。
+- 流程：`native.file.pick` 选图 → `native.image.compress`（原生解码、缩放、编码，成品写 `cache/out/`）→ 页面用 `/files/` 路径回显缩略图 → `native.file.save`。不再经过 Canvas，也就不再受 `MAX_CANVAS_PIXELS` 限制，不再需要把 Blob 写回缓存。
+- 选项：质量；最长边（等比缩小、不放大）；目标体积（仅 JPEG/WebP，在 `[1, 质量]` 里二分，最多 9 次，压不进目标时给最低质量并标记未达成）；PNG 的"无损/缩色"、颜色数 2..256、是否抖动；保留 EXIF（仅 JPEG，默认不带）。
+- PNG 压缩 v1 自写，不引 libimagequant（GPL-3.0/商业双许可），也不引 oxipng、zopfli、LodePNG：中位切分量化 + 自写索引色编码器，逐行自适应滤波，Deflater level 9。无损模式颜色数不超过 256 时自动转索引色。实测（合成样本）：噪声类、类照片图缩色能省约 66%~67%，平滑渐变反而更大，所以界面上选缩色时提示"照片/渐变类图缩色后可能反而变大"，结果比原图大时也提示。
+- 桌面浏览器开发时没有宿主，页面退回 Canvas 的 `toBlob` 路径：只支持质量、最长边与格式，缩色 PNG、目标体积、保留 EXIF 置灰。真机以原生为准。
+- Bridge：`native.image.compress`，契约见 bridge-protocol.md。体积约 0（全是平台 API 和自写代码）；离线。
+- 风险/测试：超大图要设 `maxEdge`（解码后上限 6400 万像素，PNG 路径 1600 万）；HEIC 在 API 24~27 解不了；带透明的 PNG 转 JPEG 用白底；批量中途取消要清理半成品。
 
 ### 4. 图片拼接｜Web｜M｜P0
 - 竖拼、横拼、网格三种；宽度统一（以最窄或指定宽度为准）、间距、边框、背景色；拖动排序。
@@ -131,11 +134,10 @@ summary: 「图片」分类全部工具的落地方案：层归属、所用库�
 - 没用 colorthief：median-cut 算法公开成熟，自写约 80 行；拼豆的"限色"也要复用同一份量化代码，自写更方便共享。
 - Bridge：`native.clipboard.write`。体积约 0；离线。
 
-### 8. 图片格式转换｜Web｜S｜P0
-- 和图片压缩共用一个页面骨架，两个入口。输出 JPG/PNG/WebP 用 Canvas；BMP 和 ICO 是简单的容器格式，JS 自己拼文件头（各约 40 行，没必要为此引库）；单帧 GIF 调 `rust.image.gifEncode`。
-- 不支持输出 AVIF/HEIC：没有轻量编码器（ravif 依赖 rav1e，体积和端上速度都不划算，推测）。
-- 输入的 HEIC 由原生选图时转成 JPEG。体积约 0；离线。
-- 测试：透明图转 JPG 的底色；ICO 多尺寸（16/32/48/256）在 Windows 资源管理器里能不能正常显示。
+### 8. 图片格式转换｜并入第 3 项
+- 不再单独成工具：输出 JPG/PNG/WebP 是 `native.image.compress` 的 `format` 参数，页面入口并入"图片压缩"（原 `image-convert` 目录与注册已删）。
+- BMP、ICO、单帧 GIF 输出暂不做；以后要做，BMP/ICO 是简单容器格式，由 JS 或 Kotlin 自拼文件头即可，GIF 走 `rust.image.gifEncode`。
+- 不支持输出 AVIF/HEIC：没有轻量编码器（ravif 依赖 rav1e，体积和端上速度都不划算，推测）。输入的 HEIC 由原生解码（API 28+）。
 
 ### 9. 图片水印｜Web｜S｜P1
 - 文字水印（字体大小、颜色、透明度、旋转、平铺间距）和图片水印（PNG Logo），位置有九宫格定位和满屏平铺两种；可批量。
@@ -209,7 +211,7 @@ summary: 「图片」分类全部工具的落地方案：层归属、所用库�
 | nayuki QR-Code-generator（TS 单文件，放进仓库） | 仓库当前版 | MIT（README 声明，上线前读 LICENSE） | 二维码生成 | Web |
 | cropperjs | 2.3.0 | MIT | 共用裁剪框（只在需要的工具里懒加载） | Web |
 | gif | 0.14.2 | MIT OR Apache-2.0 | GIF 编解码（会带上 weezl） | Rust |
-| color_quant | 1.1.x（gif 的可选特性要求 ^1.1；最新是 2.0.0） | MIT | NeuQuant 量化：GIF、PNG 有损压缩 | Rust |
+| color_quant | 1.1.x（gif 的可选特性要求 ^1.1；最新是 2.0.0） | MIT | NeuQuant 量化：GIF（PNG 缩色已改由原生自写） | Rust |
 | png | 0.18.1 | MIT OR Apache-2.0 | PNG 读写（会带上 fdeflate、flate2、miniz_oxide、crc32fast） | Rust |
 | YuNet 模型（2023mar） | — | MIT | 证件照人脸定位（下载，不进 APK） | 模型 |
 | MODNet / hivision_modnet 模型 | — | Apache-2.0 | 证件照抠图（下载，不进 APK） | 模型 |
@@ -235,7 +237,7 @@ summary: 「图片」分类全部工具的落地方案：层归属、所用库�
 
 ## 对既定约束的异议
 - **zxing-cpp 放在原生层调用**：按"计算下沉 Rust"的规则，识别算法本该在 Rust 里。但相机帧本来就在 Kotlin 层，每帧经 UniFFI 拷到 Rust 是白白多一次复制；选型文档推荐的也是 zxing-cpp + Kotlin；而且一个库能同时管扫码和相册识别。建议把这件事明确为"调用现成的识别库不算原生写业务计算"，请确认。
-- 其余约束没有异议。补充一点：本类用 Canvas 代替 Rust `image` 做中小图的编解码，和选型文档的推荐不一样，但不违反架构约束（规则 3/4 本来就允许计算放 Web）；超大图不放页面，交原生或 Rust。
+- 其余约束没有异议。补充一点：压缩与格式转换由原生做（平台编解码 + 自写 PNG 缩色），不用 Rust `image`，和选型文档的推荐不一样；这是图片像素的批量处理，数据本来就在原生侧的缓存文件里，不必再绕 Rust；拼接、九宫格等仍用 Canvas。
 
 ## 未决问题（需要拍板）
 1. **扫码相机方案**：CameraX（省事，AAR 合计约 2MB，R8 后的实际增量未知）还是自写 Camera2（零依赖，约 400 行，国产 ROM 兼容性有风险），或者 v1 只支持"拍照/相册识别"（零依赖，但不是实时扫码）？默认选 CameraX。
@@ -245,4 +247,4 @@ summary: 「图片」分类全部工具的落地方案：层归属、所用库�
 5. 合并：纯色和渐变合成一个工具；压缩和格式转换共用一个页面；图片查看器并进预览组件——是否同意？
 6. 拼豆色板的数据从哪来（各品牌色号表没找到官方开放数据）？
 7. 导出目录定成 `Pictures/Arkli`，文件名按 `工具名_时间戳_序号` 命名，可以吗？
-8. **超大图的范围**：v1 是否只做「原生降采样预览 + 提示缩小」？若要真处理（原生降采样后再交 Canvas、或原生直接压缩 / 转格式），需要新增类似 `native.image.downscale`、`native.image.encode` 的方法，并确认 `MAX_CANVAS_PIXELS` 的实测值。默认只做前者。
+8. **超大图的范围**：v1 是否只做「原生降采样预览 + 提示缩小」？若要真处理（原生降采样后再交 Canvas、或原生直接压缩 / 转格式），需要新增类似 `native.image.downscale`、`native.image.encode` 的方法，并确认 `MAX_CANVAS_PIXELS` 的实测值。默认只做前者。（压缩/转格式这一块已由 `native.image.compress` 真处理，大图设 `maxEdge` 即可。）

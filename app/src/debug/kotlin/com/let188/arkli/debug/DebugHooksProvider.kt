@@ -168,6 +168,7 @@ class DebugHooksProvider : ContentProvider() {
                 cmd, wv.context, wv, i.getStringExtra("mime"), i.getBooleanExtra("multiple", false),
                 i.getIntExtra("mb", 6), i.getStringExtra("enc") ?: "latin1",
             ) { method, params -> send(wv, method, params) }
+            "imgprep", "imgrun", "exifdump", "imglist", "nav" -> DebugImageCommands.handle(cmd, wv.context, wv, i.getStringExtra("path"))
             "nettest" -> netTest(wv)
             "state" -> Log.i(TAG, "state url=${wv.url} pid=${android.os.Process.myPid()} session=${bridge()?.session}")
         }

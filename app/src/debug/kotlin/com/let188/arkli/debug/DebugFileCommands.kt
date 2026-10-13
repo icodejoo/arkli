@@ -84,7 +84,7 @@ object DebugFileCommands {
     }
 
     /** 往页面执行脚本 */
-    private fun js(wv: WebView, body: String) = wv.evaluateJavascript("(function(){$JS_PRELUDE;$body})()", null)
+    internal fun js(wv: WebView, body: String) = wv.evaluateJavascript("(function(){$JS_PRELUDE;$body})()", null)
 
     /** 生成一张 200x200 的 PNG 放进缓存夹具目录，返回文件名 */
     private fun makePng(ctx: Context): String {

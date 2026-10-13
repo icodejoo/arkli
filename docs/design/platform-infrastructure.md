@@ -55,6 +55,7 @@ summary: 六份工具设计共同依赖的底层能力：bridge 协议 v2、统�
 | `native.file.pickDir` | 文件夹清理 | SAF 目录树，持久化授权，返回不透明 token |
 | `native.file.save` | 图片、音视频、记账、画板 | API 29+ 走 MediaStore 无需权限；24~28 要存储写权限（`maxSdkVersion=28`）；默认目录 `Pictures/Arkli`、`Movies/Arkli` |
 | `native.file.openWrite` / `closeWrite` | 画板、图片 Canvas 产物 | 见上 |
+| `native.image.compress` | 图片压缩（含格式转换） | 原生批量解码、缩放、编码为 JPEG/WebP/PNG，PNG 自写缩色；成品写 `cache/out/`，进度事件 `image.progress`，可取消，取消时清掉本次成品；契约见 bridge-protocol.md 的"图片方法"。成品随缓存清理策略回收（24 小时；超总量时 10 分钟内写入的不动） |
 | `native.share` | 多数工具 | 分享文本或缓存文件（FileProvider） |
 | `native.clipboard.read` / `write` | 多数工具 | `write` 支持 `sensitive: true`（API 33+ 设置敏感标记） |
 | `native.permission.check` / `request` | 噪音测量、扫码、通知 | 含"永久拒绝后跳设置"分支 |

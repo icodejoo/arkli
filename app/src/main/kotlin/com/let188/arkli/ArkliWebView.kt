@@ -23,6 +23,7 @@ import com.let188.arkli.bridge.BridgeSessions
 import com.let188.arkli.bridge.ReplyIo
 import com.let188.arkli.files.FileEnv
 import com.let188.arkli.files.FileModule
+import com.let188.arkli.image.ImageModule
 import com.let188.arkli.net.NetPolicy
 import com.let188.arkli.net.NetVerdict
 import java.io.ByteArrayInputStream
@@ -191,6 +192,7 @@ class ArkliPage(context: Context, private val files: FileEnv, private val onRend
             JSONObject().put("version", uniffi.arkli_ffi.coreVersion())
         })
         FileModule.install(created, files)
+        ImageModule.install(created, files)
         return created
     }
 

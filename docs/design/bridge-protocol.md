@@ -98,6 +98,7 @@ summary: 小工具页与原生/Rust 之间的消息格式（v2）、会话与取
 | `native.task.cancel` | `{ id }` | `{ "cancelled": true }` |
 | `rust.core.version` | 无 | `{ "version": "0.1.0" }`，取自 Rust 核心库 |
 | `native.file.pick` / `save` / `openWrite` / `write` / `closeWrite` | 见下节"文件方法" | |
+| `native.image.compress` | 见"图片方法" | |
 
 ## 文件方法
 
@@ -166,6 +167,36 @@ for (let seq = 0, off = 0; off < blob.size; seq++) {
 const { path, url } = await call('native.file.closeWrite', { handle })
 await call('native.file.save', { items: [{ path, name: 'out.bin' }] })
 ```
+
+## 图片方法
+
+只接受主 frame，子 frame 调用返回 `PERMISSION_DENIED`。图片的解码、缩放、编码全在原生（Kotlin）完成，不经过 Rust、不进 WebView 的 Canvas，所以不受页面 `MAX_CANVAS_PIXELS` 约束，也不会在页面里堆大位图。
+
+### `native.image.compress`
+批量压缩，同时承担格式转换：输出格式是参数。典型流程：`native.file.pick` 选图 → 本方法 → 页面用 `/files/<path>` 回显 → `native.file.save` 保存。
+
+| 项 | 说明 |
+|---|---|
+| params | `{ items: [{ path: string, name?: string }], format: "jpeg" \| "webp" \| "png", quality?: 1..100 = 80, maxEdge?: 64..16384, targetBytes?: number, png?: { mode: "lossless" \| "palette", colors?: 2..256 = 256, dither?: boolean = false }, keepExif?: boolean = false }` |
+| `items` | 1~50 项。`path` 是 pick 返回的缓存路径（`cache/pick/a.jpg`），经路径解析限制在缓存目录内；`name` 决定输出文件的主名（去目录与扩展名、非法字符换成 `_`），缺省取源文件名 |
+| `quality` | jpeg/webp 的质量；设了 `targetBytes` 时作为质量上限 |
+| `maxEdge` | 最长边上限，等比缩小，**不放大**。缺省不缩。解码阶段按 2 的幂降采样（`inSampleSize`）省内存，再用带滤波的缩放，缩小倍率超过 2 时逐级减半 |
+| `targetBytes` | 仅 jpeg/webp 生效（png 下被忽略）。在 `[1, quality]` 里二分找体积不超过目标的最高质量，最多编码 9 次。压不进目标时输出最低质量（1）的结果，该项 `targetReached = false` |
+| `png.mode` | `lossless`：无损，颜色数 ≤ 256 时自动转索引色（PLTE + tRNS，位深 1/2/4/8），否则 RGB（全不透明）/RGBA，逐行自适应滤波 + Deflater level 9；`palette`：缩色，中位切分量化到 `colors` 色的索引色 PNG，`dither` 开启 Floyd-Steinberg 抖动 |
+| `keepExif` | 仅 jpeg 输出生效。复制常用标签（拍摄时间、机型、曝光参数、GPS），方向标签复位为正常（像素已摆正）。默认不带，顺手去掉 GPS 等隐私信息 |
+| 返回 | `{ items: [{ path, name, mime, width, height, bytes, srcBytes, ratio, targetReached? }], failed: [{ index, name?, code, message }] }`。`path` 为 `cache/out/<主名>-<8 位十六进制>.<ext>`，`name` 为不带随机后缀的建议保存名（给 `native.file.save`），`ratio = bytes / srcBytes`，`targetReached` 仅设了 `targetBytes` 时出现 |
+| 进度事件 | `image.progress`，data `{ done, total, name }`，每处理完一张（无论成败）推一次，无 `sub` |
+| 取消 | 页面取消（`native.task.cancel`）或会话关闭会取消协程，处理在张与张之间、解码/缩放/编码之间检查取消。取消时**本次调用已写出的全部成品和半成品都会删掉**（页面拿不到这批结果，留着只是垃圾），然后返回 `CANCELLED` |
+| 错误 | 整体：`BAD_PARAMS`（参数缺失、类型不对、越界，或任一 `items[i].path` 不是有效的缓存路径——会在处理前整体拒绝，不处理一半）、`PERMISSION_DENIED`（非主 frame）、`CANCELLED`。单张失败不影响其余，记入 `failed`：`BAD_PARAMS`（源文件不存在、图片太大）、`INTERNAL`（无法解码、内存不足） |
+
+约定与取舍：
+- **像素上限**：解码后像素数不得超过 6400 万（与 web 侧 `MAX_CANVAS_PIXELS` 一致），超过时需要设置更小的 `maxEdge`，否则该张 `BAD_PARAMS`。PNG 路径要把像素读成 `IntArray`，上限更低：1600 万像素（约 64MB），超过同样要求设 `maxEdge`。
+- **JPEG 与透明**：JPEG 不支持透明，透明区先铺白底。WebP、PNG 保留透明。
+- **WebP**：API 30+ 用 `WEBP_LOSSY`，更低版本用旧的 `WEBP`（同样是有损）。
+- **HEIC**：API 28+ 由 `ImageDecoder` 解码；24~27 解不了，该张 `INTERNAL`，message 提示需要 Android 9 及以上。
+- **EXIF 方向**：解码时按 EXIF 摆正，输出像素即显示方向。
+- **PNG 缩色的取舍**：自写量化器，不引 libimagequant（GPL）等库。alpha 当第 4 个通道参与聚类，alpha 为 0 的像素统一归一不占调色板名额，调色板按 alpha 升序放，tRNS 只写前缀。直接在 sRGB 通道上做，不做感知色彩空间转换，视觉质量略逊于 pngquant。**缩色对照片、噪声类图能明显省体积，对平滑渐变反而可能更大**（量化出的色带打乱了滤波与 Deflater 依赖的规律，抖动尤其明显）；页面应在选择缩色时提示，并在结果比原图大时给出提示。
+- **成品生命周期**：成品落在缓存根的 `out/`，与其他缓存产物一样受缓存清理策略管理（保留 24 小时，超总量时最近 10 分钟写入的不动）。页面拿到结果后回显与保存都在这个窗口内；窗口外再用需要重新压缩。
 
 ## 页面侧用法示例
 
