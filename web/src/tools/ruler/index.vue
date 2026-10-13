@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 尺子：Canvas 画刻度，靠实物（银行卡/硬币/自定义长度）校准像素与毫米的比例
+// 尺子：App 固定竖屏，尺子竖着贴在屏幕长边（左或右），Canvas 画刻度，靠实物（银行卡/硬币/自定义长度）校准像素与毫米的比例
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { showToast } from 'vant'
 import {
@@ -17,20 +17,34 @@ import {
   type RulerUnit,
 } from './logic'
 
-/** 尺子画布的短边（像素） */
+/** 尺子画布的短边（像素），即尺子的厚度 */
 const THICKNESS = 84
-/** 竖向尺子的最小长度（像素） */
-const MIN_VERTICAL = 240
-/** 竖向尺子的最大长度（像素） */
-const MAX_VERTICAL = 900
-/** 竖向尺子要给页面其它内容让出的高度（像素） */
-const VERTICAL_RESERVE = 200
+/** 尺子与页面内容之间的留白（像素） */
+const GAP = 8
 /** 各级刻度线长度（像素） */
 const TICK_LEN = { major: 36, half: 24, minor: 14 } as const
 /** 校准线最短像素 */
 const MIN_CAL_PX = 20
+/** 刻度数字离刻度线的偏移（像素） */
+const LABEL_OFFSET = 12
+/** 刻度数字的旋转角（弧度）：靠右顺时针 90°，靠左逆时针 90° */
+const LABEL_ROTATE = Math.PI / 2
+/** 数字标签离两端的最小距离（像素），避免被裁掉 */
+const LABEL_MARGIN = 8
+/** 校准线距尺子基线（贴屏幕边缘的那一边）的距离（像素） */
+const CAL_LINE_OFFSET = THICKNESS - 18
+/** 量不到顶栏时的兜底高度（像素），与 Vant 导航栏默认高度一致 */
+const HEADER_FALLBACK = 46
+/** 顶栏选择器：尺子要从它的下沿开始，不盖住顶栏 */
+const HEADER_SELECTOR = '.van-nav-bar'
+/** 校准线两端小竖线的半长（像素） */
+const CAL_CAP = 8
+/** 尺面底色的不透明度 */
+const SURFACE_ALPHA = 0.92
 /** 参照物类型 */
 type RefKind = 'card' | 'coin' | 'custom'
+/** 尺子靠屏幕哪一侧 */
+type EdgeSide = 'right' | 'left'
 
 /** 取本地存储，不可用时为 undefined */
 function getStorage(): Storage | undefined {
@@ -43,8 +57,12 @@ function getStorage(): Storage | undefined {
 
 /** 当前单位 */
 const unit = ref<RulerUnit>('cm')
-/** 是否竖向摆放 */
-const vertical = ref(false)
+/** 尺子靠右还是靠左 */
+const side = ref<EdgeSide>('right')
+/** 尺子顶端离视口顶部的距离（像素），即顶栏下沿 */
+const topOffset = ref(HEADER_FALLBACK)
+/** 尺子沿长边的像素长度：视口高度减去顶栏 */
+const along = ref(640)
 /** 已保存的校准比例（像素/毫米），null 表示未校准 */
 const savedScale = ref<number | null>(loadScale(getStorage()))
 /** 生效的比例：校准过用校准值，否则用 96dpi 估算 */
@@ -57,19 +75,11 @@ const refKind = ref<RefKind>('card')
 const customMm = ref('50')
 /** 校准线像素长度（用户调整） */
 const calPx = ref(200)
-/** 画布容器 */
-const wrapRef = ref<HTMLDivElement>()
 /** 画布 */
 const canvasRef = ref<HTMLCanvasElement>()
-/** 容器宽度（像素） */
-const wrapWidth = ref(320)
-/** 竖向尺子长度（像素） */
-const verticalLen = ref(MIN_VERTICAL)
 
 /** 参照物实际长度（毫米），自定义不合法时为 0 */
 const refMm = computed(() => (refKind.value === 'card' ? CARD_MM : refKind.value === 'coin' ? COIN_MM : Number(customMm.value) || 0))
-/** 尺子沿长边的像素长度 */
-const along = computed(() => (vertical.value ? verticalLen.value : wrapWidth.value))
 /** 校准线是否能放进当前尺子（按当前比例估算） */
 const calFits = computed(() => refMm.value > 0 && refMm.value * scale.value <= along.value)
 /** 校准线按当前像素换算出的比例 */
@@ -82,6 +92,20 @@ const calText = computed(() => `${calPx.value.toFixed(1)} px 对应 ${refMm.valu
 const scaleOk = computed(() => isValidScale(scale.value))
 /** 整把尺子的实际长度文本 */
 const totalText = computed(() => formatLength(along.value, scale.value, unit.value))
+/** 使用说明里描述尺子所在位置的文本 */
+const placeText = computed(() => `在${side.value === 'right' ? '右' : '左'}侧边缘，从顶栏下沿往下数`)
+/** 尺子的悬浮定位：贴左或右边缘，从顶栏下沿铺到屏幕底边 */
+const rulerStyle = computed(() => ({
+  top: `${topOffset.value}px`,
+  [side.value]: '0',
+  width: `${THICKNESS}px`,
+  height: `${along.value}px`,
+}))
+/** 页面内容给尺子让位：让出靠边那一侧 */
+const pageStyle = computed(() => {
+  const pad = `${THICKNESS + GAP}px`
+  return side.value === 'right' ? { paddingRight: pad } : { paddingLeft: pad }
+})
 
 /** 读 CSS 变量，读不到用兜底色 */
 function cssColor(name: string, fallback: string): string {
@@ -90,22 +114,34 @@ function cssColor(name: string, fallback: string): string {
   return v || fallback
 }
 
-/** 重新量一遍容器尺寸 */
+/** 重新量一遍：顶栏下沿的位置，以及从那里到屏幕底边的长度 */
 function measure(): void {
-  wrapWidth.value = Math.floor(wrapRef.value?.clientWidth || 320)
-  verticalLen.value = Math.max(MIN_VERTICAL, Math.min(MAX_VERTICAL, window.innerHeight - VERTICAL_RESERVE))
+  const header = document.querySelector(HEADER_SELECTOR)
+  // 用 offset 而不是 getBoundingClientRect：路由切换动画有 transform 位移，后者会量到动画中途的位置
+  const bottom = header instanceof HTMLElement ? header.offsetTop + header.offsetHeight : HEADER_FALLBACK
+  topOffset.value = bottom > 0 ? bottom : HEADER_FALLBACK
+  along.value = Math.max(MIN_CAL_PX, Math.floor(window.innerHeight - topOffset.value))
 }
 
-/** 画一条线：(a,b) 是（沿尺方向，垂直尺方向）坐标，竖向时自动对调 */
+/**
+ * 把（沿尺方向 a，离基线距离 b）换算成画布坐标。
+ * 基线就是贴着屏幕边缘的那一边：靠右时在画布右侧，靠左时在左侧。
+ *
+ * @param a 沿尺方向的位置（像素，从尺子零点起）
+ * @param b 垂直尺方向、离基线的距离（像素）
+ * @returns 画布上的 [x, y]
+ */
+function toXY(a: number, b: number): [number, number] {
+  return side.value === 'right' ? [THICKNESS - b, a] : [b, a]
+}
+
+/** 画一条线，端点用（沿尺方向，离基线距离）表示 */
 function line(ctx: CanvasRenderingContext2D, a: number, b: number, a2: number, b2: number): void {
+  const [x1, y1] = toXY(a, b)
+  const [x2, y2] = toXY(a2, b2)
   ctx.beginPath()
-  if (vertical.value) {
-    ctx.moveTo(b, a)
-    ctx.lineTo(b2, a2)
-  } else {
-    ctx.moveTo(a, b)
-    ctx.lineTo(a2, b2)
-  }
+  ctx.moveTo(x1, y1)
+  ctx.lineTo(x2, y2)
   ctx.stroke()
 }
 
@@ -113,8 +149,8 @@ function line(ctx: CanvasRenderingContext2D, a: number, b: number, a2: number, b
 function draw(): void {
   const cv = canvasRef.value
   if (!cv) return
-  const w = vertical.value ? THICKNESS : along.value
-  const h = vertical.value ? along.value : THICKNESS
+  const w = THICKNESS
+  const h = along.value
   const dpr = window.devicePixelRatio || 1
   cv.width = Math.round(w * dpr)
   cv.height = Math.round(h * dpr)
@@ -124,6 +160,11 @@ function draw(): void {
   if (!ctx) return
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   ctx.clearRect(0, 0, w, h)
+  // 尺面底色：让刻度在任何页面背景上都看得清，同时标出"尺子在这里"
+  ctx.fillStyle = cssColor('--c-surface', '#ffffff')
+  ctx.globalAlpha = SURFACE_ALPHA
+  ctx.fillRect(0, 0, w, h)
+  ctx.globalAlpha = 1
   const text = cssColor('--c-text', '#1b1d22')
   const primary = cssColor('--c-primary', '#3b6cf6')
   ctx.strokeStyle = text
@@ -136,22 +177,26 @@ function draw(): void {
     const p = Math.round(t.pos) + 0.5
     line(ctx, p, 0, p, TICK_LEN[t.kind])
     if (t.label != null) {
-      const lp = Math.max(8, Math.min(along.value - 8, t.pos))
-      if (vertical.value) ctx.fillText(t.label, TICK_LEN.major + 12, lp)
-      else ctx.fillText(t.label, lp, TICK_LEN.major + 12)
+      const lp = Math.max(LABEL_MARGIN, Math.min(along.value - LABEL_MARGIN, t.pos))
+      const [x, y] = toXY(lp, TICK_LEN.major + LABEL_OFFSET)
+      // 数字顺着尺子的方向书写：字头朝向屏幕边缘（刻度线一侧）
+      ctx.save()
+      ctx.translate(x, y)
+      ctx.rotate(side.value === 'right' ? LABEL_ROTATE : -LABEL_ROTATE)
+      ctx.fillText(t.label, 0, 0)
+      ctx.restore()
     }
   }
   if (calibrating.value) {
-    const y = THICKNESS - 18
     ctx.strokeStyle = primary
     ctx.lineWidth = 2
-    line(ctx, 0, y, calPx.value, y)
-    line(ctx, 0, y - 8, 0, y + 8)
-    line(ctx, calPx.value, y - 8, calPx.value, y + 8)
+    line(ctx, 0, CAL_LINE_OFFSET, calPx.value, CAL_LINE_OFFSET)
+    line(ctx, 0, CAL_LINE_OFFSET - CAL_CAP, 0, CAL_LINE_OFFSET + CAL_CAP)
+    line(ctx, calPx.value, CAL_LINE_OFFSET - CAL_CAP, calPx.value, CAL_LINE_OFFSET + CAL_CAP)
   }
 }
 
-/** 单位或方向切换后重排重画 */
+/** 单位、靠边或校准状态变化后重量重画 */
 async function redraw(): Promise<void> {
   await nextTick()
   measure()
@@ -194,15 +239,10 @@ function resetCalibrate(): void {
   showToast('已清除校准')
 }
 
-watch([unit, vertical, savedScale, calibrating, calPx, refKind, customMm], redraw)
+watch([unit, side, savedScale, calibrating, calPx, refKind, customMm], redraw)
 watch(refKind, syncCalPx)
-watch(vertical, async () => {
-  if (!calibrating.value) return
-  await redraw()
-  syncCalPx()
-})
 
-/** 窗口尺寸变化（含横竖屏切换）与深浅色切换时重画 */
+/** 窗口尺寸变化与深浅色切换时重画 */
 function onResize(): void {
   void redraw()
 }
@@ -211,6 +251,8 @@ function onResize(): void {
 let mql: MediaQueryList | undefined
 onMounted(() => {
   void redraw()
+  // 挂载当帧顶栏可能还没排好版，下一帧再量一次，避免尺子顶端与顶栏下沿差几像素
+  requestAnimationFrame(() => void redraw())
   window.addEventListener('resize', onResize)
   mql = window.matchMedia?.('(prefers-color-scheme: dark)')
   mql?.addEventListener?.('change', onResize)
@@ -222,27 +264,30 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="tool-page">
+  <div class="tool-page" :style="pageStyle">
+    <!-- 尺子悬浮在页面之上，贴着屏幕左或右边缘，从顶栏下沿铺到底；不拦截点击 -->
+    <canvas ref="canvasRef" class="ruler-canvas" :style="rulerStyle" aria-hidden="true" />
+
     <div v-if="!savedScale" class="tool-hint ruler-warn">未校准，刻度仅供参考。拿银行卡或硬币校准一次就准了。</div>
 
     <div class="tool-card">
-      <div ref="wrapRef" class="ruler-wrap" :class="{ 'ruler-wrap--v': vertical }">
-        <canvas ref="canvasRef" class="ruler-canvas" />
-      </div>
+      <h3 class="tool-card__title">怎么用</h3>
+      <p class="tool-hint">
+        尺子贴着屏幕的长边，{{ placeText }}。把要量的东西贴着屏幕边放就行。零点在顶栏下沿，不在手机屏幕最顶端。
+      </p>
       <p v-if="scaleOk" class="tool-hint ruler-total">尺长约 {{ totalText }}</p>
     </div>
 
     <div class="tool-card">
-      <h3 class="tool-card__title">单位与方向</h3>
+      <h3 class="tool-card__title">单位与位置</h3>
       <van-radio-group v-model="unit" direction="horizontal">
         <van-radio name="cm">厘米</van-radio>
         <van-radio name="inch">英寸</van-radio>
       </van-radio-group>
-      <van-cell-group :border="false" class="ruler-gap">
-        <van-cell title="竖向摆放" center>
-          <template #value><van-switch v-model="vertical" size="22" /></template>
-        </van-cell>
-      </van-cell-group>
+      <van-radio-group v-model="side" direction="horizontal" class="ruler-gap">
+        <van-radio name="right">靠右</van-radio>
+        <van-radio name="left">靠左</van-radio>
+      </van-radio-group>
     </div>
 
     <div class="tool-card">
@@ -261,8 +306,8 @@ onUnmounted(() => {
           <van-radio name="custom">自定义</van-radio>
         </van-radio-group>
         <van-field v-if="refKind === 'custom'" v-model="customMm" type="number" label="已知长度" placeholder="毫米" />
-        <p class="tool-hint">把实物沿尺子上的蓝线放好，调整蓝线长度，直到与实物两端对齐。银行卡较长，横向放不下时请打开「竖向摆放」。</p>
-        <p v-if="!calFits" class="tool-hint ruler-warn">当前尺子放不下这个参照物，换小一点的参照物或切换方向。</p>
+        <p class="tool-hint">把实物沿屏幕边缘的蓝线放好（蓝线从零点起），调整蓝线长度，直到与实物两端对齐。</p>
+        <p v-if="!calFits" class="tool-hint ruler-warn">当前尺子放不下这个参照物，换小一点的参照物。</p>
         <van-slider v-model="calPx" :min="MIN_CAL_PX" :max="calMax" :step="0.5" class="ruler-slider" />
         <van-stepper v-model="calPx" input-width="64px" :min="MIN_CAL_PX" :max="calMax" :step="0.5" :decimal-length="1" />
         <p class="tool-hint">{{ calText }}</p>
@@ -276,19 +321,12 @@ onUnmounted(() => {
 </template>
 
 <style lang="scss" scoped>
-/* 画布容器：竖向时收窄到画布宽度 */
-.ruler-wrap {
-  width: 100%;
-  overflow: hidden;
-
-  &--v {
-    width: 84px;
-  }
-}
-
-/* 画布本体 */
+/* 尺子画布：固定在视口长边，盖过顶栏；不拦截点击，下面的控件照常可点 */
 .ruler-canvas {
+  position: fixed;
+  z-index: 100;
   display: block;
+  pointer-events: none;
 }
 
 /* 未校准提示：警示色底 */
@@ -306,7 +344,7 @@ onUnmounted(() => {
 
 /* 单元间距 */
 .ruler-gap {
-  margin-top: $space-2;
+  margin-top: $space-3;
 }
 
 /* 滑杆与前后元素留距 */
