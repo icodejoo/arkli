@@ -133,15 +133,7 @@ internal class SaveHandler(private val env: FileEnv) : BridgeHandler {
 
     /** 分块拷贝，响应取消 */
     private suspend fun copy(src: File, out: java.io.OutputStream) {
-        src.inputStream().use { input ->
-            val buf = ByteArray(COPY_BUF)
-            while (true) {
-                coroutineContext.ensureActive()
-                val n = input.read(buf)
-                if (n < 0) break
-                out.write(buf, 0, n)
-            }
-        }
+        src.inputStream().use { input -> StreamCopy.copy(input, out, Long.MAX_VALUE) { coroutineContext.ensureActive() } }
     }
 
     /** 24~28 上确保有写权限，没有就申请，被拒返回 PERMISSION_DENIED */
@@ -198,8 +190,5 @@ internal class SaveHandler(private val env: FileEnv) : BridgeHandler {
     private companion object {
         /** 单次保存的文件数上限 */
         const val MAX_ITEMS = 100
-
-        /** 拷贝缓冲区大小 */
-        const val COPY_BUF = 64 * 1024
     }
 }

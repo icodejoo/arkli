@@ -50,7 +50,7 @@ private const val NET_URL_PLAIN = "http://api.wikimedia.org/feed/v1/wikipedia/zh
  *
  * 触发示例：`adb shell am broadcast -a com.let188.arkli.debug.CMD --es cmd crash`
  * 命令：nettest / crash / hello / ping / sleep(--ei ms) / ticker / cancel(--es id) / state，
- * 文件类见 [DebugFileCommands]：filepick(--es mime --ez multiple) / filesave / writetest(--ei mb --es enc) / writeopen / rangetest / listcache
+ * 文件类见 [DebugFileCommands]：filepick(--es mime --ez multiple) / filesave / writetest(--ei mb --es enc) / writeopen / rangetest / securitytest / videotest / listcache
  */
 class DebugHooksProvider : ContentProvider() {
 
@@ -164,7 +164,7 @@ class DebugHooksProvider : ContentProvider() {
             }
             "ticker" -> { bridge(); send(wv, METHOD_TICKER, "{}") }
             "cancel" -> send(wv, ArkliBridge.METHOD_CANCEL, "{\"id\":\"${i.getStringExtra("id")}\"}")
-            "filepick", "filesave", "writetest", "writeopen", "rangetest", "videotest", "listcache" -> DebugFileCommands.handle(
+            "filepick", "filesave", "writetest", "writeopen", "rangetest", "videotest", "securitytest", "listcache" -> DebugFileCommands.handle(
                 cmd, wv.context, wv, i.getStringExtra("mime"), i.getBooleanExtra("multiple", false),
                 i.getIntExtra("mb", 6), i.getStringExtra("enc") ?: "latin1",
             ) { method, params -> send(wv, method, params) }

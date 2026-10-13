@@ -6,6 +6,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.util.Log
 import android.webkit.WebView
+import com.let188.arkli.files.FileConst
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
@@ -59,7 +60,7 @@ object DebugFileCommands {
         send: (String, String) -> Unit,
     ): Boolean {
         when (cmd) {
-            "filepick" -> send("native.file.pick", JSONObject().put("mime", mime ?: "image/*").put("multiple", multiple).toString())
+            "filepick" -> send("native.file.pick", JSONObject().put("mime", mime ?: FileConst.MIME_IMAGE).put("multiple", multiple).toString())
             "filesave" -> {
                 val name = makePng(ctx)
                 val item = JSONObject().put("path", "cache/$FIXTURE_DIR/$name")
@@ -70,6 +71,10 @@ object DebugFileCommands {
             "rangetest" -> {
                 makeRangeFile(ctx)
                 js(wv, rangeTestJs())
+            }
+            "securitytest" -> {
+                makeSecurityFiles(ctx)
+                js(wv, securityTestJs())
             }
             "videotest" -> js(wv, videoTestJs())
             "listcache" -> Log.i(TAG, "缓存清单：\n" + listing(File(ctx.cacheDir, "arkli")))
@@ -97,6 +102,33 @@ object DebugFileCommands {
         val dir = File(ctx.cacheDir, "arkli/$FIXTURE_DIR").apply { mkdirs() }
         File(dir, RANGE_FILE).writeBytes(ByteArray(RANGE_SIZE) { (it % 251).toByte() })
     }
+
+    /** 生成 /files/ 安全头夹具：html、svg 各一份，外加一张 png */
+    private fun makeSecurityFiles(ctx: Context) {
+        val dir = File(ctx.cacheDir, "arkli/$FIXTURE_DIR").apply { mkdirs() }
+        File(dir, "evil.html").writeText("<html><script>document.title='pwned'</script>hi</html>")
+        File(dir, "evil.svg").writeText("<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20'><rect width='20' height='20' fill='red'/></svg>")
+        File(dir, "pic.png").writeBytes(File(dir, makePng(ctx)).readBytes())
+    }
+
+    /** 检查 /files/ 响应的 mime 与安全头，并确认 img 引用 png/svg 仍能加载 */
+    private fun securityTestJs(): String = """
+(async function(){
+ var names=['evil.html','evil.svg','pic.png'];
+ for(var i=0;i<names.length;i++){
+  try{var r=await fetch('/files/cache/$FIXTURE_DIR/'+names[i]);
+   __log('sectest',names[i],'status='+r.status,'ct='+r.headers.get('Content-Type'),'nosniff='+r.headers.get('X-Content-Type-Options'),'csp='+r.headers.get('Content-Security-Policy'));
+  }catch(e){__log('sectest',names[i],'EXCEPTION',e&&e.message);}
+ }
+ var imgs=['pic.png','evil.svg'];
+ for(var j=0;j<imgs.length;j++){
+  await new Promise(function(res){var im=new Image();
+   im.onload=function(){__log('sectest img',imgs[j],'loaded',im.naturalWidth+'x'+im.naturalHeight);res();};
+   im.onerror=function(){__log('sectest img',imgs[j],'ERROR');res();};
+   im.src='/files/cache/$FIXTURE_DIR/'+imgs[j]+'?t='+Date.now();});
+ }
+})();
+"""
 
     /** 递归列出目录文件与大小 */
     private fun listing(root: File): String =

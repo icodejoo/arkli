@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { angleDiff, createSmoother, directionName, headingFromEvent, normalizeDeg, startCompass, type CompassStatus, type EventSourceLike } from './logic'
+import { angleDiff, createCompassSession, createSmoother, directionName, headingFromEvent, normalizeDeg, startCompass, type CompassStatus, type EventSourceLike } from './logic'
 
 /** 假事件源：记录监听并可手动派发 */
 function fakeTarget() {
@@ -129,5 +129,33 @@ describe('startCompass', () => {
     expect(t.count()).toBe(0)
     vi.advanceTimersByTime(5000)
     expect(st).toEqual(['waiting'])
+  })
+})
+
+describe('createCompassSession', () => {
+  it('begin 会先停掉上一次', () => {
+    const stops: Array<ReturnType<typeof vi.fn>> = []
+    const start = vi.fn(() => {
+      const s = vi.fn()
+      stops.push(s)
+      return s
+    })
+    const session = createCompassSession(start)
+    session.begin()
+    session.begin()
+    expect(start).toHaveBeenCalledTimes(2)
+    expect(stops[0]).toHaveBeenCalledTimes(1)
+    expect(stops[1]).not.toHaveBeenCalled()
+  })
+  it('dispose 后停止监听，之后的 begin（如授权回调）不再开始', async () => {
+    const stop = vi.fn()
+    const start = vi.fn(() => stop)
+    const session = createCompassSession(start)
+    session.begin()
+    session.dispose()
+    expect(stop).toHaveBeenCalledTimes(1)
+    await Promise.resolve()
+    session.begin()
+    expect(start).toHaveBeenCalledTimes(1)
   })
 })

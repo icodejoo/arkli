@@ -26,6 +26,7 @@ import com.let188.arkli.files.FileModule
 import com.let188.arkli.net.NetPolicy
 import com.let188.arkli.net.NetVerdict
 import java.io.ByteArrayInputStream
+import java.util.concurrent.atomic.AtomicReference
 import org.json.JSONObject
 
 /** 应用内虚拟域名，WebView 只允许加载这个域 */
@@ -79,9 +80,12 @@ class ArkliPage(context: Context, private val files: FileEnv, private val onRend
     /** 承载页面的 WebView */
     val webView: WebView = WebView(context)
 
-    /** 最近一次收到页面消息时拿到的回传代理，页面重载后会被新的覆盖 */
+    /**
+     * 当前会话的回传代理容器。每个会话建桥时各捕获自己的一份，换会话时整个换掉，
+     * 旧会话迟到的回包只会写到旧代理，不会串到新页面。
+     */
     @Volatile
-    private var replyProxy: JavaScriptReplyProxy? = null
+    private var proxyRef = AtomicReference<JavaScriptReplyProxy?>()
 
     /** 当前会话的 Bridge */
     @Volatile
@@ -171,13 +175,14 @@ class ArkliPage(context: Context, private val files: FileEnv, private val onRend
     /** 换新会话：关旧建新，回传代理在新页面的第一条消息到达时刷新 */
     private fun rotateSession() {
         bridge.close()
-        replyProxy = null
         bridge = newBridge()
     }
 
     /** 新建一个会话的 Bridge 并注册内置方法 */
     private fun newBridge(): ArkliBridge {
-        val io = ReplyIo { json -> replyProxy?.postMessage(json) }
+        val ref = AtomicReference<JavaScriptReplyProxy?>()
+        proxyRef = ref
+        val io = ReplyIo { json -> ref.get()?.postMessage(json) }
         val created = ArkliBridge(BridgeSessions.next(), io, binary = binarySupported)
         created.register("native.ping", BridgeHandler { _, _ ->
             JSONObject().put("pong", true).put("ts", System.currentTimeMillis())
@@ -207,7 +212,7 @@ class ArkliPage(context: Context, private val files: FileEnv, private val onRend
                     proxy: JavaScriptReplyProxy,
                 ) {
                     val text = message.data ?: return
-                    replyProxy = proxy
+                    proxyRef.set(proxy)
                     bridge.dispatch(text, isMainFrame)
                 }
             },

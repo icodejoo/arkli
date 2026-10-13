@@ -21,7 +21,7 @@ summary: 六份工具设计共同依赖的底层能力：bridge 协议 v2、统�
 | 生命周期事件 | `app.pause` / `app.resume` 推给页面 | `visibilitychange` 在 WebView 里不一定可靠（推测） |
 | 二进制通道 | 见下 | Canvas 产出的图片、画板导出要写进缓存 |
 | 不透明句柄 | `native.file.pick` 对大文件（视频）返回 `uri:<随机 id>`，原生侧映射到 content URI，页面拿不到真实路径，只能交给原生方法使用 | 几百 MB 到 GB 级视频不该整份拷进缓存 |
-| 页面可读 URL | 用 WebViewAssetLoader 的 PathHandler 暴露只读路径：缓存产物 `/files/cache/**`（支持 Range，视频预览要用）、数据包 `/files/packs/**` | 页面直接用 `<img>`、`<video>`、`fetch` 读 |
+| 页面可读 URL | 用 WebViewAssetLoader 的 PathHandler 暴露只读路径：缓存产物 `/files/cache/**`（支持 Range，视频预览要用）、数据包 `/files/packs/**` | 页面直接用 `<img>`、`<video>`、`fetch` 读。`/files/` 响应一律带 `X-Content-Type-Options: nosniff` 与 `Content-Security-Policy: sandbox`（被当文档导航时脚本不能执行，`<img>`/`<video>` 引用不受影响）；html、xml、js 类 mime 降级为 `application/octet-stream`，SVG 保持 `image/svg+xml` |
 
 ### 二进制上传（页面 → 原生）
 **spike 实测结论（真机 STG-AL00，华为 WebView Chromium 114，详见 [spike 报告](../research/spike-webmessage-arraybuffer.md)）：`WebMessageListener` 作 JSON 通道可行，但这台机器不支持 ArrayBuffer 消息（`WEB_MESSAGE_ARRAY_BUFFER` 为 false），不能把 ArrayBuffer 当协议前提。**
@@ -51,7 +51,7 @@ summary: 六份工具设计共同依赖的底层能力：bridge 协议 v2、统�
 
 | 方法 | 谁用 | 说明 |
 |---|---|---|
-| `native.file.pick` | 图片、音视频、文本、编解码、备份 | 多选、mime 过滤；图片走 Photo Picker，无需权限；HEIC 在 API 28+ 自动转 JPEG；视频返回不透明句柄 |
+| `native.file.pick` | 图片、音视频、文本、编解码、备份 | 多选、mime 过滤；图片走 Photo Picker，无需权限；HEIC 在 API 28+ 自动转 JPEG；视频返回不透明句柄；图片拷贝上限 128MB、其他文件 64MB，拷贝中途超限即中止并删残留，HEIC 解码失败不留空文件 |
 | `native.file.pickDir` | 文件夹清理 | SAF 目录树，持久化授权，返回不透明 token |
 | `native.file.save` | 图片、音视频、记账、画板 | API 29+ 走 MediaStore 无需权限；24~28 要存储写权限（`maxSdkVersion=28`）；默认目录 `Pictures/Arkli`、`Movies/Arkli` |
 | `native.file.openWrite` / `closeWrite` | 画板、图片 Canvas 产物 | 见上 |

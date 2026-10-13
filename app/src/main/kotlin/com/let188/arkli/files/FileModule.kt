@@ -59,22 +59,22 @@ object FileModule {
         bridge.register(METHOD_SAVE, SaveHandler(env))
         bridge.register(METHOD_OPEN_WRITE, OpenWrite(registry))
         bridge.register(METHOD_WRITE, Write(registry))
-        bridge.register(METHOD_CLOSE_WRITE, CloseWrite(registry, env))
+        bridge.register(METHOD_CLOSE_WRITE, CloseWrite(registry) { f ->
+            env.roots.pagePathOf(f)?.let { it to env.urlOf(it) }
+        })
     }
 
     /**
      * `native.file.openWrite`：`{ name: string, size?: number, sha256?: string }`
      * -> `{ handle, chunkBytes, encodings }`。size / sha256 声明后在关闭时校验。
      */
-    private class OpenWrite(private val registry: WriteRegistry) : BridgeHandler {
+    internal class OpenWrite(private val registry: WriteRegistry) : BridgeHandler {
         /** 打开写句柄 */
         override suspend fun handle(ctx: CallContext, params: JSONObject): Any? {
             requireMainFrame(ctx)
             val name = params.opt("name") as? String ?: throw BridgeException(BridgeErrors.BAD_PARAMS, "缺少 name")
             val size = longOrNull(params, "size")
-            val raw = params.opt("sha256")
-            val sha = if (raw == null || raw == JSONObject.NULL) null
-            else raw as? String ?: throw BridgeException(BridgeErrors.BAD_PARAMS, "sha256 必须是字符串")
+            val sha = stringOrNull(params, "sha256")
             val handle = withContext(Dispatchers.IO) { registry.open(name, size, sha) }
             return JSONObject().put("handle", handle).put("chunkBytes", FileConst.CHUNK_BYTES)
                 .put("encodings", JSONArray(listOf(FileConst.ENCODING_LATIN1, FileConst.ENCODING_BASE64)))
@@ -105,22 +105,32 @@ object FileModule {
     }
 
     /**
-     * `native.file.closeWrite`：`{ handle, size?, sha256?, abort?: boolean }`。
+     * `native.file.closeWrite`：`{ handle, size?, sha256?, abort?: boolean }`；size、sha256 类型不对抛 BAD_PARAMS，与 openWrite 一致。
      * 正常关闭 -> `{ path, url, name, size, sha256 }`；`abort: true` -> `{ aborted }`，丢弃已写内容。
      */
-    private class CloseWrite(private val registry: WriteRegistry, private val env: FileEnv) : BridgeHandler {
+    internal class CloseWrite(
+        private val registry: WriteRegistry,
+        private val locate: (File) -> Pair<String, String>?,
+    ) : BridgeHandler {
         /** 关闭或放弃写句柄 */
         override suspend fun handle(ctx: CallContext, params: JSONObject): Any? {
             requireMainFrame(ctx)
             val handle = params.opt("handle") as? String ?: throw BridgeException(BridgeErrors.BAD_PARAMS, "缺少 handle")
             if (params.optBoolean("abort", false)) return JSONObject().put("aborted", registry.abort(handle))
             val size = longOrNull(params, "size")
-            val sha = params.opt("sha256") as? String
+            val sha = stringOrNull(params, "sha256")
             val r = withContext(Dispatchers.IO) { registry.close(handle, size, sha) }
-            val pagePath = env.roots.pagePathOf(r.file) ?: throw BridgeException(BridgeErrors.INTERNAL, "产物路径异常")
-            return JSONObject().put("path", pagePath).put("url", env.urlOf(pagePath))
+            val (pagePath, url) = locate(r.file) ?: throw BridgeException(BridgeErrors.INTERNAL, "产物路径异常")
+            return JSONObject().put("path", pagePath).put("url", url)
                 .put("name", r.name).put("size", r.size).put("sha256", r.sha256)
         }
+    }
+
+    /** 读可选的字符串参数，缺省或 null 返回 null，类型不对抛 BAD_PARAMS */
+    private fun stringOrNull(p: JSONObject, key: String): String? {
+        val v = p.opt(key)
+        if (v == null || v == JSONObject.NULL) return null
+        return v as? String ?: throw BridgeException(BridgeErrors.BAD_PARAMS, "$key 必须是字符串")
     }
 
     /** 读可选的整数参数，类型不对抛 BAD_PARAMS */

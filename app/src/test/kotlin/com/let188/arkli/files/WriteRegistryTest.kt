@@ -253,4 +253,35 @@ class WriteRegistryTest {
         assertEquals(total.toLong(), res.size)
         assertEquals(sha(data), res.sha256)
     }
+
+    @Test
+    fun concurrentWriteAndCloseOnSameHandleStaysConsistent() {
+        repeat(50) {
+            val r = reg()
+            val h = r.open("c.bin", null, null)
+            val data = byteArrayOf(1, 2, 3)
+            val start = java.util.concurrent.CountDownLatch(1)
+            val pool = java.util.concurrent.Executors.newFixedThreadPool(2)
+            try {
+                val w = pool.submit<Boolean> {
+                    start.await()
+                    try { r.write(h, 0, 0, data); true } catch (e: BridgeException) { false }
+                }
+                val c = pool.submit<WriteResult?> {
+                    start.await()
+                    try { r.close(h, null, null) } catch (e: BridgeException) { null }
+                }
+                start.countDown()
+                val wrote = w.get()
+                val closed = c.get()
+                // 写先到：成品是 3 字节；关先到：写被拒，成品是空文件。不允许出现第三种结果
+                assertTrue(closed != null)
+                assertEquals(if (wrote) 3L else 0L, closed!!.size)
+                assertEquals(closed.size, closed.file.length())
+                assertEquals(0, r.openCount())
+            } finally {
+                pool.shutdownNow()
+            }
+        }
+    }
 }

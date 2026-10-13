@@ -42,14 +42,29 @@ export function createWakeLock(nav: WakeNavigator | undefined = typeof navigator
   let want = false
   let sentinel: SentinelLike | undefined
 
-  /** 实际向系统申请一次 */
+  /** 静默释放一个 sentinel，已被系统释放时会抛错，忽略 */
+  const drop = async (s: SentinelLike | undefined): Promise<void> => {
+    try {
+      await s?.release()
+    } catch {
+      // 已被系统释放时忽略
+    }
+  }
+  /** 实际向系统申请一次；await 期间若已 release，拿到的锁立即释放，不留悬空 */
   const request = async (): Promise<boolean> => {
     if (!api) return false
     try {
-      sentinel = await api.request('screen')
+      const next = await api.request('screen')
+      if (!want) {
+        await drop(next)
+        return false
+      }
+      // 连续申请时旧的 sentinel 会被覆盖，先释放，否则没人能再释放它
+      const old = sentinel
+      sentinel = next
+      if (old && old !== next) await drop(old)
       return true
     } catch {
-      sentinel = undefined
       return false
     }
   }
@@ -70,11 +85,7 @@ export function createWakeLock(nav: WakeNavigator | undefined = typeof navigator
       doc?.removeEventListener('visibilitychange', onVisible)
       const s = sentinel
       sentinel = undefined
-      try {
-        await s?.release()
-      } catch {
-        // 已被系统释放时忽略
-      }
+      await drop(s)
     },
   }
 }

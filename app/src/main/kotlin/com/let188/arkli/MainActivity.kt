@@ -15,12 +15,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import com.let188.arkli.bridge.ArkliBridge
-import com.let188.arkli.bridge.BridgeErrors
-import com.let188.arkli.bridge.BridgeException
 import com.let188.arkli.files.ActivityHost
 import com.let188.arkli.files.FileEnv
+import com.let188.arkli.files.PendingSlot
 import com.let188.arkli.files.PickKind
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -39,10 +37,10 @@ class MainActivity : ComponentActivity(), ActivityHost {
     private lateinit var files: FileEnv
 
     /** 正在等待结果的选择器，同一时刻只允许一个 */
-    private var pickWait: CompletableDeferred<List<Uri>>? = null
+    private val pickSlot = PendingSlot<List<Uri>>("已有选择器在显示")
 
-    /** 正在等待结果的权限申请 */
-    private var permWait: CompletableDeferred<Boolean>? = null
+    /** 正在等待结果的权限申请，同一时刻只允许一个 */
+    private val permSlot = PendingSlot<Boolean>("已有权限申请在进行")
 
     /** 单选图片/视频（Photo Picker，低版本自动回退到系统文档选择器） */
     private val pickOne = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { finishPick(listOfNotNull(it)) }
@@ -57,10 +55,7 @@ class MainActivity : ComponentActivity(), ActivityHost {
     private val docMany = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { finishPick(it) }
 
     /** 运行时权限申请 */
-    private val permReq = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
-        permWait?.complete(it)
-        permWait = null
-    }
+    private val permReq = registerForActivityResult(ActivityResultContracts.RequestPermission()) { permSlot.complete(it) }
 
     /** 创建界面并接管返回键 */
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -88,33 +83,14 @@ class MainActivity : ComponentActivity(), ActivityHost {
 
     /**
      * 打开系统选择器，见 [ActivityHost.pickMedia]。已有选择器在显示时抛 NOT_READY。
-     * 协程被取消后选择器仍在屏幕上，结果到达时被丢弃。
+     * 协程被取消后选择器仍在屏幕上，槽位保留到结果到达（结果被丢弃），免得旧结果送给下一个请求。
      */
-    override suspend fun pickMedia(mime: String, multiple: Boolean, max: Int): List<Uri> {
-        val wait = CompletableDeferred<List<Uri>>()
-        synchronized(this) {
-            if (pickWait != null) throw BridgeException(BridgeErrors.NOT_READY, "已有选择器在显示")
-            pickWait = wait
-        }
-        try {
-            withContext(Dispatchers.Main) { launchPicker(mime, multiple) }
-        } catch (e: Exception) {
-            synchronized(this) { pickWait = null }
-            throw e
-        }
-        return wait.await()
-    }
+    override suspend fun pickMedia(mime: String, multiple: Boolean, max: Int): List<Uri> =
+        pickSlot.await(releaseOnCancel = false) { withContext(Dispatchers.Main) { launchPicker(mime, multiple) } }
 
-    /** 申请运行时权限，见 [ActivityHost.requestPermission] */
-    override suspend fun requestPermission(permission: String): Boolean {
-        val wait = CompletableDeferred<Boolean>()
-        synchronized(this) {
-            if (permWait != null) throw BridgeException(BridgeErrors.NOT_READY, "已有权限申请在进行")
-            permWait = wait
-        }
-        withContext(Dispatchers.Main) { permReq.launch(permission) }
-        return wait.await()
-    }
+    /** 申请运行时权限，见 [ActivityHost.requestPermission]；拉起失败或协程取消都会释放槽位 */
+    override suspend fun requestPermission(permission: String): Boolean =
+        permSlot.await { withContext(Dispatchers.Main) { permReq.launch(permission) } }
 
     /** 按 mime 种类拉起对应的选择器，必须在主线程 */
     private fun launchPicker(mime: String, multiple: Boolean) {
@@ -135,10 +111,7 @@ class MainActivity : ComponentActivity(), ActivityHost {
     }
 
     /** 选择器返回：交给等待的协程，没人等（已被取消）就丢弃 */
-    private fun finishPick(uris: List<Uri>) {
-        val wait = synchronized(this) { pickWait.also { pickWait = null } }
-        wait?.complete(uris)
-    }
+    private fun finishPick(uris: List<Uri>) = pickSlot.complete(uris)
 
     /** 渲染进程崩溃：递增 generation 让 AndroidView 重建 */
     private fun onRenderGone() {

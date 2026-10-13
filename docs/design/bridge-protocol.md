@@ -50,7 +50,7 @@ summary: 小工具页与原生/Rust 之间的消息格式（v2）、会话与取
 
 ## 会话、取消与长任务
 - **会话号**：每建一个 WebView、主文档重新加载、渲染进程崩溃重建，会话号递增（进程内单调）。旧会话的在途请求被取消，迟到的响应与事件丢弃，不会串到新页面。`native.hello` 返回当前会话号。
-- **取消**：`native.task.cancel { id }`，id 为请求 id 或任务号；返回 `{ cancelled: boolean }`，被取消的原请求以 `CANCELLED` 响应。页面侧 `call(..., { signal })` 即走此路径。
+- **取消**：`native.task.cancel { id }`，id 为请求 id 或任务号；返回 `{ cancelled: boolean }`，被取消的原请求以 `CANCELLED` 响应（即使处理器还没开始运行也会补发，每个请求恰好一个响应）。页面侧 `call(..., { signal })` 即走此路径。
 - **长任务**：处理器可调 `ctx.launchTask` 启动随会话存活的后台任务，先回 `{ taskId }`，再推事件；任务里抛出的异常转成 `task.error { taskId, error }` 事件。长任务页面侧用 `timeoutMs: 0` 取消超时。
 - 同一会话内在途请求 id 不可重复，重复返回 `BAD_PARAMS`。
 
@@ -110,7 +110,7 @@ summary: 小工具页与原生/Rust 之间的消息格式（v2）、会话与取
 |---|---|
 | params | `{ mime?: string = "image/*", multiple?: boolean = false, max?: number = 20 }`。`mime` 取值：`image/*`、`video/*`、`image/*,video/*`、具体媒体类型（如 `image/png`）走 Photo Picker；其他（如 `text/plain`、`*/*`）走系统文档选择器。`max` 上限 50 |
 | 返回 | `{ items: Item[], failed: { name, message }[] }` |
-| 图片 Item | `{ kind: "image", path, url, name, mime, size, width?, height?, orientation }`。文件原样拷进 `cache/pick/`（保留 EXIF）。`width/height` 是按 EXIF 方向摆正后的显示尺寸，`orientation` 为 EXIF 方向值 1~8；页面用 `createImageBitmap(..., { imageOrientation: 'from-image' })` 摆正 |
+| 图片 Item | `{ kind: "image", path, url, name, mime, size, width?, height?, orientation }`。文件原样拷进 `cache/pick/`（保留 EXIF），≤ 128MB，超过进 `failed`。`width/height` 是按 EXIF 方向摆正后的显示尺寸，`orientation` 为 EXIF 方向值 1~8；页面用 `createImageBitmap(..., { imageOrientation: 'from-image' })` 摆正 |
 | HEIC/HEIF | API 28+ 用平台 `ImageDecoder` 转成 JPEG（质量 92，输出已摆正且不带 EXIF，`orientation` 恒为 1，`name` 扩展名换成 `.jpg`）；超过 2500 万像素按采样率缩小防 OOM。API 24~27 无法转换，该文件进 `failed` 并提示换格式 |
 | 视频 Item | `{ kind: "video", handle: "uri:<随机 id>", name, mime, size, width?, height?, durationMs? }`。不拷贝、不读入内存，真实 content URI 只存在原生侧的会话句柄表里，页面拿不到；句柄随会话失效，只能交给原生方法使用 |
 | 其他文件 Item | `{ kind: "file", path, url, name, mime, size }`，≤ 64MB 拷进缓存，更大的进 `failed` |

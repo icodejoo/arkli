@@ -39,6 +39,13 @@ class CachePolicyTest {
     }
 
     @Test
+    fun activePartOlderThanOrphanAgeStaysEvenAtStartup() {
+        val part = listOf(e("tmp/a.part", age = 30 * hour, part = true))
+        assertEquals(emptySet<String>(), plan(part, active = setOf("tmp/a.part"), partAge = 0))
+        assertEquals(setOf("tmp/a.part"), plan(part, partAge = 0))
+    }
+
+    @Test
     fun orphanPartDeletedOnlyAfterAgeUnlessStartup() {
         val young = e("tmp/y.part", age = 30 * 60_000L, part = true)
         assertEquals(emptySet<String>(), plan(listOf(young)))

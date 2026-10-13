@@ -15,7 +15,7 @@ pub const DB_DEFAULT_BOX_THRESH: f32 = 0.5;
 pub const DB_DEFAULT_UNCLIP_RATIO: f32 = 1.6;
 /// 最小外接矩形短边下限（像素，检测图坐标）。
 pub const DB_DEFAULT_MIN_SIZE: f32 = 3.0;
-/// 候选连通域数量上限，防止噪点图拖垮后续识别。
+/// 候选连通域数量上限（只统计得分过线的），防止噪点图拖垮后续识别。
 pub const DB_DEFAULT_MAX_CANDIDATES: usize = 1000;
 /// 阅读顺序排序时，纵向相差小于它的框视为同一行（原图像素）。
 pub const SAME_LINE_Y_TOLERANCE: f32 = 10.0;
@@ -31,7 +31,7 @@ pub struct DbConfig {
     pub unclip_ratio: f32,
     /// 最小外接矩形短边下限
     pub min_size: f32,
-    /// 候选连通域上限
+    /// 候选连通域上限（只统计得分达到 `box_thresh` 的）
     pub max_candidates: usize,
 }
 
@@ -67,12 +67,16 @@ struct Component {
 }
 
 /// 8 邻域连通域标记（迭代，不递归）。
+///
+/// 只有平均得分不低于 `min_score` 的连通域才进入结果并占 `limit` 名额，
+/// 低分噪点不会挤掉后面扫描到的真实文字框。
 fn find_components(
     mask: &[bool],
     prob: &[f32],
     w: usize,
     h: usize,
     limit: usize,
+    min_score: f32,
 ) -> Vec<Component> {
     let mut visited = vec![false; w * h];
     let mut out = Vec::new();
@@ -130,7 +134,9 @@ fn find_components(
                 }
             }
         }
-        out.push(comp);
+        if (comp.sum / comp.count as f64) as f32 >= min_score {
+            out.push(comp);
+        }
     }
     out
 }
@@ -278,7 +284,7 @@ pub fn db_boxes(prob: &[f32], w: usize, h: usize, cfg: &DbConfig) -> Result<Vec<
     }
     let mask: Vec<bool> = prob.iter().map(|&p| p > cfg.thresh).collect();
     let mut boxes = Vec::new();
-    for comp in find_components(&mask, prob, w, h, cfg.max_candidates) {
+    for comp in find_components(&mask, prob, w, h, cfg.max_candidates, cfg.box_thresh) {
         let score = (comp.sum / comp.count as f64) as f32;
         if score < cfg.box_thresh {
             continue;
@@ -408,6 +414,38 @@ mod tests {
     }
 
     #[test]
+    fn 低分噪点不占候选名额() {
+        // 上半部 20 个孤立低分噪点（得分 0.4，过二值化但不过框阈值），下半部一个真实文字框
+        let (w, h) = (128, 64);
+        let mut prob = vec![0.0f32; w * h];
+        for i in 0..20 {
+            fill(&mut prob, w, 4 + i * 6, 7 + i * 6, 2, 5, 0.4);
+        }
+        fill(&mut prob, w, 10, 60, 40, 50, 0.9);
+        let cfg = DbConfig {
+            max_candidates: 5,
+            ..Default::default()
+        };
+        let boxes = db_boxes(&prob, w, h, &cfg).unwrap();
+        assert_eq!(boxes.len(), 1, "真实文字框应被保留");
+        assert!((boxes[0].score - 0.9).abs() < 1e-5);
+    }
+
+    #[test]
+    fn 过线候选超过上限时截断() {
+        let (w, h) = (128, 64);
+        let mut prob = vec![0.0f32; w * h];
+        for i in 0..10 {
+            fill(&mut prob, w, 4 + i * 8, 10 + i * 8, 10, 16, 0.9);
+        }
+        let cfg = DbConfig {
+            max_candidates: 3,
+            ..Default::default()
+        };
+        assert_eq!(db_boxes(&prob, w, h, &cfg).unwrap().len(), 3);
+    }
+
+    #[test]
     fn 空图无框() {
         let prob = vec![0.0f32; 16 * 16];
         assert!(db_boxes(&prob, 16, 16, &DbConfig::default())
@@ -466,6 +504,21 @@ mod tests {
         map_to_source(&mut over, 200, 100, 200, 100);
         assert_eq!(over[0].quad[0], (0.0, 0.0));
         assert_eq!(over[0].quad[2], (200.0, 100.0));
+    }
+
+    #[test]
+    fn 映射夹取越界与缩放组合() {
+        // 放大 2 倍后超界的点被夹住；负坐标夹到 0
+        let mut boxes = vec![TextBox {
+            quad: [(-10.0, -10.0), (60.0, -10.0), (60.0, 60.0), (-10.0, 60.0)],
+            score: 1.0,
+        }];
+        map_to_source(&mut boxes, 50, 50, 100, 100);
+        let q = boxes[0].quad;
+        assert_eq!(q[0], (0.0, 0.0));
+        assert_eq!(q[1], (100.0, 0.0));
+        assert_eq!(q[2], (100.0, 100.0));
+        assert_eq!(q[3], (0.0, 100.0));
     }
 
     #[test]

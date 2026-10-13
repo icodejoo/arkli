@@ -48,19 +48,20 @@ class FilesPathServer(private val roots: FileRoots) {
         val plan = FileServe.plan(file, method, range, webViewSkipsStart = true)
         val headers = HashMap(plan.headers)
         headers["Cache-Control"] = "no-cache"
+        headers.putAll(ServedMime.SECURITY_HEADERS)
         val mime = if (plan.status == 200 || plan.status == 206) mimeOf(file) else "text/plain"
         val stream = try {
             FileServe.open(plan)
         } catch (e: IOException) {
-            return WebResourceResponse("text/plain", null, 404, "Not Found", emptyMap(), ByteArrayInputStream(ByteArray(0)))
+            return WebResourceResponse("text/plain", null, 404, "Not Found", ServedMime.SECURITY_HEADERS, ByteArrayInputStream(ByteArray(0)))
         }
         return WebResourceResponse(mime, null, plan.status, reason(plan.status), headers, stream)
     }
 
-    /** 按扩展名猜 mime，猜不出按二进制流 */
+    /** 按扩展名猜 mime，猜不出或可执行类型按二进制流，见 [ServedMime.safe] */
     private fun mimeOf(file: File?): String {
         val ext = file?.extension?.lowercase().orEmpty()
-        return MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "application/octet-stream"
+        return ServedMime.safe(MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext))
     }
 
     /** 状态码对应的原因短语 */

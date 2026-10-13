@@ -1,11 +1,13 @@
 package com.let188.arkli.bridge
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
+import kotlin.coroutines.CoroutineContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -132,6 +134,52 @@ class ArkliBridgeTest {
         assertTrue(sink.response("c").getJSONObject("data").getBoolean("cancelled"))
         assertEquals("CANCELLED", sink.response("a").getJSONObject("error").getString("code"))
         assertEquals(0, bridge.inFlight())
+    }
+
+    /** 只攒任务、不自动运行的调度器，可按任意顺序放行，模拟线程池里后到的任务先跑 */
+    private class ManualDispatcher : CoroutineDispatcher() {
+        /** 待运行的任务 */
+        val pending = ArrayDeque<Runnable>()
+
+        /** 入队，不执行 */
+        override fun dispatch(context: CoroutineContext, block: Runnable) {
+            pending.addLast(block)
+        }
+
+        /** 从队尾开始跑完所有任务（后入先出） */
+        fun runLifo() {
+            while (pending.isNotEmpty()) pending.removeLast().run()
+        }
+    }
+
+    @Test
+    fun cancelBeforeCoroutineBodyStillGetsCancelledResponse() {
+        val sink = Sink()
+        val dispatcher = ManualDispatcher()
+        val bridge = ArkliBridge(1, sink, false, dispatcher)
+        var ran = false
+        bridge.register("t.wait", BridgeHandler { _, _ -> ran = true; "done" })
+        bridge.dispatch(req("a", "t.wait"))
+        bridge.dispatch(req("c", ArkliBridge.METHOD_CANCEL, JSONObject().put("id", "a")))
+        // 取消请求的协程体先于 a 的协程体运行
+        dispatcher.runLifo()
+        assertTrue(sink.response("c").getJSONObject("data").getBoolean("cancelled"))
+        assertEquals("CANCELLED", sink.response("a").getJSONObject("error").getString("code"))
+        assertEquals(1, sink.messages.count { it.optString("id") == "a" })
+        assertFalse(ran)
+        assertEquals(0, bridge.inFlight())
+    }
+
+    @Test
+    fun normalRequestOnManualDispatcherRespondsOnce() {
+        val sink = Sink()
+        val dispatcher = ManualDispatcher()
+        val bridge = ArkliBridge(1, sink, false, dispatcher)
+        bridge.register("t.ok", BridgeHandler { _, _ -> "ok" })
+        bridge.dispatch(req("a", "t.ok"))
+        dispatcher.runLifo()
+        assertEquals(1, sink.messages.count { it.optString("id") == "a" })
+        assertTrue(sink.response("a").getBoolean("ok"))
     }
 
     @Test

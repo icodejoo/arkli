@@ -184,3 +184,38 @@ export function startCompass(opts: CompassOptions): () => void {
     opts.target.removeEventListener(EVENT_RELATIVE, onRel)
   }
 }
+
+/** 可随组件卸载的监听会话 */
+export interface CompassSession {
+  /** 开始监听；先停掉上一次，已 dispose 后什么也不做 */
+  begin(): void
+  /** 停止监听并禁止再开始（授权弹窗异步返回时组件可能已卸载） */
+  dispose(): void
+}
+
+/**
+ * 包一层"卸载后不再开始监听"的保护。
+ *
+ * @param start 真正开始监听的函数，返回停止函数
+ * @returns 会话对象
+ * @example
+ * const session = createCompassSession(() => startCompass(opts))
+ * session.begin()
+ * onUnmounted(session.dispose)
+ */
+export function createCompassSession(start: () => () => void): CompassSession {
+  let stop: (() => void) | undefined
+  let disposed = false
+  return {
+    begin() {
+      if (disposed) return
+      stop?.()
+      stop = start()
+    },
+    dispose() {
+      disposed = true
+      stop?.()
+      stop = undefined
+    },
+  }
+}

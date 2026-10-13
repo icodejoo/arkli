@@ -33,7 +33,7 @@ private class PickFailure(message: String) : Exception(message)
 /**
  * `native.file.pick`：打开系统选择器，把结果整理成页面能用的形式。
  *
- * - 图片：拷进缓存 `cache/pick/`，原样保留（含 EXIF，页面用 `imageOrientation: 'from-image'` 摆正）；
+ * - 图片：拷进缓存 `cache/pick/`（≤ 128MB），原样保留（含 EXIF，页面用 `imageOrientation: 'from-image'` 摆正）；
  *   HEIC/HEIF 用平台解码器转成 JPEG（API 28+，解码器已按容器信息摆正，输出不带 EXIF 方向）。
  * - 视频：不拷贝，返回不透明句柄 `uri:<id>`，真实 content URI 只留在原生侧。
  * - 其他文件（`mime` 不是图片/视频）：走系统文档选择器，≤ 64MB 拷进缓存。
@@ -54,7 +54,7 @@ internal class PickHandler(private val env: FileEnv, private val handles: Handle
     /** 处理一次选择 */
     override suspend fun handle(ctx: CallContext, params: JSONObject): Any? {
         requireMainFrame(ctx)
-        val mime = params.optString("mime", MIME_IMAGE)
+        val mime = params.optString("mime", FileConst.MIME_IMAGE)
         if (!PickKind.isValid(mime)) throw BridgeException(BridgeErrors.BAD_PARAMS, "mime 格式不对：$mime")
         val multiple = params.optBoolean("multiple", false)
         val max = params.optInt("max", FileConst.DEFAULT_PICK_MAX).coerceIn(1, FileConst.PICK_MAX_LIMIT)
@@ -121,12 +121,18 @@ internal class PickHandler(private val env: FileEnv, private val handles: Handle
                 throw PickFailure("当前系统版本（Android ${Build.VERSION.RELEASE}）不支持 HEIC，请换用 JPEG 或 PNG 图片")
             }
             val dest = newFile("jpg", made)
-            val (w, h) = heicToJpeg(uri, dest)
+            val (w, h) = try {
+                heicToJpeg(uri, dest)
+            } catch (e: Exception) {
+                // 解码或写出失败时别留 0 字节的 jpg
+                dest.delete()
+                throw e
+            }
             return fileJson("image", dest, FileNames.replaceExt(name, "jpg"), "image/jpeg", w, h, 1)
         }
         val ext = name.substringAfterLast('.', "").lowercase().ifEmpty { FileNames.extForMime(mime) ?: "img" }
         val dest = newFile(ext, made)
-        copyTo(uri, dest)
+        copyTo(uri, dest, FileConst.MAX_PICK_IMAGE_BYTES)
         val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(dest.path, opts)
         val orientation = if (mime == "image/jpeg") readOrientation(dest) else ExifInterface.ORIENTATION_NORMAL
@@ -141,7 +147,7 @@ internal class PickHandler(private val env: FileEnv, private val handles: Handle
         val total = size ?: sizeOf(uri)
         if (total > FileConst.MAX_PICK_COPY_BYTES) throw PickFailure("文件超过 ${FileConst.MAX_PICK_COPY_BYTES shr 20}MB，暂不支持")
         val dest = newFile(name.substringAfterLast('.', "").lowercase().ifEmpty { "bin" }, made)
-        copyTo(uri, dest)
+        copyTo(uri, dest, FileConst.MAX_PICK_COPY_BYTES)
         return fileJson("file", dest, name, mime, null, null, null)
     }
 
@@ -176,21 +182,16 @@ internal class PickHandler(private val env: FileEnv, private val handles: Handle
         ExifInterface.ORIENTATION_NORMAL
     }
 
-    /** 拷贝内容到缓存文件，分块并响应取消；出错时删掉残留 */
-    private suspend fun copyTo(uri: Uri, dest: File) {
+    /** 拷贝内容到缓存文件，分块、响应取消、超过 [maxBytes] 即中止；出错时删掉残留 */
+    private suspend fun copyTo(uri: Uri, dest: File, maxBytes: Long) {
         try {
             val input = resolver.openInputStream(uri) ?: throw PickFailure("无法读取所选文件")
             input.use { src ->
-                FileOutputStream(dest).use { out ->
-                    val buf = ByteArray(COPY_BUF)
-                    while (true) {
-                        coroutineContext.ensureActive()
-                        val n = src.read(buf)
-                        if (n < 0) break
-                        out.write(buf, 0, n)
-                    }
-                }
+                FileOutputStream(dest).use { out -> StreamCopy.copy(src, out, maxBytes) { coroutineContext.ensureActive() } }
             }
+        } catch (e: SizeLimitException) {
+            dest.delete()
+            throw PickFailure("文件超过 ${maxBytes shr 20}MB，暂不支持")
         } catch (e: Exception) {
             dest.delete()
             throw e
@@ -200,7 +201,7 @@ internal class PickHandler(private val env: FileEnv, private val handles: Handle
     /** 在 `pick/` 下起一个随机名新文件并登记，供取消时清理 */
     private fun newFile(ext: String, made: MutableList<File>): File {
         val dir = File(env.roots.cacheRoot, FileConst.DIR_PICK).apply { mkdirs() }
-        val b = ByteArray(ID_BYTES)
+        val b = ByteArray(FileConst.RANDOM_ID_BYTES)
         random.nextBytes(b)
         val file = File(dir, b.joinToString("") { "%02x".format(it) } + "." + ext.take(MAX_EXT))
         made += file
@@ -246,21 +247,16 @@ internal class PickHandler(private val env: FileEnv, private val handles: Handle
             ?.let { MimeTypeMap.getSingleton().getMimeTypeFromExtension(it) }
 
     private companion object {
-        /** 默认只选图片 */
-        const val MIME_IMAGE = "image/*"
-
-        /** 拷贝缓冲区大小 */
-        const val COPY_BUF = 64 * 1024
-
-        /** 缓存文件名的随机字节数 */
-        const val ID_BYTES = 8
-
         /** 扩展名最长保留字符数 */
         const val MAX_EXT = 8
 
-        /** EXIF 方向合法值 1..8，其中 5..8 表示宽高互换 */
+        /** EXIF 方向合法值的下限 */
         const val ORIENTATION_MIN = 1
+
+        /** EXIF 方向中宽高互换的下限（5..8 要互换） */
         const val ORIENTATION_SWAP_MIN = 5
+
+        /** EXIF 方向合法值的上限 */
         const val ORIENTATION_SWAP_MAX = 8
     }
 }

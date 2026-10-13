@@ -127,13 +127,23 @@ class ArkliBridge(
             }
         }
         val ctx = CallContext(session, id, isMainFrame, this)
-        val job = scope.launch(start = CoroutineStart.LAZY) { run(id, handler, ctx, params) }
+        // 是否已经进入协程体：没进去就被取消的话，由完成回调补发 CANCELLED
+        val entered = AtomicBoolean(false)
+        val job = scope.launch(start = CoroutineStart.LAZY) {
+            entered.set(true)
+            run(id, handler, ctx, params)
+        }
         if (jobs.putIfAbsent(id, job) != null) {
             job.cancel()
             send(errorResponse(id, BridgeErrors.BAD_PARAMS, "重复的请求 id：$id"))
             return
         }
-        job.invokeOnCompletion { jobs.remove(id, job) }
+        job.invokeOnCompletion { cause ->
+            jobs.remove(id, job)
+            if (cause is CancellationException && entered.compareAndSet(false, true)) {
+                send(errorResponse(id, BridgeErrors.CANCELLED, "已取消"))
+            }
+        }
         job.start()
     }
 

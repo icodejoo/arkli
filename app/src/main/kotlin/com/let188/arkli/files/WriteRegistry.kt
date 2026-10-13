@@ -299,15 +299,12 @@ class WriteRegistry(
         /** sha256 十六进制格式 */
         private val SHA256_RE = Regex("^[0-9a-fA-F]{64}$")
 
-        /** 句柄 id 的随机字节数 */
-        private const val ID_BYTES = 8
-
         /** 安全随机源 */
         private val random = SecureRandom()
 
         /** 生成 `w` 开头的随机句柄 id */
         private fun randomId(): String {
-            val b = ByteArray(ID_BYTES)
+            val b = ByteArray(FileConst.RANDOM_ID_BYTES)
             random.nextBytes(b)
             return "w" + b.joinToString("") { "%02x".format(it) }
         }

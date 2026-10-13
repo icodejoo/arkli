@@ -228,7 +228,7 @@ enum class PickKind {
          * @return 选择器种类
          */
         fun of(mime: String): PickKind = when {
-            mime == "image/*" -> IMAGE
+            mime == FileConst.MIME_IMAGE -> IMAGE
             mime == "video/*" -> VIDEO
             mime == MIME_IMAGE_VIDEO -> IMAGE_VIDEO
             mime.startsWith("image/") || mime.startsWith("video/") -> SINGLE_MEDIA

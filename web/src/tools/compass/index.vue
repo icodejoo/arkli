@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 指南针：读浏览器的方向事件，罗盘盘面随航向反向旋转
 import { computed, onUnmounted, ref } from 'vue'
-import { directionName, normalizeDeg, startCompass, type CompassStatus, type EventSourceLike } from './logic'
+import { createCompassSession, directionName, normalizeDeg, startCompass, type CompassStatus, type EventSourceLike } from './logic'
 
 /** 盘面上的刻度间隔（度） */
 const TICK_STEP = 30
@@ -25,8 +25,15 @@ const status = ref<CompassStatus>('idle')
 const heading = ref(0)
 /** 是否被用户拒绝权限 */
 const denied = ref(false)
-/** 当前订阅的停止函数 */
-let stop: (() => void) | undefined
+/** 监听会话；授权弹窗是异步的，回调回来时组件可能已卸载，会话会拒绝再开始 */
+const session = createCompassSession(() =>
+  startCompass({
+    target: window as unknown as EventSourceLike,
+    getScreenAngle: screenAngle,
+    onHeading: (d) => (heading.value = d),
+    onStatus: (s) => (status.value = s),
+  }),
+)
 
 /** 是否需要先点按钮请求权限（iOS 的做法） */
 const needPermission = computed(() => typeof (window.DeviceOrientationEvent as unknown as PermissionApi | undefined)?.requestPermission === 'function')
@@ -42,17 +49,6 @@ function screenAngle(): number {
   return window.screen?.orientation?.angle ?? 0
 }
 
-/** 开始监听 */
-function begin(): void {
-  stop?.()
-  stop = startCompass({
-    target: window as unknown as EventSourceLike,
-    getScreenAngle: screenAngle,
-    onHeading: (d) => (heading.value = d),
-    onStatus: (s) => (status.value = s),
-  })
-}
-
 /** 点击授权按钮：请求权限，通过后开始监听 */
 async function askPermission(): Promise<void> {
   const api = window.DeviceOrientationEvent as unknown as PermissionApi
@@ -60,7 +56,7 @@ async function askPermission(): Promise<void> {
     const r = await api.requestPermission?.()
     if (r === 'granted') {
       denied.value = false
-      begin()
+      session.begin()
     } else {
       denied.value = true
     }
@@ -70,9 +66,9 @@ async function askPermission(): Promise<void> {
 }
 
 if (needPermission.value) status.value = 'idle'
-else begin()
+else session.begin()
 
-onUnmounted(() => stop?.())
+onUnmounted(session.dispose)
 </script>
 
 <template>

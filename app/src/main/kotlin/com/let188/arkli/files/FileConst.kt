@@ -71,6 +71,18 @@ object FileConst {
     /** 非媒体文件（走文档选择器）拷进缓存的大小上限（64MB） */
     const val MAX_PICK_COPY_BYTES = 64L shl 20
 
+    /** 图片拷进缓存的大小上限（128MB）；HEIC 另受解码像素限制 */
+    const val MAX_PICK_IMAGE_BYTES = 128L shl 20
+
+    /** 拷贝文件用的缓冲区大小（64KB） */
+    const val COPY_BUF_BYTES = 64 * 1024
+
+    /** 随机文件名、句柄 id 用的随机字节数 */
+    const val RANDOM_ID_BYTES = 8
+
+    /** 图片通配 mime，选择器默认值与 [PickKind] 判断共用 */
+    const val MIME_IMAGE = "image/*"
+
     /** HEIC 转 JPEG 的 JPEG 质量 */
     const val JPEG_QUALITY = 92
 

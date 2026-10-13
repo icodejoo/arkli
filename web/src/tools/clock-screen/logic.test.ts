@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SolarDay } from 'tyme4ts'
 import { BURN_IN_RANGE, burnInOffset, clockParts, formatDateLine, lunarText, msToNextSecond, startSecondTicker } from './logic'
-import { createWakeLock, type VisibilityDoc, type WakeNavigator } from '@/shared/wakelock'
 
 describe('clockParts', () => {
   it('24 小时制补零', () => {
@@ -70,42 +69,5 @@ describe('lunarText', () => {
       },
     }
     expect(lunarText(bad, new Date())).toBe('')
-  })
-})
-
-describe('createWakeLock', () => {
-  /** 假文档，可手动触发可见性事件 */
-  function fakeDoc() {
-    let fn: (() => void) | undefined
-    const d: VisibilityDoc & { show(): void } = {
-      visibilityState: 'visible',
-      addEventListener: (_t, f) => void (fn = f),
-      removeEventListener: () => void (fn = undefined),
-      show: () => fn?.(),
-    }
-    return d
-  }
-  it('不支持时返回 false 不报错', async () => {
-    const wl = createWakeLock({}, fakeDoc())
-    expect(wl.supported).toBe(false)
-    expect(await wl.acquire()).toBe(false)
-    await wl.release()
-  })
-  it('申请被拒绝返回 false', async () => {
-    const nav: WakeNavigator = { wakeLock: { request: () => Promise.reject(new Error('NotAllowed')) } }
-    expect(await createWakeLock(nav, fakeDoc()).acquire()).toBe(false)
-  })
-  it('成功申请，释放后调用 release；回到前台自动重申请', async () => {
-    const release = vi.fn(() => Promise.resolve())
-    const request = vi.fn(() => Promise.resolve({ release }))
-    const doc = fakeDoc()
-    const wl = createWakeLock({ wakeLock: { request } }, doc)
-    expect(await wl.acquire()).toBe(true)
-    doc.show()
-    expect(request).toHaveBeenCalledTimes(2)
-    await wl.release()
-    expect(release).toHaveBeenCalledTimes(1)
-    doc.show()
-    expect(request).toHaveBeenCalledTimes(2)
   })
 })

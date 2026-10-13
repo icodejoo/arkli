@@ -7,6 +7,9 @@ pub const CTC_BLANK_INDEX: usize = 0;
 /// 开启 `use_space` 时追加到字典末尾的空格字符。
 pub const SPACE_CHAR: &str = " ";
 
+/// UTF-8 BOM 字符。
+const UTF8_BOM: char = '\u{feff}';
+
 /// CTC 解码器。类别下标 0 是 blank，其后依次是字典每一行，可选末尾再加一个空格。
 #[derive(Debug, Clone, PartialEq)]
 pub struct CtcDecoder {
@@ -27,7 +30,9 @@ impl CtcDecoder {
     /// ```
     pub fn from_dict_text(dict_text: &str, use_space: bool) -> Result<Self> {
         let mut chars = vec![String::new()];
-        chars.extend(dict_text.lines().map(str::to_string));
+        // 带 BOM 的字典（Windows 记事本另存）首行会多出一个不可见字符，先剥掉；lines() 已兼容 CRLF
+        let text = dict_text.strip_prefix(UTF8_BOM).unwrap_or(dict_text);
+        chars.extend(text.lines().map(str::to_string));
         if chars.len() == 1 {
             return Err(AiError::InvalidConfig("字典为空".into()));
         }
@@ -152,6 +157,25 @@ mod tests {
         let d = CtcDecoder::from_dict_text("a\nb", true).unwrap();
         assert_eq!(d.num_classes(), 4);
         let p = onehot(&[1, 3, 2], 4, 1.0);
+        assert_eq!(d.decode(&p, 3, 4).unwrap().0, "a b");
+    }
+
+    #[test]
+    fn 字典兼容crlf与bom() {
+        let lf = CtcDecoder::from_dict_text("a\nb\nc\n", false).unwrap();
+        let crlf = CtcDecoder::from_dict_text("a\r\nb\r\nc\r\n", false).unwrap();
+        let bom = CtcDecoder::from_dict_text("\u{feff}a\r\nb\r\nc", false).unwrap();
+        assert_eq!(lf, crlf);
+        assert_eq!(lf, bom);
+        let p = onehot(&[1, 2, 3], 4, 1.0);
+        assert_eq!(bom.decode(&p, 3, 4).unwrap().0, "abc");
+    }
+
+    #[test]
+    fn 字典里的单空格行被保留() {
+        let d = CtcDecoder::from_dict_text("a\n \nb", false).unwrap();
+        assert_eq!(d.num_classes(), 4);
+        let p = onehot(&[1, 2, 3], 4, 1.0);
         assert_eq!(d.decode(&p, 3, 4).unwrap().0, "a b");
     }
 
