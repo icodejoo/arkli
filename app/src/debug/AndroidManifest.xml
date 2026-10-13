@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- 仅调试：进程启动时挂上调试广播接收器，不导出，release 源集里没有它 -->
+        <provider
+            android:name="com.let188.arkli.debug.DebugHooksProvider"
+            android:authorities="${applicationId}.debughooks"
+            android:exported="false"
+            android:initOrder="100" />
+    </application>
+</manifest>

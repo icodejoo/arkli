@@ -2,111 +2,191 @@ package com.let188.arkli
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.os.Handler
-import android.os.Looper
+import android.graphics.Bitmap
+import android.net.Uri
+import android.util.Log
+import android.view.ViewGroup
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.webkit.JavaScriptReplyProxy
+import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebViewAssetLoader
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import com.let188.arkli.bridge.ArkliBridge
 import com.let188.arkli.bridge.BridgeHandler
+import com.let188.arkli.bridge.BridgeSessions
+import com.let188.arkli.bridge.ReplyIo
+import com.let188.arkli.files.FileEnv
+import com.let188.arkli.files.FileModule
 import org.json.JSONObject
 
 /** 应用内虚拟域名，WebView 只允许加载这个域 */
-private const val ASSET_HOST = "appassets.androidplatform.net"
+internal const val ASSET_HOST = "appassets.androidplatform.net"
 
 /** 首页地址 */
 private const val START_URL = "https://$ASSET_HOST/assets/web/index.html"
 
-/** 页面侧接收原生消息的全局函数名 */
-private const val JS_DISPATCH = "window.__arkliDispatch"
+/** 通道允许的来源规则，只放 appassets 域 */
+private const val ALLOWED_ORIGIN = "https://$ASSET_HOST"
 
-/** 标记 WebView 已销毁，避免重复销毁 */
-private const val TAG_DESTROYED = "destroyed"
-
-/** 主线程 Handler，用来把 Bridge 回调切回主线程 */
-private val mainHandler = Handler(Looper.getMainLooper())
+/** 日志 tag */
+private const val LOG_TAG = "ArkliBridge"
 
 /**
- * 创建一个配置好的 WebView：资源走 assets 域、锁死外链、接好 Bridge。
+ * 页面侧守卫脚本：不支持 ArrayBuffer 的 WebView 上，页面一旦发非字符串消息会让 App 进程崩溃，
+ * 这里在页面侧先挡掉。脚本验证见 docs/research/spike-webmessage-arraybuffer.md。
+ */
+private const val GUARD_SCRIPT = "(function(){var o=window.${ArkliBridge.JS_OBJECT_NAME};if(!o)return;" +
+    "var p=o.postMessage;o.postMessage=function(m){" +
+    "if(typeof m!=='string')throw new TypeError('binary not supported');return p.call(o,m)}})();"
+
+/**
+ * 一个页面：WebView 加上与之绑定的 Bridge 会话。
+ *
+ * 会话号随 WebView 创建、主 frame 重新加载而递增，渲染进程崩溃时 [onRenderGone] 之前
+ * 先关掉旧会话，保证挂起请求被取消、旧事件不会串到重建后的新页面。
+ *
+ * 使用示例：`val page = ArkliPage(ctx) { rebuild() }`，销毁时 `page.destroy()`。
  *
  * @param context 上下文
- * @param onRenderGone 渲染进程崩溃时回调，宿主应销毁并重建 WebView
- * @return 已开始加载首页的 WebView
- *
- * 使用示例：`val wv = createArkliWebView(ctx) { rebuild() }`
+ * @param files 文件能力环境（选择器、PathHandler、写句柄、缓存清理）
+ * @param onRenderGone 渲染进程崩溃时回调，宿主应销毁并重建页面
  */
 @SuppressLint("SetJavaScriptEnabled")
-fun createArkliWebView(context: Context, onRenderGone: () -> Unit): WebView {
-    val webView = WebView(context)
-    val loader = WebViewAssetLoader.Builder()
-        .setDomain(ASSET_HOST)
-        .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(context))
-        .build()
+class ArkliPage(context: Context, private val files: FileEnv, private val onRenderGone: () -> Unit) {
 
-    webView.settings.apply {
-        javaScriptEnabled = true
-        domStorageEnabled = true
-        allowFileAccess = false
-        allowContentAccess = false
-        mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+    /** 承载页面的 WebView */
+    val webView: WebView = WebView(context)
+
+    /** 最近一次收到页面消息时拿到的回传代理，页面重载后会被新的覆盖 */
+    @Volatile
+    private var replyProxy: JavaScriptReplyProxy? = null
+
+    /** 当前会话的 Bridge */
+    @Volatile
+    private var bridge: ArkliBridge = newBridge()
+
+    /** 是否已经历首次页面开始加载，首次加载沿用初始会话，不再换号 */
+    private var firstLoadSeen = false
+
+    /** 当前 WebView 是否支持 ArrayBuffer 消息，以原生探测为准 */
+    private val binarySupported = WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_ARRAY_BUFFER)
+
+    init {
+        // 让 Compose 的 onRelease 能从 View 找回页面
+        webView.tag = this
+        val loader = WebViewAssetLoader.Builder()
+            .setDomain(ASSET_HOST)
+            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(context))
+            .build()
+
+        webView.settings.apply {
+            javaScriptEnabled = true
+            domStorageEnabled = true
+            allowFileAccess = false
+            allowContentAccess = false
+            mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+        }
+
+        webView.webViewClient = object : WebViewClient() {
+            /** `/files/` 前缀由 [FileEnv.server] 响应（支持 Range），其余交给 loader，命中 appassets 域才有响应 */
+            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? =
+                files.server.intercept(request) ?: loader.shouldInterceptRequest(request.url)
+
+            /** 非 appassets 域的导航一律拦截 */
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
+                request.url.host != ASSET_HOST
+
+            /** 主文档开始加载：重载时换新会话，旧会话的请求被取消 */
+            override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
+                if (firstLoadSeen) rotateSession() else firstLoadSeen = true
+            }
+
+            /** 渲染进程崩溃：先关会话，再交给宿主重建，返回 true 避免 App 被连带杀掉 */
+            override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                bridge.close()
+                onRenderGone()
+                return true
+            }
+        }
+
+        // 顺序固定：先注册通道与守卫，最后才 loadUrl（通道必须在页面加载前注册）
+        installChannel()
+        webView.loadUrl(START_URL)
     }
 
-    webView.webViewClient = object : WebViewClient() {
-        /** 资源请求交给 loader，命中 appassets 域才有响应 */
-        override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? =
-            loader.shouldInterceptRequest(request.url)
+    /**
+     * 向页面推一个事件，如生命周期事件。
+     *
+     * @param event 事件名，如 [ArkliBridge.EVENT_APP_PAUSE]
+     * @param data 事件数据，可为 null
+     */
+    fun emit(event: String, data: Any? = null) = bridge.emit(event, data)
 
-        /** 非 appassets 域的导航一律拦截 */
-        override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
-            request.url.host != ASSET_HOST
+    /** 是否已销毁，避免重复销毁 */
+    private var destroyed = false
 
-        /** 渲染进程崩溃：交给宿主重建，返回 true 避免 App 被连带杀掉 */
-        override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
-            onRenderGone()
-            return true
-        }
+    /** 销毁：先关会话取消在途请求，再从父容器摘掉、停止加载并销毁 WebView，可重复调用 */
+    fun destroy() {
+        if (destroyed) return
+        destroyed = true
+        bridge.close()
+        (webView.parent as? ViewGroup)?.removeView(webView)
+        webView.stopLoading()
+        webView.destroy()
     }
 
-    webView.addJavascriptInterface(createBridge(webView), ArkliBridge.JS_OBJECT_NAME)
-    webView.loadUrl(START_URL)
-    return webView
-}
+    /** 换新会话：关旧建新，回传代理在新页面的第一条消息到达时刷新 */
+    private fun rotateSession() {
+        bridge.close()
+        replyProxy = null
+        bridge = newBridge()
+    }
 
-/**
- * 构造 Bridge 并注册内置方法。
- *
- * @param webView 回传响应的目标 WebView
- * @return 已注册 native.ping 与 rust.core.version 的 Bridge
- */
-private fun createBridge(webView: WebView): ArkliBridge {
-    val bridge = ArkliBridge(reply = { json ->
-        mainHandler.post {
-            webView.evaluateJavascript("$JS_DISPATCH(${JSONObject.quote(json)})", null)
+    /** 新建一个会话的 Bridge 并注册内置方法 */
+    private fun newBridge(): ArkliBridge {
+        val io = ReplyIo { json -> replyProxy?.postMessage(json) }
+        val created = ArkliBridge(BridgeSessions.next(), io, binary = binarySupported)
+        created.register("native.ping", BridgeHandler { _, _ ->
+            JSONObject().put("pong", true).put("ts", System.currentTimeMillis())
+        })
+        created.register("rust.core.version", BridgeHandler { _, _ ->
+            JSONObject().put("version", uniffi.arkli_ffi.coreVersion())
+        })
+        FileModule.install(created, files)
+        return created
+    }
+
+    /** 注册 WebMessageListener 与守卫脚本；设备不支持时只记日志，页面会得到 NOT_READY */
+    private fun installChannel() {
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
+            Log.e(LOG_TAG, "WebView 不支持 WEB_MESSAGE_LISTENER，bridge 不可用")
+            return
         }
-    })
-    bridge.register("native.ping", BridgeHandler {
-        JSONObject().put("pong", true).put("ts", System.currentTimeMillis())
-    })
-    bridge.register("rust.core.version", BridgeHandler {
-        JSONObject().put("version", uniffi.arkli_ffi.coreVersion())
-    })
-    return bridge
-}
-
-/**
- * 按规范销毁 WebView：先从父容器摘掉，再停止加载并销毁，可重复调用。
- *
- * @receiver 要销毁的 WebView
- */
-fun WebView.destroySafely() {
-    if (tag == TAG_DESTROYED) return
-    tag = TAG_DESTROYED
-    (parent as? android.view.ViewGroup)?.removeView(this)
-    stopLoading()
-    removeJavascriptInterface(ArkliBridge.JS_OBJECT_NAME)
-    destroy()
+        WebViewCompat.addWebMessageListener(
+            webView, ArkliBridge.JS_OBJECT_NAME, setOf(ALLOWED_ORIGIN),
+            object : WebViewCompat.WebMessageListener {
+                /** 收到页面消息：只认字符串帧，记下回传代理后交给当前会话 */
+                override fun onPostMessage(
+                    view: WebView,
+                    message: WebMessageCompat,
+                    sourceOrigin: Uri,
+                    isMainFrame: Boolean,
+                    proxy: JavaScriptReplyProxy,
+                ) {
+                    val text = message.data ?: return
+                    replyProxy = proxy
+                    bridge.dispatch(text, isMainFrame)
+                }
+            },
+        )
+        if (!binarySupported && WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            WebViewCompat.addDocumentStartJavaScript(webView, GUARD_SCRIPT, setOf(ALLOWED_ORIGIN))
+        }
+    }
 }

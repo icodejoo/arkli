@@ -21,8 +21,6 @@ import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
-import com.let188.arkli.bridge.ArkliBridge
-import com.let188.arkli.bridge.BridgeHandler
 import org.json.JSONObject
 import java.io.File
 
@@ -225,15 +223,19 @@ class SpikeActivity : Activity() {
         }
     }
 
-    /** 挂上旧通道：沿用生产的 ArkliBridge，回包走 evaluateJavascript */
+    /** 挂上旧通道：生产 ArkliBridge 已升到 v2，这里用本地最小对象复现旧的 `@JavascriptInterface` 通道 */
     private fun installLegacy(wv: WebView) {
-        val legacy = ArkliBridge(reply = { json ->
-            main.post { wv.evaluateJavascript("$LEGACY_DISPATCH(${JSONObject.quote(json)})", null) }
-        })
-        legacy.register("native.ping", BridgeHandler {
-            Log.i(SPIKE_TAG, "LEGACY native.ping invoked")
-            JSONObject().put("pong", true).put("ts", System.currentTimeMillis())
-        })
+        val legacy = object {
+            /** 旧通道入口：只应答 native.ping */
+            @android.webkit.JavascriptInterface
+            fun postMessage(json: String) {
+                val req = JSONObject(json)
+                Log.i(SPIKE_TAG, "LEGACY native.ping invoked")
+                val resp = JSONObject().put("v", 1).put("id", req.optString("id")).put("ok", true)
+                    .put("data", JSONObject().put("pong", true).put("ts", System.currentTimeMillis()))
+                main.post { wv.evaluateJavascript("$LEGACY_DISPATCH(${JSONObject.quote(resp.toString())})", null) }
+            }
+        }
         wv.addJavascriptInterface(legacy, LEGACY_OBJECT)
     }
 

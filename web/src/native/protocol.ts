@@ -4,7 +4,7 @@
  */
 
 /** 当前协议版本，不兼容变更时递增 */
-export const PROTOCOL_VERSION = 1
+export const PROTOCOL_VERSION = 2
 
 /** 错误码集合，与原生侧一致 */
 export type BridgeErrorCode =
@@ -14,6 +14,8 @@ export type BridgeErrorCode =
   | 'NOT_READY'
   | 'INTERNAL'
   | 'TIMEOUT'
+  | 'CANCELLED'
+  | 'NETWORK'
 
 /** 页面发往原生的请求 */
 export interface BridgeRequest {
@@ -46,6 +48,36 @@ export interface BridgeEvent {
   v: number
   /** 事件名，如 `download.progress` */
   event: string
+  /** 订阅号，订阅类方法返回的 `sub`，页面据此分流；无订阅的事件没有此字段 */
+  sub?: string
   /** 事件数据 */
   data: unknown
 }
+
+/** `native.hello` 返回的能力字段 */
+export interface NativeFeatures {
+  /** 当前 WebView 是否支持 ArrayBuffer 消息；为 false 时只能发字符串帧，发 ArrayBuffer 会让 App 崩溃 */
+  binary: boolean
+}
+
+/** `native.hello` 的返回值 */
+export interface NativeHello {
+  /** 原生支持的协议版本 */
+  protocol: number
+  /** 页面会话号，WebView 重载或崩溃重建后递增 */
+  session: number
+  /** 能力字段 */
+  features: NativeFeatures
+}
+
+/** 内置取消方法名 */
+export const METHOD_CANCEL = 'native.task.cancel'
+
+/** 内置握手方法名 */
+export const METHOD_HELLO = 'native.hello'
+
+/** 生命周期事件：App 退到后台 */
+export const EVENT_APP_PAUSE = 'app.pause'
+
+/** 生命周期事件：App 回到前台 */
+export const EVENT_APP_RESUME = 'app.resume'

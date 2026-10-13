@@ -35,7 +35,7 @@ summary: 六份工具设计共同依赖的底层能力：bridge 协议 v2、统�
 | 兜底 | JSON 里放 base64 分块，每块约 192KB，流水线发送 | 约 14 MB/s（串行等回包仅 4~7 MB/s） | 慢但最通用 |
 | 大（几十 MB 以上） | 回环 HTTP：App 内只绑 `127.0.0.1` 的小服务，页面 `fetch(POST, body=Blob)` | 约 88~91 MB/s，渲染进程内存基本不涨 | 需要 INTERNET（已确认加）、network security config 只放行 `127.0.0.1` 的明文、一次性随机 token；或改用 `pick` 返回的不透明句柄让原生直接读 |
 
-流程不变：`native.file.openWrite { name, mime, size }` 拿 `{ handle }` → 分块发帧 → `native.file.closeWrite { handle }` 得 `{ path, size }`。
+流程：`native.file.openWrite { name, size?, sha256? }` 拿 `{ handle }` → 分块发 `native.file.write { handle, seq, offset, data, encoding }`（字符串帧，每块 1MB，每个请求有确认）→ `native.file.closeWrite { handle }` 得 `{ path, url, size, sha256 }`。契约见 [Bridge 协议](bridge-protocol.md)「文件方法」。
 
 **必须遵守的约束**
 - **探测以原生为准**：新增 `native.hello`，返回 `binary` 能力字段（是否支持 ArrayBuffer）。页面只能按它选择帧类型。
@@ -99,8 +99,13 @@ summary: 六份工具设计共同依赖的底层能力：bridge 协议 v2、统�
 - 进程被杀后，任务状态持久化，页面重开时用 `native.task.status` 恢复展示。
 
 ## 六、缓存
-- 目录 `cacheDir/arkli/<tool>/<session>/`，退出工具时清理本次产物。
-- 启动时清理超过 24 小时的残留；总量上限（默认 500MB）超限从最旧的删。
+- 根目录 `cacheDir/arkli/`，页面路径 `cache/...`。已落地的子目录：`pick/`（选图结果）、`out/<handle>/`（分块写入的成品）、`tmp/`（未关闭写句柄的 `.part` 临时文件）。
+- 清理策略（常量在 `FileConst`，策略在 `CachePolicy`，纯函数可单测）：
+  - 保留期 24 小时（`CACHE_MAX_AGE_MS`），超过就删。
+  - 总量上限 500MB（`CACHE_MAX_TOTAL_BYTES`），超限从最旧的删；最近 10 分钟写入的不动（`CACHE_KEEP_RECENT_MS`），免得删掉页面刚拿到的产物。
+  - 临时文件：属于活跃写句柄的不动；空闲清理时存活超过 1 小时（`PART_ORPHAN_AGE_MS`）算孤儿；启动清理时所有非活跃临时文件都是孤儿（进程重启后没有会话）。
+  - 触发时机：`MainActivity.onCreate`（启动）与 `onStop`（空闲，两次间隔不少于 10 分钟），在单独线程执行，同时清空闲超时的写句柄。没有对应的 bridge 方法，页面不用管。
+- 页面主动清理本次工具产物（`cacheDir/arkli/<tool>/<session>/` 那种按工具分目录）还没做，需要时再加。
 - GIF 帧、中间 PNG 用完即删。
 
 ## 七、权限汇总（Manifest）

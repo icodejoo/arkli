@@ -69,4 +69,10 @@ dependencies {
     implementation(libs.androidx.webkit)
     // UniFFI 绑定依赖 JNA，用 AAR 形式（内含各 ABI 的 libjnidispatch，由 abiFilters 裁成 arm64）
     implementation("${libs.jna.get()}@aar")
+    implementation(libs.kotlinx.coroutines.android)
+
+    testImplementation(libs.junit)
+    // JVM 单测里 Android 自带的 org.json 是桩，换成真实实现
+    testImplementation(libs.org.json)
+    testImplementation(libs.kotlinx.coroutines.test)
 }
