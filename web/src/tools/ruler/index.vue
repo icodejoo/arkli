@@ -28,8 +28,12 @@ import {
 
 /** 尺子画布的短边（像素），即尺子的厚度 */
 const THICKNESS = 84
-/** 游标线和标记线伸出尺子、延伸到页面里的长度（像素），读数标签放在这一段 */
-const LINE_EXTENSION = 96
+/** 刻度数字的字号（像素） */
+const LABEL_FONT = 12
+/** 游标线与标记线的粗细（CSS 像素）；高分屏上渲染成 1 个物理像素 */
+const LINE_WEIGHT = 0.5
+/** 游标线、标记线离数字带的间隙（像素） */
+const LINE_GAP = 2
 /** 尺子与页面内容之间的留白（像素） */
 const GAP = 8
 /** 各级刻度线长度（像素） */
@@ -46,10 +50,14 @@ const HEADER_SELECTOR = '.van-nav-bar'
 const CAL_CAP = 8
 /** 刻度数字离刻度线的偏移（像素） */
 const LABEL_OFFSET = 12
-/** 刻度数字的旋转角（弧度）：靠右顺时针 90°，靠左逆时针 90° */
+/** 刻度数字的旋转角（弧度）：靠右逆时针 90°（从下往上读），靠左顺时针 90°（从上往下读） */
 const LABEL_ROTATE = Math.PI / 2
 /** 数字标签离两端的最小距离（像素），避免被裁掉 */
 const LABEL_MARGIN = 8
+/** 游标线与标记线的长度：从屏幕边缘画到刻度数字之前，不穿过数字 */
+const LINE_LEN = TICK_LEN.major + LABEL_OFFSET - LABEL_FONT / 2 - LINE_GAP
+/** 读数小字离屏幕边缘的距离：放在数字带外侧的空白带里 */
+const TAG_OFFSET = TICK_LEN.major + LABEL_OFFSET + LABEL_FONT / 2 + LINE_GAP
 /** 校准线距尺子基线（贴屏幕边缘的那一边）的距离（像素） */
 const CAL_LINE_OFFSET = THICKNESS - 18
 /** 尺面底色的不透明度 */
@@ -144,6 +152,34 @@ const markViews = computed(() =>
     .filter((m) => m.px >= 0 && m.px <= along.value),
 )
 
+/**
+ * 游标线或标记线的样式：横穿尺子的刻度区，只画到数字之前。
+ *
+ * @param px 离零点的像素位置
+ * @param color 线的颜色
+ * @returns 内联样式对象
+ */
+function lineStyle(px: number, color: string): Record<string, string> {
+  return {
+    top: `${px}px`,
+    width: `${LINE_LEN}px`,
+    height: `${LINE_WEIGHT}px`,
+    marginTop: `${-LINE_WEIGHT / 2}px`,
+    background: color,
+    [side.value]: '0',
+  }
+}
+
+/**
+ * 读数小字的样式：放在数字带外侧，顺着尺子方向书写，用线的颜色。
+ *
+ * @param color 文字颜色
+ * @returns 内联样式对象
+ */
+function tagStyle(color: string): Record<string, string> {
+  return { color, [side.value]: `${TAG_OFFSET}px` }
+}
+
 /** 读 CSS 变量，读不到用兜底色 */
 function cssColor(name: string, fallback: string): string {
   const el = canvasRef.value
@@ -207,7 +243,7 @@ function draw(): void {
   ctx.strokeStyle = text
   ctx.fillStyle = text
   ctx.lineWidth = 1
-  ctx.font = '12px sans-serif'
+  ctx.font = `${LABEL_FONT}px sans-serif`
   ctx.textBaseline = 'middle'
   ctx.textAlign = 'center'
   for (const t of buildTicks(along.value, scale.value, unit.value)) {
@@ -216,10 +252,10 @@ function draw(): void {
     if (t.label != null) {
       const lp = Math.max(LABEL_MARGIN, Math.min(along.value - LABEL_MARGIN, t.pos))
       const [x, y] = toXY(lp, TICK_LEN.major + LABEL_OFFSET)
-      // 数字顺着尺子的方向书写：字头朝向屏幕边缘（刻度线一侧）
+      // 数字顺着尺子的方向书写：字头朝向屏幕中间（刻度线的另一侧）
       ctx.save()
       ctx.translate(x, y)
-      ctx.rotate(side.value === 'right' ? LABEL_ROTATE : -LABEL_ROTATE)
+      ctx.rotate(side.value === 'right' ? -LABEL_ROTATE : LABEL_ROTATE)
       ctx.fillText(t.label, 0, 0)
       ctx.restore()
     }
@@ -367,13 +403,13 @@ onUnmounted(() => {
         v-for="m in markViews"
         :key="m.id"
         class="ruler-line"
-        :style="{ top: `${m.px}px`, background: m.color, '--line-ext': `${LINE_EXTENSION}px` }"
+        :style="lineStyle(m.px, m.color)"
       >
-        <span class="ruler-line__tag" :style="{ color: m.color }">{{ m.text }}</span>
+        <span class="ruler-line__tag" :style="tagStyle(m.color)">{{ m.text }}</span>
       </div>
-      <div class="ruler-line ruler-line--cursor" :style="{ top: `${cursorPx}px`, '--line-ext': `${LINE_EXTENSION}px` }">
-        <span class="ruler-line__tag ruler-line__tag--cursor">{{ previewMain }}</span>
-        <i class="ruler-line__knob" />
+      <div class="ruler-line ruler-line--cursor" :style="lineStyle(cursorPx, markColor)">
+        <span class="ruler-line__tag" :style="tagStyle(markColor)">{{ previewMain }}</span>
+        <i class="ruler-line__knob" :style="{ background: markColor }" />
       </div>
       <div
         class="ruler-touch"
@@ -500,70 +536,47 @@ onUnmounted(() => {
   display: block;
 }
 
-/* 游标线与标记线：横穿尺子，并向页面一侧伸出一段放读数 */
+/* 游标线与标记线：横穿尺子的刻度区，细到 0.5px，位置、长度和颜色由内联样式给 */
 .ruler-line {
   position: absolute;
-  height: 2px;
-  margin-top: -1px;
   pointer-events: none;
 
-  &--cursor {
-    background: var(--c-text);
-  }
-
+  /* 读数小字：竖排书写，方向与刻度数字一致；以线为中线垂直居中 */
   &__tag {
     position: absolute;
-    bottom: 4px;
-    padding: 0 4px;
-    border-radius: 4px;
-    background: var(--c-surface);
+    top: 0;
+    padding: 0 2px;
     font-size: 12px;
     font-weight: 600;
-    line-height: 18px;
+    line-height: 16px;
     white-space: nowrap;
-
-    &--cursor {
-      color: var(--c-text);
-    }
+    writing-mode: vertical-rl;
+    transform: translateY(-50%);
   }
 
-  /* 拖动把手：一个小圆点，提示这里可以抓 */
+  /* 拖动把手：线的内端一个小圆点，随选中颜色，提示这里可以抓 */
   &__knob {
     position: absolute;
-    top: -5px;
-    width: 12px;
-    height: 12px;
+    top: -3.75px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
-    background: var(--c-text);
   }
 }
 
-/* 靠右：线向左伸出，标签与把手在伸出段的左端 */
-.ruler-box--right .ruler-line {
-  right: 0;
-  left: calc(var(--line-ext) * -1);
-
-  &__tag {
-    left: 4px;
-  }
-
-  &__knob {
-    left: -6px;
-  }
+/* 靠右：线从右边缘向内画，竖排文字翻 180° 变成逆时针（从下往上读），把手在左端 */
+.ruler-box--right .ruler-line__tag {
+  transform: translateY(-50%) rotate(180deg);
 }
 
-/* 靠左：线向右伸出，标签与把手在伸出段的右端 */
-.ruler-box--left .ruler-line {
-  left: 0;
-  right: calc(var(--line-ext) * -1);
+.ruler-box--right .ruler-line__knob {
+  left: -4px;
+}
 
-  &__tag {
-    right: 4px;
-  }
+/* 靠左：线从左边缘向内画，竖排文字顺时针（从上往下读），把手在右端 */
 
-  &__knob {
-    right: -6px;
-  }
+.ruler-box--left .ruler-line__knob {
+  right: -4px;
 }
 
 /* 触摸层：只盖住尺子本身，禁掉浏览器的手势，才能顺畅地上下拖 */

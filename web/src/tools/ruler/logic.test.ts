@@ -126,6 +126,11 @@ describe('游标换算', () => {
     expect(formatReadingAlt(25.4, 'inch')).toBe('25.4 mm')
   })
 
+  it('默认（第一个）颜色是亮绿色', () => {
+    expect(MARK_COLORS[0].name).toBe('亮绿')
+    expect(MARK_COLORS[0].value).toBe('#1fe05c')
+  })
+
   it('步长与颜色选项合理', () => {
     expect(STEP_MM).toBeGreaterThan(0)
     expect(MARK_COLORS.length).toBeGreaterThanOrEqual(3)

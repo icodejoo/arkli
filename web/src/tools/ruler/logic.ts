@@ -152,9 +152,9 @@ export const STEP_MM = 0.1
 const MM_PER_CM = 10
 /** 标记颜色可选项：属于内容色，不随主题变，深浅色下都要看得清 */
 export const MARK_COLORS = [
+  { name: '亮绿', value: '#1fe05c' },
   { name: '红', value: '#e5484d' },
   { name: '橙', value: '#f08c00' },
-  { name: '绿', value: '#2f9e44' },
   { name: '蓝', value: '#3b6cf6' },
   { name: '紫', value: '#9c36b5' },
 ] as const
