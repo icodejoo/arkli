@@ -5,7 +5,7 @@ updated: 2026-10-13
 summary: 体积、分层、工具归属等取舍冲突时按什么优先级办
 ---
 ## TL;DR
-体积 > 加工具的速度 > 单个工具的体验上限。能放 Web 的不放原生，能放 Rust 的重计算不放 Web。
+体积 > 加工具的速度 > 单个工具的体验上限。能放 Web 的不放原生；平台已有的硬件、系统级能力（图片编解码、视频转码）直接用原生 API，不再为它引 Rust 或 FFmpeg（见 [0003](decisions/0003-web-first-and-native-media.md)）；Rust 留给平台没有现成实现的重计算（如 AI 推理）。
 
 ## 优先级
 
@@ -25,3 +25,5 @@ summary: 体积、分层、工具归属等取舍冲突时按什么优先级办
 - 只发 arm64-v8a：老 32 位机型放弃，换来体积和构建时间。
 - 大模型（OCR 等）按需下载，不进 APK。
 - 一个 SPA 共享一份 Vue，不做多页面各带一份框架。
+- 整个 App 固定竖屏，不做横竖适配（[0003](decisions/0003-web-first-and-native-media.md)）。
+- 图片压缩统一原生做，PNG 自写缩色编码器；不引 FFmpeg，音视频走 Media3（[0003](decisions/0003-web-first-and-native-media.md)）。

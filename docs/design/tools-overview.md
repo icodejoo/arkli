@@ -113,3 +113,10 @@ summary: 六份工具设计的汇总：优先级统计、体积估计、全部�
 - 模型与数据包托管在哪。
 - 国内商店对按需下载 so 的规则（没查到原文），影响 AI 运行时能否做成可选包。
 - 高通、华为运行库的再分发许可（NPU 暂不做，先搁置）。
+
+## 落地后的变更（以 0003 为准）
+实现过程中有三项决定覆盖了上文的早期结论，详见 [0003](../decisions/0003-web-first-and-native-media.md)：
+- **图片压缩与格式转换合并，统一原生做**：上文「Canvas 管中小图、Rust 读写 PNG」「`png`/`gif`/`color_quant`」的方案作废；PNG 自写缩色编码器，不引这几个依赖。拼接、九宫格仍在 web Canvas。
+- **不引 FFmpeg**：视频、音频走 Media3 Transformer 与平台 API；Media3 仍是待确认的新增依赖。
+- **固定竖屏**：各工具设计里的横屏需求作废。
+- **已新增并落地的依赖**：`vant` 4.10.2（及按需引入插件 `unplugin-vue-components`、`@vant/auto-import-resolver`）、`vitest` 5.0.4、`tyme4ts` 1.5.3、`@noble/hashes` 2.4.0、`pinyin-pro` 3.29.5、`ort` `=2.0.0-rc.14`（仅 `arkli-ai` 的可选特性）、Kotlin 协程与 JUnit 等测试依赖；二维码生成用 nayuki 单文件（MIT，放在 `web/src/vendor/`）。
