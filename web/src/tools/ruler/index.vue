@@ -121,6 +121,8 @@ const wheelRef = ref<HTMLDivElement>()
 const wheelDot = ref<{ x: number; y: number } | null>(null)
 /** 是否正在彩虹盘上拖动 */
 let wheelDragging = false
+/** 是否把尺子上的标记线藏起来（只影响显示，标记数据和列表都保留） */
+const marksHidden = ref(false)
 /** 已打下的标记，不限数量 */
 const marks = ref<RulerMark[]>([])
 /** 标记编号自增序号 */
@@ -165,7 +167,7 @@ const previewMain = computed(() => formatReading(cursorMm.value, unit.value))
 const previewAlt = computed(() => formatReadingAlt(cursorMm.value, unit.value))
 /** 带像素位置与读数文本的标记，位置随校准比例换算，超出尺子的不画 */
 const markViews = computed(() =>
-  marks.value
+  (marksHidden.value ? [] : marks.value)
     .map((m) => ({ ...m, px: mmToPx(m.mm, scale.value), text: formatReading(m.mm, unit.value) }))
     .filter((m) => m.px >= 0 && m.px <= along.value),
 )
@@ -378,10 +380,13 @@ function pickPreset(index: number): void {
 
 /**
  * 在游标当前位置打一条选中颜色的标记，数量不限制；
- * 打完自动切到彩虹循环里的下一个颜色，用户可以再手动改选。
+ * 打完收起彩虹盘，并自动切到彩虹循环里的下一个颜色，用户可以再手动改选。
+ * 标记线原本是隐藏的话会自动显示出来，免得打了却看不到。
  */
 function addMark(): void {
   marks.value.push({ id: ++markSeq, mm: cursorMm.value, color: markColor.value })
+  wheelOpen.value = false
+  marksHidden.value = false
   pickPreset(nextColorIndex(colorIdx.value, MARK_COLORS.length))
 }
 
@@ -545,6 +550,9 @@ onUnmounted(() => {
       </div>
       <div class="tool-actions ruler-gap">
         <van-button type="primary" size="small" @click="addMark">标记</van-button>
+        <van-button size="small" :disabled="!marks.length" @click="marksHidden = !marksHidden">
+          {{ marksHidden ? '显示标记' : '隐藏标记' }}
+        </van-button>
         <van-button size="small" :disabled="!marks.length" @click="clearMarks">清除标记</van-button>
       </div>
       <van-cell-group v-if="marks.length" :border="false" class="ruler-gap">
