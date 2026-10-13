@@ -63,13 +63,14 @@ summary: 六份工具设计的汇总：优先级统计、体积估计、全部�
 | 4 | 模型下载（`native.model.*`）与数据包下载（`native.download.*`）各设计一套 | 合并为 `native.pack.*`，模型和词典数据包共用 manifest、断点续传、校验 |
 | 5 | 汇率用 `native.http.get`（白名单），dev-net 用 `native.net.http` | 用户选定折中方案：`native.net.*` 管任意域名与 ping/DNS/端口/Whois；汇率这类支持 CORS 的 JSON 接口由页面直接请求，域名写进 CSP 白名单，不再需要 `native.http.get` |
 | 6 | 通知：life-fun 用闹钟加通知；media-ai 的视频任务用前台服务通知 | 公共层只做一个通知封装；长任务走前台服务，提醒类走闹钟，互不替代 |
+| 7 | media-ai 把 provider 链写成 `xnnpack → cpu` | 实测 sherpa 自带的 ORT 没有 XNNPACK，只有 NNAPI 与 CPU，NNAPI 无收益。改为启动时用 `GetAvailableProviders` 探测，实际就是 CPU，默认 4 线程，低电量或后台降到 2 |
 
 另有几处入口要对齐：打字板与手持弹幕同页两种模式；随机数与"做个决定、抛硬币、掷骰子"共用抽签引擎；文本类的 `native.clipboard.write` 增加 `sensitive: true`（给密码生成器和加解密用）。
 
 ## 四、待拍板
 
 ### A. 阻塞级（已定，2026-10-13 用户确认）
-1. **bridge 通道升级为 androidx.webkit 的 `WebMessageListener`**（可限定来源，支持 ArrayBuffer 二进制），取代 `@JavascriptInterface`。落地前先在真机做 spike 验证 ArrayBuffer 消息可用与吞吐；若某些 WebView 不支持，按基础设施文档的 base64 分块兜底。
+1. **bridge 通道升级为 androidx.webkit 的 `WebMessageListener`**（可限定来源），取代 `@JavascriptInterface`。spike 已验证：JSON 通道可行，来源限制有效；但测试机（华为 WebView Chromium 114）**不支持 ArrayBuffer 消息**，所以二进制走"字符串帧 + base64 兜底 + 大文件回环 HTTP"，ArrayBuffer 只作探测到才启用的加速，详见基础设施文档第一节。
 2. **加 INTERNET 权限**。出站策略选定折中方案：联网以原生为主，页面只对少数支持 CORS 的白名单接口（汇率）直接请求，其余域一律在 `shouldInterceptRequest` 和 CSP 里拦掉。
 
 ### B. 不反对就按默认执行

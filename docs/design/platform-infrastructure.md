@@ -24,12 +24,26 @@ summary: 六份工具设计共同依赖的底层能力：bridge 协议 v2、统�
 | 页面可读 URL | 用 WebViewAssetLoader 的 PathHandler 暴露只读路径：缓存产物 `/files/cache/**`（支持 Range，视频预览要用）、数据包 `/files/packs/**` | 页面直接用 `<img>`、`<video>`、`fetch` 读 |
 
 ### 二进制上传（页面 → 原生）
-推荐方案（**待 spike 验证**）：通道换成 `WebMessageListener`，页面直接 `postMessage(ArrayBuffer)`。
-1. 页面调用 `native.file.openWrite { name, mime, size }`，拿到 `{ handle }`。
-2. 页面分块发二进制帧，每块约 1MB，帧头 8 字节：`handle(4) + seq(4)`，原生按序追加到缓存文件。
-3. 页面调用 `native.file.closeWrite { handle }`，得到 `{ path, size }`。
+**spike 实测结论（真机 STG-AL00，华为 WebView Chromium 114，详见 [spike 报告](../research/spike-webmessage-arraybuffer.md)）：`WebMessageListener` 作 JSON 通道可行，但这台机器不支持 ArrayBuffer 消息（`WEB_MESSAGE_ARRAY_BUFFER` 为 false），不能把 ArrayBuffer 当协议前提。**
 
-兜底：WebView 不支持 ArrayBuffer 消息的设备，退化成 JSON 里的 base64 分块（每块约 192KB），慢但能用。测试机 STG-AL00 是 Android 12，WebView 版本要实测。
+按文件大小分三档：
+
+| 档位 | 方式 | 实测吞吐 | 说明 |
+|---|---|---|---|
+| 小到中（几十 MB 内） | 分块发"字符串帧"：每块约 1MB，每个字符对应一个字节（latin1），帧头带 `handle` 与 `seq` | 约 21 MB/s | 64KB 到 50MB 五个尺寸 sha256 全部一致、无乱序 |
+| 同上，支持 ArrayBuffer 的设备 | 原生探测到 `WEB_MESSAGE_ARRAY_BUFFER` 为 true 时改发 ArrayBuffer 帧 | 未实测（本机不支持） | 只作可选加速，用前必须探测 |
+| 兜底 | JSON 里放 base64 分块，每块约 192KB，流水线发送 | 约 14 MB/s（串行等回包仅 4~7 MB/s） | 慢但最通用 |
+| 大（几十 MB 以上） | 回环 HTTP：App 内只绑 `127.0.0.1` 的小服务，页面 `fetch(POST, body=Blob)` | 约 88~91 MB/s，渲染进程内存基本不涨 | 需要 INTERNET（已确认加）、network security config 只放行 `127.0.0.1` 的明文、一次性随机 token；或改用 `pick` 返回的不透明句柄让原生直接读 |
+
+流程不变：`native.file.openWrite { name, mime, size }` 拿 `{ handle }` → 分块发帧 → `native.file.closeWrite { handle }` 得 `{ path, size }`。
+
+**必须遵守的约束**
+- **探测以原生为准**：新增 `native.hello`，返回 `binary` 能力字段（是否支持 ArrayBuffer）。页面只能按它选择帧类型。
+- **页面不探测就发 ArrayBuffer 会让整个 App 进程崩溃**（异常抛在 androidx 适配层，try/catch 接不住）。再加一层保险：用 `addDocumentStartJavaScript` 在页面侧挡掉非字符串消息，已验证有效。
+- 国内机型大概率有一批停在老 WebView 上，要用 `binary` 字段做埋点，看兜底路径的实际占比。
+- **分块是硬要求**：整块发送时，同一份 50MB 在渲染进程多占约 469MB、App 进程多占约 395MB（6~10 倍，随文件线性增长）；1MB 分块则内存近似恒定。引用传递在本机无法验证，跨进程至少要复制进 IPC 缓冲（推测），不指望它。
+- 几十 MB 以上别硬走消息通道，走回环 HTTP 或不透明句柄。
+- `shouldInterceptRequest` 看不到 POST body，也没有 Content-Length，不能靠拦截器收上传。
 
 ## 二、统一方法表
 
@@ -64,7 +78,9 @@ summary: 六份工具设计共同依赖的底层能力：bridge 协议 v2、统�
   - **页面直接请求**：只放行少数**明确支持 CORS** 的 JSON 接口，目前只有汇率（Frankfurter 为主、ExchangeRate-API 为备）；落地前要逐个实测 CORS 头，不支持的退回原生。
   - 白名单写死在 CSP 和拦截规则里，改域名要发版。
   - JS 解释器所在的 Worker 单独加 `connect-src 'none'`，禁止出站。
-- **JS 解释器工具**：必须跑在 Web Worker 里，不能放 iframe。
+- **JS 解释器工具**：必须跑在 Web Worker 里，不能放 iframe。spike 实测：新通道的 `ArkliNative` 只注入主页面和 `srcdoc` iframe（`srcdoc` 继承父来源，所以也拿得到），`data:`、sandbox、跨源 frame 和 Worker 里都没有；旧的 `@JavascriptInterface` 方案会注入所有 frame（Worker 除外），跨源 frame 的调用确实到了原生。
+- **回环服务的安全**：只绑 `127.0.0.1`，每次上传一次性随机 token；network security config 只放行 `127.0.0.1` 明文，不全局放开；CSP 的 `connect-src` 要加上回环地址与端口。
+- **`SpikeActivity`**：spike 代码里的清单声明是 `exported=true`，正式代码里不得保留。
 - **路径**：原生方法收到的路径一律归一化，限制在缓存目录内；SAF 和大文件只用不透明句柄。
 - **明文 HTTP**：默认不放开；API 24 机型补根证书的 network security config 要单独评估。
 - **隐私政策**：联网工具（IPinfo、RDAP/WHOIS、汇率接口）要写明各自收到什么数据；加 INTERNET 后商店详情页会显示"完全的网络访问权限"。
@@ -104,8 +120,8 @@ summary: 六份工具设计共同依赖的底层能力：bridge 协议 v2、统�
 
 ## 八、实施顺序
 0. **两个 spike**（先做，结果决定后面怎么写）：
-   - WebMessageListener 加 ArrayBuffer 在真机上能否用，以及上传吞吐。
-   - Rust `ort` 与 sherpa 自带 ORT 1.28.2 的版本兼容，及其算子能否跑 OCR 模型。
+   - ~~WebMessageListener 加 ArrayBuffer 在真机上能否用，以及上传吞吐。~~ 已验证：有条件 GO，本机不支持 ArrayBuffer，见第一节与 [spike 报告](../research/spike-webmessage-arraybuffer.md)。在支持 ArrayBuffer 的设备上的吞吐与拷贝份数仍待补测。
+   - ~~Rust `ort` 与 sherpa 自带 ORT 1.28.2 的版本兼容，及其算子能否跑 OCR 模型。~~ 已验证 GO，见 [spike 报告](research/spike-ort-sherpa.md)。
 1. 协议 v2 核心：异步处理器、会话与订阅、取消、新错误码；web 侧 `bridge.ts` 同步升级；补上 `app/` 欠的单测。
 2. 文件相关：`pick`、`save`、`openWrite/closeWrite`、PathHandler。
 3. 系统能力：权限、分享、剪贴板、屏幕、触感、设置。

@@ -28,4 +28,6 @@
 ## 调研
 - [命名与技术选型调研](research/naming-and-stack.md) — 四种技术路线对比、候选名查重结论。active。
 - [开源库选型清单](research/open-source-libs.md) — 按工具类别的成熟开源库、许可证、体积、sherpa-onnx 与 NPU 结论。draft。
+- [Spike：WebMessageListener 与 ArrayBuffer 通道](research/spike-webmessage-arraybuffer.md) — 真机有条件 GO：不支持 ArrayBuffer，含吞吐、内存、来源限制。draft。
+- [Spike：ort 对接 sherpa 自带 ORT 与 OCR](research/spike-ort-sherpa.md) — 真机验证 GO，含耗时、内存、体积。draft。
 - [「一个木函」功能清单](research/woobx-feature-list.md) — 对标产品 116 项功能，按 11 类列出，含形态与置信度。draft。
