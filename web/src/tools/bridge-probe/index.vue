@@ -1,11 +1,12 @@
 <script setup lang="ts">
-// Bridge 探针：调用 native.ping 与 rust.core.version，展示结果或错误
+// Bridge 探针：调用 native.hello、native.ping 与 rust.core.version，展示结果或错误
 import { onMounted, ref } from 'vue'
 import { call } from '@/native/bridge'
 import type { BridgeError } from '@/native/protocol'
+import { formatError } from './format-error'
 
 /** 探测的方法列表 */
-const METHODS = ['native.ping', 'rust.core.version']
+const METHODS = ['native.hello', 'native.ping', 'rust.core.version']
 
 /** 单个方法的探测状态 */
 interface ProbeItem {
@@ -21,17 +22,6 @@ interface ProbeItem {
 const items = ref<ProbeItem[]>([])
 /** 是否在 Arkli 容器内（浏览器调试时为 false） */
 const inContainer = ref(true)
-
-/**
- * 把未知错误转成可读文本。
- *
- * @param e 捕获到的错误
- * @returns 形如 `CODE: message` 的文本
- */
-function formatError(e: unknown): string {
-  const err = e as Partial<BridgeError>
-  return err && err.code ? `${err.code}: ${err.message ?? ''}` : String(e)
-}
 
 /** 依次探测所有方法并更新展示 */
 async function run(): Promise<void> {
