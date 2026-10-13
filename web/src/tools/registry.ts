@@ -27,6 +27,7 @@ export const tools: ToolMeta[] = [
   { id: 'unit-convert', name: '单位换算', description: '长度、面积、质量、温度等 13 类单位换算', load: () => import('./unit-convert/index.vue') },
   { id: 'time-calc', name: '时间计算器', description: '时分秒加减、时间差与时长换算', load: () => import('./time-calc/index.vue') },
   { id: 'date-calc', name: '日期计算器', description: '日期间隔与日期加减推算', load: () => import('./date-calc/index.vue') },
+  { id: 'lunar-convert', name: '阳历/阴历互转', description: '阳历与农历互转，含干支、生肖、节气', load: () => import('./lunar-convert/index.vue') },
   { id: 'kinship', name: '亲戚关系计算器', description: '拼出关系链，算出该怎么称呼', load: () => import('./kinship/index.vue') },
   { id: 'coin-flip', name: '抛硬币', description: '正反面随机，可连抛并统计', load: () => import('./coin-flip/index.vue') },
   { id: 'dice', name: '掷骰子', description: '1~10 颗骰子，4~100 面可选', load: () => import('./dice/index.vue') },
