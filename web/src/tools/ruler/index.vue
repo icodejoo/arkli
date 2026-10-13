@@ -55,7 +55,7 @@ const LABEL_ROTATE = Math.PI / 2
 /** 数字标签离两端的最小距离（像素），避免被裁掉 */
 const LABEL_MARGIN = 8
 /** 游标线比数字带再多伸出去的一点（像素） */
-const LINE_OVERSHOOT = 4
+const LINE_OVERSHOOT = 8
 /** 游标线与标记线的长度：从屏幕边缘画过整个数字带，再多伸出一点点 */
 const LINE_LEN = TICK_LEN.major + LABEL_OFFSET + LABEL_FONT / 2 + LINE_OVERSHOOT
 /** 读数小字离屏幕边缘的距离：紧挨着线的外端，放在空白带里 */
