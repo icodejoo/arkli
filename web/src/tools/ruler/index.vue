@@ -1,30 +1,49 @@
 <script setup lang="ts">
-// 尺子：App 固定竖屏，尺子竖着贴在屏幕长边（左或右），Canvas 画刻度，靠实物（银行卡/硬币/自定义长度）校准像素与毫米的比例
+// 尺子：App 固定竖屏，尺子竖着贴在屏幕长边（左或右），Canvas 画刻度，靠实物（银行卡/硬币/自定义长度）校准像素与毫米的比例。
+// 另有一条可上下拖动的游标，实时预览读数，并可在游标处打下任意多条彩色标记。
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { showToast } from 'vant'
 import {
   buildTicks,
   CARD_MM,
+  clampPos,
   COIN_MM,
   DEFAULT_PX_PER_MM,
   formatLength,
+  formatReading,
+  formatReadingAlt,
   isValidScale,
   loadScale,
+  MARK_COLORS,
+  mmToPx,
+  pxToMm,
   saveScale,
   scaleFromCalibration,
+  STEP_MM,
   STORAGE_PREFIX,
   SCALE_KEY,
+  type RulerMark,
   type RulerUnit,
 } from './logic'
 
 /** 尺子画布的短边（像素），即尺子的厚度 */
 const THICKNESS = 84
+/** 游标线和标记线伸出尺子、延伸到页面里的长度（像素），读数标签放在这一段 */
+const LINE_EXTENSION = 96
 /** 尺子与页面内容之间的留白（像素） */
 const GAP = 8
 /** 各级刻度线长度（像素） */
 const TICK_LEN = { major: 36, half: 24, minor: 14 } as const
 /** 校准线最短像素 */
 const MIN_CAL_PX = 20
+/** 游标的初始位置（像素，离零点） */
+const CURSOR_INIT_PX = 120
+/** 量不到顶栏时的兜底高度（像素），与 Vant 导航栏默认高度一致 */
+const HEADER_FALLBACK = 46
+/** 顶栏选择器：尺子要从它的下沿开始，不盖住顶栏 */
+const HEADER_SELECTOR = '.van-nav-bar'
+/** 校准线两端小竖线的半长（像素） */
+const CAL_CAP = 8
 /** 刻度数字离刻度线的偏移（像素） */
 const LABEL_OFFSET = 12
 /** 刻度数字的旋转角（弧度）：靠右顺时针 90°，靠左逆时针 90° */
@@ -33,12 +52,6 @@ const LABEL_ROTATE = Math.PI / 2
 const LABEL_MARGIN = 8
 /** 校准线距尺子基线（贴屏幕边缘的那一边）的距离（像素） */
 const CAL_LINE_OFFSET = THICKNESS - 18
-/** 量不到顶栏时的兜底高度（像素），与 Vant 导航栏默认高度一致 */
-const HEADER_FALLBACK = 46
-/** 顶栏选择器：尺子要从它的下沿开始，不盖住顶栏 */
-const HEADER_SELECTOR = '.van-nav-bar'
-/** 校准线两端小竖线的半长（像素） */
-const CAL_CAP = 8
 /** 尺面底色的不透明度 */
 const SURFACE_ALPHA = 0.92
 /** 参照物类型 */
@@ -78,6 +91,17 @@ const calPx = ref(200)
 /** 画布 */
 const canvasRef = ref<HTMLCanvasElement>()
 
+/** 游标位置：离尺子零点的像素距离 */
+const cursorPx = ref(CURSOR_INIT_PX)
+/** 当前选中的标记颜色 */
+const markColor = ref<string>(MARK_COLORS[0].value)
+/** 已打下的标记，不限数量 */
+const marks = ref<RulerMark[]>([])
+/** 标记编号自增序号 */
+let markSeq = 0
+/** 是否正在拖动游标 */
+let dragging = false
+
 /** 参照物实际长度（毫米），自定义不合法时为 0 */
 const refMm = computed(() => (refKind.value === 'card' ? CARD_MM : refKind.value === 'coin' ? COIN_MM : Number(customMm.value) || 0))
 /** 校准线是否能放进当前尺子（按当前比例估算） */
@@ -106,6 +130,19 @@ const pageStyle = computed(() => {
   const pad = `${THICKNESS + GAP}px`
   return side.value === 'right' ? { paddingRight: pad } : { paddingLeft: pad }
 })
+
+/** 游标当前离零点的毫米数 */
+const cursorMm = computed(() => pxToMm(cursorPx.value, scale.value))
+/** 预览区的主读数 */
+const previewMain = computed(() => formatReading(cursorMm.value, unit.value))
+/** 预览区的辅助读数 */
+const previewAlt = computed(() => formatReadingAlt(cursorMm.value, unit.value))
+/** 带像素位置与读数文本的标记，位置随校准比例换算，超出尺子的不画 */
+const markViews = computed(() =>
+  marks.value
+    .map((m) => ({ ...m, px: mmToPx(m.mm, scale.value), text: formatReading(m.mm, unit.value) }))
+    .filter((m) => m.px >= 0 && m.px <= along.value),
+)
 
 /** 读 CSS 变量，读不到用兜底色 */
 function cssColor(name: string, fallback: string): string {
@@ -239,8 +276,66 @@ function resetCalibrate(): void {
   showToast('已清除校准')
 }
 
+/** 把游标移到手指所在的位置（clientY 减去尺子顶端即离零点的距离） */
+function moveCursorTo(clientY: number): void {
+  cursorPx.value = clampPos(clientY - topOffset.value, along.value)
+}
+
+/** 手指或鼠标按下：开始拖动，并立即把游标跳到按下的位置 */
+function onPointerDown(e: PointerEvent): void {
+  dragging = true
+  try {
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+  } catch {
+    // 指针号无效（如合成事件）时不捕获，拖动仍按事件坐标工作
+  }
+  moveCursorTo(e.clientY)
+}
+
+/** 拖动中：游标跟手 */
+function onPointerMove(e: PointerEvent): void {
+  if (dragging) moveCursorTo(e.clientY)
+}
+
+/** 抬手或被系统打断：结束拖动 */
+function onPointerUp(e: PointerEvent): void {
+  dragging = false
+  try {
+    ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
+  } catch {
+    // 没捕获过就没有可释放的，忽略
+  }
+}
+
+/**
+ * 微调游标，每次一个固定步长，手指拖不准时用。
+ *
+ * @param dir 方向：-1 往零点方向，1 往远离零点方向
+ */
+function nudge(dir: -1 | 1): void {
+  cursorPx.value = clampPos(cursorPx.value + mmToPx(dir * STEP_MM, scale.value), along.value)
+}
+
+/** 在游标当前位置打一条选中颜色的标记，数量不限制 */
+function addMark(): void {
+  marks.value.push({ id: ++markSeq, mm: cursorMm.value, color: markColor.value })
+}
+
+/** 删除一条标记 */
+function removeMark(id: number): void {
+  marks.value = marks.value.filter((m) => m.id !== id)
+}
+
+/** 清空全部标记 */
+function clearMarks(): void {
+  marks.value = []
+}
+
 watch([unit, side, savedScale, calibrating, calPx, refKind, customMm], redraw)
 watch(refKind, syncCalPx)
+watch(along, (v) => {
+  cursorPx.value = clampPos(cursorPx.value, v)
+})
 
 /** 窗口尺寸变化与深浅色切换时重画 */
 function onResize(): void {
@@ -265,10 +360,79 @@ onUnmounted(() => {
 
 <template>
   <div class="tool-page" :style="pageStyle">
-    <!-- 尺子悬浮在页面之上，贴着屏幕左或右边缘，从顶栏下沿铺到底；不拦截点击 -->
-    <canvas ref="canvasRef" class="ruler-canvas" :style="rulerStyle" aria-hidden="true" />
+    <!-- 尺子悬浮在页面之上，贴着屏幕左或右边缘，从顶栏下沿铺到底；只有触摸层接收操作 -->
+    <div class="ruler-box" :class="`ruler-box--${side}`" :style="rulerStyle">
+      <canvas ref="canvasRef" class="ruler-canvas" aria-hidden="true" />
+      <div
+        v-for="m in markViews"
+        :key="m.id"
+        class="ruler-line"
+        :style="{ top: `${m.px}px`, background: m.color, '--line-ext': `${LINE_EXTENSION}px` }"
+      >
+        <span class="ruler-line__tag" :style="{ color: m.color }">{{ m.text }}</span>
+      </div>
+      <div class="ruler-line ruler-line--cursor" :style="{ top: `${cursorPx}px`, '--line-ext': `${LINE_EXTENSION}px` }">
+        <span class="ruler-line__tag ruler-line__tag--cursor">{{ previewMain }}</span>
+        <i class="ruler-line__knob" />
+      </div>
+      <div
+        class="ruler-touch"
+        role="slider"
+        aria-label="游标"
+        :aria-valuenow="Math.round(cursorMm * 10) / 10"
+        @pointerdown="onPointerDown"
+        @pointermove="onPointerMove"
+        @pointerup="onPointerUp"
+        @pointercancel="onPointerUp"
+      />
+    </div>
 
     <div v-if="!savedScale" class="tool-hint ruler-warn">未校准，刻度仅供参考。拿银行卡或硬币校准一次就准了。</div>
+
+    <div class="tool-card">
+      <h3 class="tool-card__title">游标读数</h3>
+      <p class="ruler-preview">{{ previewMain }}</p>
+      <p class="tool-hint ruler-preview-alt">{{ previewAlt }}</p>
+      <p class="tool-hint">在尺子上按住上下拖动游标；拖不准就用下面两个按钮微调。</p>
+      <div class="tool-actions">
+        <van-button size="small" @click="nudge(-1)">往上 0.1 mm</van-button>
+        <van-button size="small" @click="nudge(1)">往下 0.1 mm</van-button>
+      </div>
+    </div>
+
+    <div class="tool-card">
+      <h3 class="tool-card__title">标记</h3>
+      <div class="ruler-swatches" role="radiogroup" aria-label="标记颜色">
+        <button
+          v-for="c in MARK_COLORS"
+          :key="c.value"
+          type="button"
+          class="ruler-swatch"
+          :class="{ 'ruler-swatch--on': markColor === c.value }"
+          :style="{ background: c.value }"
+          role="radio"
+          :aria-checked="markColor === c.value"
+          :aria-label="c.name"
+          @click="markColor = c.value"
+        />
+      </div>
+      <div class="tool-actions ruler-gap">
+        <van-button type="primary" size="small" @click="addMark">标记</van-button>
+        <van-button size="small" :disabled="!marks.length" @click="clearMarks">清除标记</van-button>
+      </div>
+      <van-cell-group v-if="marks.length" :border="false" class="ruler-gap">
+        <van-cell v-for="m in marks" :key="m.id" center>
+          <template #title>
+            <span class="ruler-dot" :style="{ background: m.color }" />
+            <span>{{ formatReading(m.mm, unit) }}</span>
+          </template>
+          <template #right-icon>
+            <van-icon name="cross" class="ruler-del" aria-label="删除这条标记" @click="removeMark(m.id)" />
+          </template>
+        </van-cell>
+      </van-cell-group>
+      <p v-else class="tool-hint ruler-gap">点"标记"会在游标当前位置留下一条选中颜色的线，并标出读数，可以连续标记。</p>
+    </div>
 
     <div class="tool-card">
       <h3 class="tool-card__title">怎么用</h3>
@@ -321,12 +485,145 @@ onUnmounted(() => {
 </template>
 
 <style lang="scss" scoped>
-/* 尺子画布：固定在视口长边，盖过顶栏；不拦截点击，下面的控件照常可点 */
-.ruler-canvas {
+/* 尺子容器：固定在视口边缘，盖过页面；自己不拦截点击，只有触摸层接收操作 */
+.ruler-box {
   position: fixed;
   z-index: 100;
-  display: block;
   pointer-events: none;
+}
+
+/* 画布铺满容器 */
+.ruler-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+}
+
+/* 游标线与标记线：横穿尺子，并向页面一侧伸出一段放读数 */
+.ruler-line {
+  position: absolute;
+  height: 2px;
+  margin-top: -1px;
+  pointer-events: none;
+
+  &--cursor {
+    background: var(--c-text);
+  }
+
+  &__tag {
+    position: absolute;
+    bottom: 4px;
+    padding: 0 4px;
+    border-radius: 4px;
+    background: var(--c-surface);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 18px;
+    white-space: nowrap;
+
+    &--cursor {
+      color: var(--c-text);
+    }
+  }
+
+  /* 拖动把手：一个小圆点，提示这里可以抓 */
+  &__knob {
+    position: absolute;
+    top: -5px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--c-text);
+  }
+}
+
+/* 靠右：线向左伸出，标签与把手在伸出段的左端 */
+.ruler-box--right .ruler-line {
+  right: 0;
+  left: calc(var(--line-ext) * -1);
+
+  &__tag {
+    left: 4px;
+  }
+
+  &__knob {
+    left: -6px;
+  }
+}
+
+/* 靠左：线向右伸出，标签与把手在伸出段的右端 */
+.ruler-box--left .ruler-line {
+  left: 0;
+  right: calc(var(--line-ext) * -1);
+
+  &__tag {
+    right: 4px;
+  }
+
+  &__knob {
+    right: -6px;
+  }
+}
+
+/* 触摸层：只盖住尺子本身，禁掉浏览器的手势，才能顺畅地上下拖 */
+.ruler-touch {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+/* 预览区的大数字 */
+.ruler-preview {
+  margin: 0;
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--c-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.ruler-preview-alt {
+  margin: $space-1 0 $space-2;
+}
+
+/* 标记颜色选项 */
+.ruler-swatches {
+  display: flex;
+  gap: $space-3;
+}
+
+.ruler-swatch {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--c-surface) inset;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+
+  &--on {
+    border-color: var(--c-text);
+  }
+}
+
+/* 标记列表里的色点 */
+.ruler-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: $space-2;
+  border-radius: 50%;
+}
+
+.ruler-del {
+  padding: $space-1;
+  color: var(--c-text-muted);
 }
 
 /* 未校准提示：警示色底 */

@@ -145,3 +145,88 @@ export function saveScale(storage: KvStorage | undefined, scale: number): boolea
     return false
   }
 }
+
+/** 游标微调的步长，单位毫米 */
+export const STEP_MM = 0.1
+/** 每毫米对应的厘米数的倒数：10 毫米 = 1 厘米 */
+const MM_PER_CM = 10
+/** 标记颜色可选项：属于内容色，不随主题变，深浅色下都要看得清 */
+export const MARK_COLORS = [
+  { name: '红', value: '#e5484d' },
+  { name: '橙', value: '#f08c00' },
+  { name: '绿', value: '#2f9e44' },
+  { name: '蓝', value: '#3b6cf6' },
+  { name: '紫', value: '#9c36b5' },
+] as const
+
+/** 一条标记：位置按毫米存，改单位或重新校准后仍然对得上 */
+export interface RulerMark {
+  /** 标记编号，用于列表渲染与删除 */
+  id: number
+  /** 离零点的距离，单位毫米 */
+  mm: number
+  /** 线与读数的颜色 */
+  color: string
+}
+
+/**
+ * 像素距离换算成毫米。
+ *
+ * @param px 像素距离
+ * @param pxPerMm 像素/毫米比例
+ * @returns 毫米；比例非法时为 0
+ * @example pxToMm(96, 96 / 25.4) // 25.4
+ */
+export function pxToMm(px: number, pxPerMm: number): number {
+  return isValidScale(pxPerMm) ? px / pxPerMm : 0
+}
+
+/**
+ * 毫米换算成像素距离。
+ *
+ * @param mm 毫米
+ * @param pxPerMm 像素/毫米比例
+ * @returns 像素；比例非法时为 0
+ * @example mmToPx(25.4, 96 / 25.4) // 96
+ */
+export function mmToPx(mm: number, pxPerMm: number): number {
+  return isValidScale(pxPerMm) ? mm * pxPerMm : 0
+}
+
+/**
+ * 把游标位置限制在尺子范围内。
+ *
+ * @param px 想要的位置（像素）
+ * @param max 尺子长度（像素）
+ * @returns 落在 [0, max] 内的位置；输入不是有限数字时为 0
+ * @example clampPos(-5, 600) // 0
+ */
+export function clampPos(px: number, max: number): number {
+  if (!Number.isFinite(px)) return 0
+  return Math.max(0, Math.min(Math.max(0, max), px))
+}
+
+/**
+ * 游标读数的主显示：厘米档显示厘米（两位小数，即 0.1 毫米精度），英寸档显示英寸。
+ *
+ * @param mm 毫米
+ * @param unit 当前单位
+ * @returns 如 `5.37 cm`、`2.11 in`
+ * @example formatReading(53.7, 'cm') // '5.37 cm'
+ */
+export function formatReading(mm: number, unit: RulerUnit): string {
+  return unit === 'cm' ? `${(mm / MM_PER_CM).toFixed(2)} cm` : `${(mm / MM_PER_INCH).toFixed(2)} in`
+}
+
+/**
+ * 游标读数的辅助显示：厘米档附带英寸，英寸档附带毫米，方便对照。
+ *
+ * @param mm 毫米
+ * @param unit 当前单位
+ * @returns 如 `53.7 mm · 2.11 in`、`53.7 mm`
+ * @example formatReadingAlt(25.4, 'inch') // '25.4 mm'
+ */
+export function formatReadingAlt(mm: number, unit: RulerUnit): string {
+  const mmText = `${mm.toFixed(1)} mm`
+  return unit === 'cm' ? `${mmText} · ${(mm / MM_PER_INCH).toFixed(2)} in` : mmText
+}

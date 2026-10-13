@@ -1,5 +1,21 @@
 import { describe, expect, it } from 'vitest'
-import { buildTicks, CARD_MM, DEFAULT_PX_PER_MM, formatLength, loadScale, saveScale, scaleFromCalibration, type KvStorage } from './logic'
+import {
+  buildTicks,
+  CARD_MM,
+  clampPos,
+  DEFAULT_PX_PER_MM,
+  formatLength,
+  formatReading,
+  formatReadingAlt,
+  loadScale,
+  MARK_COLORS,
+  mmToPx,
+  pxToMm,
+  saveScale,
+  scaleFromCalibration,
+  STEP_MM,
+  type KvStorage,
+} from './logic'
 
 /** 内存版存储 */
 function memStore(init: Record<string, string> = {}): KvStorage {
@@ -76,5 +92,44 @@ describe('存取校准比例', () => {
     expect(loadScale(bad)).toBeNull()
     expect(saveScale(bad, 4)).toBe(false)
     expect(saveScale(memStore(), -1)).toBe(false)
+  })
+})
+
+describe('游标换算', () => {
+  it('像素与毫米互转，往返一致', () => {
+    expect(pxToMm(96, DEFAULT_PX_PER_MM)).toBeCloseTo(25.4, 6)
+    expect(mmToPx(25.4, DEFAULT_PX_PER_MM)).toBeCloseTo(96, 6)
+    expect(mmToPx(pxToMm(123.4, 4.2), 4.2)).toBeCloseTo(123.4, 9)
+  })
+
+  it('比例非法时换算为 0，不出 NaN 或 Infinity', () => {
+    expect(pxToMm(100, 0)).toBe(0)
+    expect(mmToPx(10, NaN)).toBe(0)
+  })
+
+  it('游标限幅：负数到 0，超长到尺长，非数字到 0', () => {
+    expect(clampPos(-5, 600)).toBe(0)
+    expect(clampPos(300, 600)).toBe(300)
+    expect(clampPos(900, 600)).toBe(600)
+    expect(clampPos(NaN, 600)).toBe(0)
+    expect(clampPos(10, -3)).toBe(0)
+  })
+
+  it('读数格式：厘米档主显厘米、英寸档主显英寸', () => {
+    expect(formatReading(53.7, 'cm')).toBe('5.37 cm')
+    expect(formatReading(25.4, 'inch')).toBe('1.00 in')
+    expect(formatReading(0, 'cm')).toBe('0.00 cm')
+  })
+
+  it('辅助读数：厘米档带毫米与英寸，英寸档带毫米', () => {
+    expect(formatReadingAlt(25.4, 'cm')).toBe('25.4 mm · 1.00 in')
+    expect(formatReadingAlt(25.4, 'inch')).toBe('25.4 mm')
+  })
+
+  it('步长与颜色选项合理', () => {
+    expect(STEP_MM).toBeGreaterThan(0)
+    expect(MARK_COLORS.length).toBeGreaterThanOrEqual(3)
+    expect(new Set(MARK_COLORS.map((c) => c.value)).size).toBe(MARK_COLORS.length)
+    for (const c of MARK_COLORS) expect(c.value).toMatch(/^#[0-9a-f]{6}$/)
   })
 })
