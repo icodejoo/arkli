@@ -35,12 +35,21 @@ private const val METHOD_SLEEP = "native.debug.sleep"
 /** 调试用持续推事件的方法名 */
 private const val METHOD_TICKER = "native.debug.ticker"
 
+/** 网络测试：白名单接口（应成功） */
+private const val NET_URL_WIKI = "https://api.wikimedia.org/feed/v1/wikipedia/zh/onthisday/events/09/17"
+
+/** 网络测试：非白名单域名（应被拦） */
+private const val NET_URL_EXAMPLE = "https://example.com/"
+
+/** 网络测试：白名单域名的明文版本（应被拦） */
+private const val NET_URL_PLAIN = "http://api.wikimedia.org/feed/v1/wikipedia/zh/onthisday/events/09/17"
+
 /**
  * 仅调试用：借 ContentProvider 在进程启动时注册调试广播，用于真机验证渲染进程崩溃重建等场景。
  * 只在 debug 源集，release 包不含。通过反射读取主代码里的私有字段，不改动主代码。
  *
  * 触发示例：`adb shell am broadcast -a com.let188.arkli.debug.CMD --es cmd crash`
- * 命令：crash / hello / ping / sleep(--ei ms) / ticker / cancel(--es id) / state，
+ * 命令：nettest / crash / hello / ping / sleep(--ei ms) / ticker / cancel(--es id) / state，
  * 文件类见 [DebugFileCommands]：filepick(--es mime --ez multiple) / filesave / writetest(--ei mb --es enc) / writeopen / rangetest / listcache
  */
 class DebugHooksProvider : ContentProvider() {
@@ -82,6 +91,18 @@ class DebugHooksProvider : ContentProvider() {
         else ctx.registerReceiver(receiver, filter)
         Log.i(TAG, "调试钩子已就绪")
         return true
+    }
+
+    /**
+     * 让页面分别 fetch 白名单接口、非白名单域名与明文白名单域名，结果以 `DBGNET` 前缀输出到 console（logcat 的 chromium tag）。
+     * 预期：wikimedia 成功且含 1894；example.com 与 http 版均失败。
+     */
+    private fun netTest(wv: WebView) {
+        val js = "(function(){var t=function(n,u){fetch(u).then(function(r){return r.text().then(function(b){" +
+            "console.log('DBGNET '+n+' status='+r.status+' len='+b.length+' has1894='+(b.indexOf('1894')>=0))})})" +
+            ".catch(function(e){console.log('DBGNET '+n+' FAIL '+e)})};" +
+            "t('wiki','$NET_URL_WIKI');t('example','$NET_URL_EXAMPLE');t('plain','$NET_URL_PLAIN')})()"
+        wv.evaluateJavascript(js, null)
     }
 
     /** 反射取字段值 */
@@ -147,6 +168,7 @@ class DebugHooksProvider : ContentProvider() {
                 cmd, wv.context, wv, i.getStringExtra("mime"), i.getBooleanExtra("multiple", false),
                 i.getIntExtra("mb", 6), i.getStringExtra("enc") ?: "latin1",
             ) { method, params -> send(wv, method, params) }
+            "nettest" -> netTest(wv)
             "state" -> Log.i(TAG, "state url=${wv.url} pid=${android.os.Process.myPid()} session=${bridge()?.session}")
         }
     }

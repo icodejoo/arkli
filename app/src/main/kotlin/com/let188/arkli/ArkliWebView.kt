@@ -23,6 +23,9 @@ import com.let188.arkli.bridge.BridgeSessions
 import com.let188.arkli.bridge.ReplyIo
 import com.let188.arkli.files.FileEnv
 import com.let188.arkli.files.FileModule
+import com.let188.arkli.net.NetPolicy
+import com.let188.arkli.net.NetVerdict
+import java.io.ByteArrayInputStream
 import org.json.JSONObject
 
 /** 应用内虚拟域名，WebView 只允许加载这个域 */
@@ -36,6 +39,19 @@ private const val ALLOWED_ORIGIN = "https://$ASSET_HOST"
 
 /** 日志 tag */
 private const val LOG_TAG = "ArkliBridge"
+
+/** 拦截响应的 HTTP 状态码 */
+private const val HTTP_FORBIDDEN = 403
+
+/** HTML 的 MIME，只有文档响应才需要 CSP 头 */
+private const val MIME_HTML = "text/html"
+
+/** 给 HTML 文档响应补上 CSP 头，其它资源原样返回 */
+private fun WebResourceResponse.withCsp(): WebResourceResponse {
+    if (mimeType != MIME_HTML) return this
+    responseHeaders = (responseHeaders ?: emptyMap()) + (NetPolicy.CSP_HEADER to NetPolicy.contentSecurityPolicy())
+    return this
+}
 
 /**
  * 页面侧守卫脚本：不支持 ArrayBuffer 的 WebView 上，页面一旦发非字符串消息会让 App 进程崩溃，
@@ -94,9 +110,20 @@ class ArkliPage(context: Context, private val files: FileEnv, private val onRend
         }
 
         webView.webViewClient = object : WebViewClient() {
-            /** `/files/` 前缀由 [FileEnv.server] 响应（支持 Range），其余交给 loader，命中 appassets 域才有响应 */
+            /**
+             * appassets 域：`/files/` 前缀由 [FileEnv.server] 响应（支持 Range），其余交给 loader，HTML 加 CSP 头；
+             * 白名单出站返回 null 让 WebView 自己发（CORS 由浏览器处理）；其余一律 403 并记日志。
+             */
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? =
-                files.server.intercept(request) ?: loader.shouldInterceptRequest(request.url)
+                when (NetPolicy.classify(request.url.toString(), ASSET_HOST)) {
+                    NetVerdict.APP ->
+                        (files.server.intercept(request) ?: loader.shouldInterceptRequest(request.url))?.withCsp()
+                    NetVerdict.ALLOW -> null
+                    NetVerdict.BLOCK -> {
+                        Log.w(LOG_TAG, "拦截出站请求 ${NetPolicy.redact(request.url.toString())}")
+                        WebResourceResponse("text/plain", "utf-8", HTTP_FORBIDDEN, "Forbidden", emptyMap(), ByteArrayInputStream(ByteArray(0)))
+                    }
+                }
 
             /** 非 appassets 域的导航一律拦截 */
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =

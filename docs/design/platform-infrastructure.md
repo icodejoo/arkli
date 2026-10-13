@@ -77,6 +77,15 @@ summary: 六份工具设计共同依赖的底层能力：bridge 协议 v2、统�
   - **走原生**（`native.net.*`、`native.pack.*`）：ping、DNS、端口、Whois、任意网址请求（网址探查、网页源码、短链还原）、模型与数据包下载。浏览器做不了或会被跨域拦住。
   - **页面直接请求**：只放行少数**明确支持 CORS** 的 JSON 接口，目前只有汇率（Frankfurter 为主、ExchangeRate-API 为备）；落地前要逐个实测 CORS 头，不支持的退回原生。
   - 白名单写死在 CSP 和拦截规则里，改域名要发版。
+  - **已实现（待办 4 最小切片，2026-10-13）**：
+    - 白名单单一事实来源是 `net/NetPolicy.kt` 的 `ALLOWED_HOSTS`，目前只有 `api.wikimedia.org`（历史上的今天，实测 `access-control-allow-origin: *`）。判定为精确主机名匹配（忽略大小写）：必须 https、无 userinfo、端口缺省或 443；子域伪装、`@` 技巧、IP 字面量、punycode、尾点主机均拒绝，有单测。
+    - 拦截规则（`shouldInterceptRequest`）：appassets 域 https 走原有 `/files/` 接管与 loader；命中白名单返回 null，让 WebView 自己发，CORS 由浏览器处理；其余返回空 403 并记 warn 日志（只含协议、主机、路径，不含查询串）。`shouldOverrideUrlLoading` 仍只允许 appassets 域。
+    - CSP：只给 appassets 域的 HTML 响应加头，由 `NetPolicy.contentSecurityPolicy()` 生成：`default-src 'self'; connect-src 'self' https://api.wikimedia.org; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; frame-src 'none'; object-src 'none'; base-uri 'self'`。
+    - 首帧暗色脚本由内联改为外置 `web/public/theme-init.js`（`script-src 'self'` 不允许内联脚本）。
+    - 清单加 `INTERNET`；主 App 用 `res/xml/network_security_config.xml`，全局 `cleartextTrafficPermitted=false`。spike 的 `spike_network_security_config.xml` 没有被任何清单引用，是遗留文件，发版前与 SpikeActivity 一起移除。
+    - debug 验证：广播 `--es cmd nettest`，结果在 logcat 的 `DBGNET` 行。
+  - **未实现**：`native.net.*`、`native.pack.*`、汇率接口、回环 HTTP（含 CSP 的回环地址）、Worker 的 `connect-src 'none'`。
+  - **已知噪音**：Vant 图标字体 CSS 里 data: woff2 之后还有一条 `at.alicdn.com` 的 woff 回退，会被 `font-src` 拒绝并在 console 报一条 CSP 违规，不影响显示（先用内嵌字体）。
   - JS 解释器所在的 Worker 单独加 `connect-src 'none'`，禁止出站。
 - **JS 解释器工具**：必须跑在 Web Worker 里，不能放 iframe。spike 实测：新通道的 `ArkliNative` 只注入主页面和 `srcdoc` iframe（`srcdoc` 继承父来源，所以也拿得到），`data:`、sandbox、跨源 frame 和 Worker 里都没有；旧的 `@JavascriptInterface` 方案会注入所有 frame（Worker 除外），跨源 frame 的调用确实到了原生。
 - **回环服务的安全**：只绑 `127.0.0.1`，每次上传一次性随机 token；network security config 只放行 `127.0.0.1` 明文，不全局放开；CSP 的 `connect-src` 要加上回环地址与端口。

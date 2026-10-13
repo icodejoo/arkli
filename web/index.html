@@ -5,12 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <meta name="color-scheme" content="light dark" />
     <link rel="icon" href="data:," />
-    <script>
-      // 首帧前按系统深浅色挂 Vant 暗色类，避免白屏闪一下
-      if (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) {
-        document.documentElement.classList.add('van-theme-dark')
-      }
-    </script>
+    <!-- 首帧前挂暗色类的脚本，外置以满足 CSP（源码在 public/theme-init.js） -->
+    <script src="/theme-init.js"></script>
     <title>Arkli</title>
   </head>
   <body>

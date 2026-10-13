@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 主 App：全局禁止明文 HTTP，只走 https。spike_network_security_config.xml 是 spike 遗留，未被引用，发版前整体移除 -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>
