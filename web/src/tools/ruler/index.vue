@@ -656,11 +656,7 @@ onUnmounted(() => {
     <van-popup v-model:show="compareOpen" position="bottom" round :style="{ height: '78%' }" safe-area-inset-bottom>
       <div class="cmp">
         <h3 class="tool-card__title cmp__title">标记间距</h3>
-        <template v-if="comparePair">
-          <p class="cmp__gap">{{ compareGapMain }}</p>
-          <p class="tool-hint cmp__alt">{{ compareGapAlt }}</p>
-        </template>
-        <p v-else class="tool-hint">点选两条标记，查看它们之间的间距（已选 {{ pickedIds.length }}/2）。再点已选的取消，选第三条会替换最早选的。</p>
+        <p class="tool-hint cmp__desc">点选两条标记，查看它们之间的间距。再点已选的取消，选第三条会替换最早选的。</p>
         <div class="cmp__scroll">
           <svg class="cmp__svg" :viewBox="`0 0 ${CMP_W} ${compareHeight}`" role="group" aria-label="标记列表，点选两条查看间距">
             <g
@@ -709,6 +705,14 @@ onUnmounted(() => {
               <text class="cmp__label" :x="CMP_LABEL_X" :y="(comparePair.top.y + comparePair.bottom.y) / 2" text-anchor="end" dominant-baseline="central">{{ compareGapMain }}</text>
             </g>
           </svg>
+        </div>
+        <!-- 结果固定在底部，高度恒定：选满前显示占位，选满后换成间距，上方内容不跳 -->
+        <div class="cmp__footer" aria-live="polite">
+          <template v-if="comparePair">
+            <p class="cmp__gap">{{ compareGapMain }}</p>
+            <p class="tool-hint cmp__alt">{{ compareGapAlt }}</p>
+          </template>
+          <p v-else class="tool-hint cmp__placeholder">还没选满两条，间距会显示在这里（已选 {{ pickedIds.length }}/2）</p>
         </div>
       </div>
     </van-popup>
@@ -845,6 +849,22 @@ onUnmounted(() => {
     margin: 0 0 $space-2;
   }
 
+  /* 顶部说明文字：固定不变，不随选择状态改动 */
+  &__desc {
+    margin: 0;
+  }
+
+  /* 结果区：固定在底部，高度恒定，内容变化不会推动上面的布局 */
+  &__footer {
+    flex: none;
+    height: 84px;
+    margin-top: $space-2;
+    padding-top: $space-2;
+    border-top: 1px solid var(--c-border, rgba(127, 127, 127, 0.25));
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+
   &__gap {
     margin: 0;
     font-size: 32px;
@@ -855,7 +875,12 @@ onUnmounted(() => {
   }
 
   &__alt {
-    margin: $space-1 0 $space-2;
+    margin: $space-1 0 0;
+  }
+
+  &__placeholder {
+    margin: 0;
+    line-height: 1.6;
   }
 
   &__scroll {
