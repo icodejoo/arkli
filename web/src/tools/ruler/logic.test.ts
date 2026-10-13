@@ -7,9 +7,13 @@ import {
   formatLength,
   formatReading,
   formatReadingAlt,
+  hexFromWheel,
+  hslToHex,
+  angleToHue,
   loadScale,
   MARK_COLORS,
   mmToPx,
+  nextColorIndex,
   pxToMm,
   saveScale,
   scaleFromCalibration,
@@ -133,8 +137,55 @@ describe('游标换算', () => {
 
   it('步长与颜色选项合理', () => {
     expect(STEP_MM).toBeGreaterThan(0)
-    expect(MARK_COLORS.length).toBeGreaterThanOrEqual(3)
+    expect(MARK_COLORS.length).toBe(7)
     expect(new Set(MARK_COLORS.map((c) => c.value)).size).toBe(MARK_COLORS.length)
     for (const c of MARK_COLORS) expect(c.value).toMatch(/^#[0-9a-f]{6}$/)
+  })
+})
+
+describe('彩虹循环与色相环', () => {
+  it('下一个颜色走到末尾回到开头', () => {
+    expect(nextColorIndex(0, 7)).toBe(1)
+    expect(nextColorIndex(6, 7)).toBe(0)
+    expect(nextColorIndex(3, 0)).toBe(0)
+  })
+
+  it('连续点七次回到起点，七个颜色各出现一次', () => {
+    const seen = new Set<number>()
+    let i = 0
+    for (let n = 0; n < 7; n++) {
+      seen.add(i)
+      i = nextColorIndex(i, MARK_COLORS.length)
+    }
+    expect(seen.size).toBe(7)
+    expect(i).toBe(0)
+  })
+
+  it('色相角：正上方 0°，右 90°，下 180°，左 270°，圆心为 0', () => {
+    expect(angleToHue(0, -10)).toBeCloseTo(0, 6)
+    expect(angleToHue(10, 0)).toBeCloseTo(90, 6)
+    expect(angleToHue(0, 10)).toBeCloseTo(180, 6)
+    expect(angleToHue(-10, 0)).toBeCloseTo(270, 6)
+    expect(angleToHue(0, 0)).toBe(0)
+  })
+
+  it('HSL 转十六进制：三原色与黑白', () => {
+    expect(hslToHex(0, 100, 50)).toBe('#ff0000')
+    expect(hslToHex(120, 100, 50)).toBe('#00ff00')
+    expect(hslToHex(240, 100, 50)).toBe('#0000ff')
+    expect(hslToHex(0, 0, 0)).toBe('#000000')
+    expect(hslToHex(0, 0, 100)).toBe('#ffffff')
+  })
+
+  it('色相按一圈取模，负数与超界都能转', () => {
+    expect(hslToHex(360, 100, 50)).toBe(hslToHex(0, 100, 50))
+    expect(hslToHex(-120, 100, 50)).toBe(hslToHex(240, 100, 50))
+    expect(hslToHex(480, 100, 50)).toBe(hslToHex(120, 100, 50))
+  })
+
+  it('色相环取色：上方红、右下偏绿、左下偏蓝', () => {
+    expect(hexFromWheel(0, -10)).toBe('#ff0000')
+    expect(hexFromWheel(10, 0)).toBe(hslToHex(90, 100, 50))
+    expect(hexFromWheel(0, 10)).toBe(hslToHex(180, 100, 50))
   })
 })

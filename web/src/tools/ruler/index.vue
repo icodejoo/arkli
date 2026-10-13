@@ -12,10 +12,12 @@ import {
   formatLength,
   formatReading,
   formatReadingAlt,
+  hexFromWheel,
   isValidScale,
   loadScale,
   MARK_COLORS,
   mmToPx,
+  nextColorIndex,
   pxToMm,
   saveScale,
   scaleFromCalibration,
@@ -46,6 +48,8 @@ const CURSOR_INIT_PX = 120
 const HEADER_FALLBACK = 46
 /** 顶栏选择器：尺子要从它的下沿开始，不盖住顶栏 */
 const HEADER_SELECTOR = '.van-nav-bar'
+/** 彩虹盘小圆点离盘边缘的最小距离（像素），避免圆点被盘边切掉 */
+const WHEEL_DOT_MARGIN = 6
 /** 校准线两端小竖线的半长（像素） */
 const CAL_CAP = 8
 /** 刻度数字离刻度线的偏移（像素） */
@@ -105,6 +109,18 @@ const canvasRef = ref<HTMLCanvasElement>()
 const cursorPx = ref(CURSOR_INIT_PX)
 /** 当前选中的标记颜色 */
 const markColor = ref<string>(MARK_COLORS[0].value)
+/** 最近一次选中的预设色下标：打完标记后从这里接着往下走，用户自选色不打断这个顺序 */
+const colorIdx = ref(0)
+/** 用户在彩虹盘上选的自定义颜色，没选过为 null */
+const customColor = ref<string | null>(null)
+/** 彩虹盘是否展开 */
+const wheelOpen = ref(false)
+/** 彩虹盘 DOM，取圆心与半径用 */
+const wheelRef = ref<HTMLDivElement>()
+/** 彩虹盘上选中点的位置（相对盘面左上角，像素），没选过为 null */
+const wheelDot = ref<{ x: number; y: number } | null>(null)
+/** 是否正在彩虹盘上拖动 */
+let wheelDragging = false
 /** 已打下的标记，不限数量 */
 const marks = ref<RulerMark[]>([])
 /** 标记编号自增序号 */
@@ -354,9 +370,61 @@ function nudge(dir: -1 | 1): void {
   cursorPx.value = clampPos(cursorPx.value + mmToPx(dir * STEP_MM, scale.value), along.value)
 }
 
-/** 在游标当前位置打一条选中颜色的标记，数量不限制 */
+/** 选中一个预设色，并记住它在循环里的位置 */
+function pickPreset(index: number): void {
+  colorIdx.value = index
+  markColor.value = MARK_COLORS[index].value
+}
+
+/**
+ * 在游标当前位置打一条选中颜色的标记，数量不限制；
+ * 打完自动切到彩虹循环里的下一个颜色，用户可以再手动改选。
+ */
 function addMark(): void {
   marks.value.push({ id: ++markSeq, mm: cursorMm.value, color: markColor.value })
+  pickPreset(nextColorIndex(colorIdx.value, MARK_COLORS.length))
+}
+
+/** 按手指在彩虹盘上的位置取色，并把选中点画在盘上 */
+function pickFromWheel(e: PointerEvent): void {
+  const el = wheelRef.value
+  if (!el) return
+  const r = el.getBoundingClientRect()
+  const radius = r.width / 2
+  const dx = e.clientX - (r.left + radius)
+  const dy = e.clientY - (r.top + radius)
+  const color = hexFromWheel(dx, dy)
+  customColor.value = color
+  markColor.value = color
+  const len = Math.hypot(dx, dy) || 1
+  const d = Math.min(len, radius - WHEEL_DOT_MARGIN)
+  wheelDot.value = { x: radius + (dx / len) * d, y: radius + (dy / len) * d }
+}
+
+/** 手指按下彩虹盘：开始拖动并立即取色 */
+function onWheelDown(e: PointerEvent): void {
+  wheelDragging = true
+  try {
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+  } catch {
+    // 指针号无效（如合成事件）时不捕获
+  }
+  pickFromWheel(e)
+}
+
+/** 在彩虹盘上拖动：颜色跟手 */
+function onWheelMove(e: PointerEvent): void {
+  if (wheelDragging) pickFromWheel(e)
+}
+
+/** 抬手或被系统打断：结束取色 */
+function onWheelUp(e: PointerEvent): void {
+  wheelDragging = false
+  try {
+    ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
+  } catch {
+    // 没捕获过就没有可释放的，忽略
+  }
 }
 
 /** 删除一条标记 */
@@ -442,7 +510,7 @@ onUnmounted(() => {
       <h3 class="tool-card__title">标记</h3>
       <div class="ruler-swatches" role="radiogroup" aria-label="标记颜色">
         <button
-          v-for="c in MARK_COLORS"
+          v-for="(c, i) in MARK_COLORS"
           :key="c.value"
           type="button"
           class="ruler-swatch"
@@ -451,8 +519,29 @@ onUnmounted(() => {
           role="radio"
           :aria-checked="markColor === c.value"
           :aria-label="c.name"
-          @click="markColor = c.value"
+          @click="pickPreset(i)"
         />
+        <button
+          type="button"
+          class="ruler-swatch ruler-swatch--wheel"
+          :class="{ 'ruler-swatch--on': customColor !== null && markColor === customColor }"
+          aria-label="彩虹盘"
+          :aria-expanded="wheelOpen"
+          @click="wheelOpen = !wheelOpen"
+        />
+      </div>
+      <div
+        v-if="wheelOpen"
+        ref="wheelRef"
+        class="ruler-wheel"
+        role="slider"
+        aria-label="彩虹盘，点或拖动选颜色"
+        @pointerdown="onWheelDown"
+        @pointermove="onWheelMove"
+        @pointerup="onWheelUp"
+        @pointercancel="onWheelUp"
+      >
+        <i v-if="wheelDot" class="ruler-wheel__dot" :style="{ left: `${wheelDot.x}px`, top: `${wheelDot.y}px`, background: customColor ?? undefined }" />
       </div>
       <div class="tool-actions ruler-gap">
         <van-button type="primary" size="small" @click="addMark">标记</van-button>
@@ -607,14 +696,16 @@ onUnmounted(() => {
 }
 
 /* 标记颜色选项 */
+/* 一排颜色块：窄屏放不下就换行 */
 .ruler-swatches {
   display: flex;
-  gap: $space-3;
+  flex-wrap: wrap;
+  gap: $space-2;
 }
 
 .ruler-swatch {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: 2px solid transparent;
   border-radius: 50%;
@@ -624,6 +715,33 @@ onUnmounted(() => {
 
   &--on {
     border-color: var(--c-text);
+  }
+}
+
+/* 彩虹盘按钮与展开的色相环：conic-gradient 从正上方起顺时针走一圈，与取色的色相角方向一致 */
+.ruler-swatch--wheel,
+.ruler-wheel {
+  background: conic-gradient(#f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+}
+
+.ruler-wheel {
+  position: relative;
+  width: 168px;
+  height: 168px;
+  margin: $space-3 auto 0;
+  border-radius: 50%;
+  touch-action: none;
+
+  /* 选中点：白边小圆点，填充为选中的颜色 */
+  &__dot {
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    margin: -8px 0 0 -8px;
+    border: 2px solid #fff;
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+    pointer-events: none;
   }
 }
 
