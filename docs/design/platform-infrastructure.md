@@ -51,11 +51,15 @@ summary: 六份工具设计共同依赖的底层能力：bridge 协议 v2、统�
 
 | 方法 | 谁用 | 说明 |
 |---|---|---|
-| `native.file.pick` | 图片、音视频、文本、编解码、备份 | 多选、mime 过滤；图片走 Photo Picker，无需权限；HEIC 在 API 28+ 自动转 JPEG；视频返回不透明句柄；图片拷贝上限 128MB、其他文件 64MB，拷贝中途超限即中止并删残留，HEIC 解码失败不留空文件 |
+| `native.file.pick` | 图片、音视频、文本、编解码、备份 | 多选、mime 过滤；图片多选走自带选图页 `ImagePickerActivity`（checkbox 网格，需相册读取权限，被拒回退系统选择器），其余走 Photo Picker / 文档选择器；HEIC 在 API 28+ 自动转 JPEG；视频返回不透明句柄；图片拷贝上限 128MB、其他文件 64MB，拷贝中途超限即中止并删残留，HEIC 解码失败不留空文件 |
+| `native.file.overwrite` | 图片拼接（覆盖原图） | `pick` 带 `keepSource` 才给图片项 `sourceHandle`；原生把选图 URI 推导成 MediaStore URI，`createWriteRequest` 弹系统授权框后写回（API 30+）；先校验格式一致，写前备份、失败还原；选图器 URI 本身只读，真机已验证，见 bridge-protocol.md |
+| `native.file.discard` | 图片拼接 | 丢弃 `cache/out/` 内文件（路径越界整体拒绝，不存在忽略），拼图成品连带缩略图 |
+| `native.cache.stats` / `native.cache.clear` | 设置页 | 统计缓存占用（按一级目录分组）、手动清空（跳过活跃写句柄的临时文件与 1 分钟内修改过的文件） |
 | `native.file.pickDir` | 文件夹清理 | SAF 目录树，持久化授权，返回不透明 token |
 | `native.file.save` | 图片、音视频、记账、画板 | API 29+ 走 MediaStore 无需权限；24~28 要存储写权限（`maxSdkVersion=28`）；默认目录 `Pictures/Arkli`、`Movies/Arkli` |
 | `native.file.openWrite` / `closeWrite` | 画板、图片 Canvas 产物 | 见上 |
 | `native.image.compress` | 图片压缩（含格式转换） | 原生批量解码、缩放、编码为 JPEG/WebP/PNG，PNG 自写缩色；成品写 `cache/out/`，进度事件 `image.progress`，可取消，取消时清掉本次成品；契约见 bridge-protocol.md 的"图片方法"。成品随缓存清理策略回收（24 小时；超总量时 10 分钟内写入的不动） |
+| `native.image.stitch` | 图片拼接 | 原生多图拼接（2~20 张，纵/横、间距、统一宽高、对齐、底色），PNG 无损/JPEG；成品与缩略图（最长边 256 的 JPEG）写 `cache/out/stitch_*`，`image.progress` 进度（绘制逐张 + 编码百分比 `phase`/`percent`，节流），可取消；PNG 流式快速编码（级别 3 + Sub/Up，3072×8192 真图 137s → 4.8s，体积 +5.4%，压缩工具的 PNG 不变）；画布上限 4000 万像素；契约见 bridge-protocol.md |
 | `native.share` | 多数工具 | 分享文本或缓存文件（FileProvider） |
 | `native.clipboard.read` / `write` | 多数工具 | `write` 支持 `sensitive: true`（API 33+ 设置敏感标记） |
 | `native.permission.check` / `request` | 噪音测量、扫码、通知 | 含"永久拒绝后跳设置"分支 |
@@ -115,6 +119,8 @@ summary: 六份工具设计共同依赖的底层能力：bridge 协议 v2、统�
   - 总量上限 500MB（`CACHE_MAX_TOTAL_BYTES`），超限从最旧的删；最近 10 分钟写入的不动（`CACHE_KEEP_RECENT_MS`），免得删掉页面刚拿到的产物。
   - 临时文件：属于活跃写句柄的不动；空闲清理时存活超过 1 小时（`PART_ORPHAN_AGE_MS`）算孤儿；启动清理时所有非活跃临时文件都是孤儿（进程重启后没有会话）。
   - 触发时机：`MainActivity.onCreate`（启动）与 `onStop`（空闲，两次间隔不少于 10 分钟），在单独线程执行，同时清空闲超时的写句柄。没有对应的 bridge 方法，页面不用管。
+- 手动清理与统计：`native.cache.stats`（总量与按一级目录分组）、`native.cache.clear`（清空全部，跳过活跃写句柄的 `tmp/*.part` 与 1 分钟内修改过的文件，策略 `CacheMaintenance.planClear` 为纯函数）。缓存只放这一个根下；除 `spike/SpikeActivity`（调试用，写在根下的 `spike/`、`spike-pub/`）外，没有模块写到根之外。
+- 拼图遗留：`out/` 里 `stitch_` 前缀的文件（成品、`stitch_thumb_` 缩略图、`.part`）在进程启动与 `MainActivity.onDestroy`（非配置变更）时清掉，页面也可用 `native.file.discard` 主动丢；`out/` 里其他工具的产物不碰，仍走上面的 24 小时 / 总量策略。
 - 页面主动清理本次工具产物（`cacheDir/arkli/<tool>/<session>/` 那种按工具分目录）还没做，需要时再加。
 - GIF 帧、中间 PNG 用完即删。
 
@@ -131,7 +137,9 @@ summary: 六份工具设计共同依赖的底层能力：bridge 协议 v2、统�
 | `WRITE_EXTERNAL_STORAGE` | 保存到公共目录 | 仅 `maxSdkVersion=28` |
 | `<queries>` | 应用管理 | P2，只查有桌面图标的应用 |
 
-明确**不用**：`MANAGE_EXTERNAL_STORAGE`、`QUERY_ALL_PACKAGES`、`READ_MEDIA_*`、悬浮窗、无障碍。
+明确**不用**：`MANAGE_EXTERNAL_STORAGE`、`QUERY_ALL_PACKAGES`、悬浮窗、无障碍。
+
+例外：自带多选图片页读相册，声明 `READ_MEDIA_IMAGES`（API 33+）与 `READ_EXTERNAL_STORAGE`（`maxSdkVersion=32`）。起因是华为等机型的系统选择器点一下就直接返回，无法做 checkbox 多选；用户拒绝权限时自动回退系统选择器，功能不丢。
 
 ## 八、实施顺序
 0. **两个 spike**（先做，结果决定后面怎么写）：

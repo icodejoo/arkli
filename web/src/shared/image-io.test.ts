@@ -149,3 +149,71 @@ describe('loadBitmap', () => {
     expect(cib.mock.calls[0][1]).toEqual({ imageOrientation: 'from-image' })
   })
 })
+
+describe('previewBlob', () => {
+  it('没有宿主时返回 false 且不调原生', async () => {
+    const { previewBlob } = await load(false)
+    const call = vi.fn()
+    expect(await previewBlob(new Blob([new Uint8Array(3)]), 'a.png', call as never)).toBe(false)
+    expect(call).not.toHaveBeenCalled()
+  })
+
+  it('有宿主时写缓存后预览，同一个 Blob 第二次不再写', async () => {
+    const { previewBlob } = await load(true)
+    const call = vi.fn(async (m: string, _p?: Record<string, unknown>) => {
+      if (m === 'native.file.openWrite') return { handle: 'h1', chunkBytes: 8, encodings: ['latin1'] }
+      if (m === 'native.file.closeWrite') return { path: 'cache/out/h1/a.png' }
+      return {}
+    })
+    const blob = new Blob([new Uint8Array(3)])
+    expect(await previewBlob(blob, 'a.png', call as never)).toBe(true)
+    expect(await previewBlob(blob, 'a.png', call as never)).toBe(true)
+    const previews = call.mock.calls.filter((c) => c[0] === 'native.image.preview')
+    expect(previews).toHaveLength(2)
+    expect(previews[0][1]).toEqual({ paths: ['cache/out/h1/a.png'] })
+    expect(call.mock.calls.filter((c) => c[0] === 'native.file.openWrite')).toHaveLength(1)
+  })
+})
+
+describe('pickImages keepSource / overwriteOriginal / discardOut', () => {
+  it('keepSource 透传给原生并带回 sourceHandle', async () => {
+    const { pickImages } = await load(true)
+    const call = vi.fn(async () => ({
+      items: [{ kind: 'image', path: 'cache/pick/a.jpg', name: 'a.jpg', mime: 'image/jpeg', size: 9, width: 2, height: 3, sourceHandle: 'h1' }],
+      failed: [],
+    }))
+    const got = await pickImages({ multiple: true, max: 3, keepSource: true }, call as never)
+    expect(call).toHaveBeenCalledWith('native.file.pick', { mime: 'image/*', multiple: true, max: 3, keepSource: true }, { timeoutMs: 0 })
+    expect(got[0].sourceHandle).toBe('h1')
+  })
+  it('未设 keepSource 时不带该参数', async () => {
+    const { pickImages } = await load(true)
+    const call = vi.fn(async () => ({ items: [], failed: [] }))
+    await pickImages({}, call as never)
+    expect((call.mock.calls as unknown as unknown[][])[0][1]).toEqual({ mime: 'image/*', multiple: false, max: 20 })
+  })
+  it('overwriteOriginal 传 path 与 handle', async () => {
+    const { overwriteOriginal } = await load(true)
+    const call = vi.fn(async () => ({ uri: 'u', size: 1 }))
+    expect(await overwriteOriginal('cache/out/a.png', 'h', call as never)).toEqual({ uri: 'u', size: 1 })
+    expect(call).toHaveBeenCalledWith('native.file.overwrite', { path: 'cache/out/a.png', handle: 'h' }, { timeoutMs: 0 })
+  })
+  it('discardOut 去重、空列表不调用、失败静默', async () => {
+    const { discardOut } = await load(true)
+    const call = vi.fn(async () => ({ deleted: 2 }))
+    expect(await discardOut(['a', 'a', '', 'b'], call as never)).toBe(2)
+    expect(call).toHaveBeenCalledWith('native.file.discard', { paths: ['a', 'b'] })
+    expect(await discardOut([], call as never)).toBe(0)
+    expect(call).toHaveBeenCalledTimes(1)
+    const bad = vi.fn(async () => {
+      throw new Error('x')
+    })
+    expect(await discardOut(['a'], bad as never)).toBe(0)
+  })
+  it('无宿主时 discardOut 不调用', async () => {
+    const { discardOut } = await load(false)
+    const call = vi.fn()
+    expect(await discardOut(['a'], call as never)).toBe(0)
+    expect(call).not.toHaveBeenCalled()
+  })
+})

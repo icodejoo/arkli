@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:device": "adb reverse tcp:5173 tcp:5173 && vite --host 127.0.0.1 --port 5173 --strictPort",
     "build": "vite build",
     "test": "vitest run",
     "type-check": "vue-tsc --noEmit",

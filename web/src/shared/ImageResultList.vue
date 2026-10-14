@@ -1,17 +1,30 @@
 <script setup lang="ts">
 // 处理结果列表：缩略图 + 文件名 + 尺寸/体积 + 附加说明
+import { showImagePreview } from 'vant'
 import { formatBytes } from './image-calc'
+import { previewBlob } from './image-io'
 import type { ResultItem } from './useImageResults'
 
-defineProps<{
+const props = defineProps<{
   /** 处理结果 */
   results: ResultItem[]
 }>()
+
+/** 预览第 i 张：宿主内走原生全屏（缩放、超长图局部高清），浏览器里回退 vant 预览 */
+async function preview(i: number): Promise<void> {
+  const r = props.results[i]
+  try {
+    if (await previewBlob(r.blob, r.name)) return
+  } catch {
+    // 原生预览失败时回退
+  }
+  showImagePreview({ images: props.results.map((x) => x.url), startPosition: i, closeable: true })
+}
 </script>
 
 <template>
   <ul class="results">
-    <li v-for="r in results" :key="r.id" class="result">
+    <li v-for="(r, i) in results" :key="r.id" class="result" @click="preview(i)">
       <img class="result__img" :src="r.url" :alt="r.name" />
       <div class="result__info">
         <div class="result__name">{{ r.name }}</div>
@@ -40,6 +53,7 @@ defineProps<{
   gap: $space-3;
   padding: $space-2 0;
   border-bottom: 1px solid var(--c-border);
+  cursor: pointer;
 
   &:last-child {
     border-bottom: 0;

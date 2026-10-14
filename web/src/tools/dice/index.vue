@@ -1,7 +1,9 @@
 <script setup lang="ts">
 // 掷骰子：选个数与面数，六面骰画点阵，其余面数直接显示数字
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { prefersReducedMotion } from '@/shared/motion'
+import { loadFlag, saveFlag, SOUND_KEY, VIBRATE_KEY, VIBRATE_LAND, VIBRATE_START } from '../coin-flip/logic'
+import { createSoundPlayer, tryVibrate } from '../coin-flip/feedback'
 import { MAX_DICE, MIN_DICE, PIPS, rollDice, SIDES_OPTIONS, type RollResult } from './logic'
 
 /** 动画时长（毫秒） */
@@ -23,6 +25,30 @@ const tumble = ref<number[]>([])
 let timer: ReturnType<typeof setTimeout> | undefined
 /** 滚动中的随机跳动句柄 */
 let ticker: ReturnType<typeof setInterval> | undefined
+/** 取 localStorage，不可用时为 undefined */
+function getStorage(): Storage | undefined {
+  try {
+    return window.localStorage
+  } catch {
+    return undefined
+  }
+}
+/** 震动反馈开关，默认开（与抛硬币共用设置） */
+const vibrateOn = ref(loadFlag(getStorage(), VIBRATE_KEY, true))
+/** 音效开关，默认关 */
+const soundOn = ref(loadFlag(getStorage(), SOUND_KEY, false))
+/** 合成音播放器 */
+const sound = createSoundPlayer()
+
+/** 开关变化时落盘 */
+watch(vibrateOn, (v) => saveFlag(getStorage(), VIBRATE_KEY, v))
+watch(soundOn, (v) => saveFlag(getStorage(), SOUND_KEY, v))
+
+/** 触发某个时刻的反馈（震动与音效各自看开关） */
+function feedback(kind: 'start' | 'land'): void {
+  if (vibrateOn.value) void tryVibrate(kind === 'start' ? VIBRATE_START : VIBRATE_LAND)
+  if (soundOn.value) sound.play(kind)
+}
 
 /** 当前展示的点数：滚动时是占位，停下后是结果 */
 const shown = computed(() => (rolling.value ? tumble.value : (result.value?.values ?? [])))
@@ -30,14 +56,18 @@ const shown = computed(() => (rolling.value ? tumble.value : (result.value?.valu
 /** 掷骰子：结果先定好，动画只做表演 */
 function roll(): void {
   if (rolling.value) return
+  // AudioContext 必须在用户手势里创建 / resume
+  if (soundOn.value) sound.unlock()
   const n = Math.min(MAX_DICE, Math.max(MIN_DICE, Math.floor(Number(count.value)) || MIN_DICE))
   count.value = n
   const r = rollDice(n, sides.value)
   if (prefersReducedMotion()) {
     result.value = r
+    feedback('land')
     return
   }
   rolling.value = true
+  feedback('start')
   const fake = () => rollDice(n, sides.value).values
   tumble.value = fake()
   ticker = setInterval(() => (tumble.value = fake()), TUMBLE_MS)
@@ -45,12 +75,14 @@ function roll(): void {
     clearInterval(ticker)
     result.value = r
     rolling.value = false
+    feedback('land')
   }, ANIM_MS)
 }
 
 onBeforeUnmount(() => {
   clearTimeout(timer)
   clearInterval(ticker)
+  sound.dispose()
 })
 </script>
 
@@ -83,6 +115,17 @@ onBeforeUnmount(() => {
       <van-radio-group v-model="sides" direction="horizontal" :disabled="rolling">
         <van-radio v-for="s in SIDES_OPTIONS" :key="s" :name="s">{{ s }} 面</van-radio>
       </van-radio-group>
+    </div>
+
+    <div class="tool-card">
+      <van-cell-group :border="false">
+        <van-cell title="震动反馈" center>
+          <template #right-icon><van-switch v-model="vibrateOn" size="20" /></template>
+        </van-cell>
+        <van-cell title="音效" center>
+          <template #right-icon><van-switch v-model="soundOn" size="20" /></template>
+        </van-cell>
+      </van-cell-group>
     </div>
 
     <van-button type="primary" block round :disabled="rolling" @click="roll">掷！</van-button>

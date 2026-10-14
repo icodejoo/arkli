@@ -11,6 +11,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
@@ -71,6 +72,7 @@ class ArkliBridge(
         handlers[METHOD_HELLO] = BridgeHandler { _, _ ->
             JSONObject().put("protocol", PROTOCOL_VERSION).put("session", session)
                 .put("features", JSONObject().put("binary", binary))
+                .put("methods", JSONArray(handlers.keys.sorted()))
         }
         handlers[METHOD_CANCEL] = BridgeHandler { _, params ->
             val target = params.optString(KEY_ID)

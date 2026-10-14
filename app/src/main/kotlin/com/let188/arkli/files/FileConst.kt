@@ -53,6 +53,9 @@ object FileConst {
     /** 空闲清理时，孤儿临时文件的最短存活时间（1 小时）；启动时清理不设此限 */
     const val PART_ORPHAN_AGE_MS = 60 * 60 * 1000L
 
+    /** 手动清空缓存时的保护期：这段时间内修改过的文件视为正在使用，跳过（1 分钟） */
+    const val CLEAR_BUSY_MS = 60 * 1000L
+
     /** 两次空闲清理的最小间隔（10 分钟） */
     const val CLEANUP_MIN_INTERVAL_MS = 10 * 60 * 1000L
 
@@ -97,4 +100,10 @@ object FileConst {
 
     /** 帧编码：base64，兜底 */
     const val ENCODING_BASE64 = "base64"
+
+    /** 拼图成品文件名前缀（位于 out/ 下）；启动清理与 discard 的缩略图联动以此识别本功能产物 */
+    const val OUT_STITCH_PREFIX = "stitch_"
+
+    /** 拼图缩略图文件名前缀，同样以 [OUT_STITCH_PREFIX] 开头 */
+    const val OUT_STITCH_THUMB_PREFIX = "stitch_thumb_"
 }

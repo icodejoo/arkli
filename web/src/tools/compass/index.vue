@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 指南针：读浏览器的方向事件，罗盘盘面随航向反向旋转
-import { computed, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { createAppAwake } from '../clock-screen/awake'
 import { createCompassSession, directionName, normalizeDeg, startCompass, type CompassStatus, type EventSourceLike } from './logic'
 
 /** 盘面上的刻度间隔（度） */
@@ -68,7 +69,13 @@ async function askPermission(): Promise<void> {
 if (needPermission.value) status.value = 'idle'
 else session.begin()
 
-onUnmounted(session.dispose)
+/** 常亮控制器：看指南针时不让屏幕熄掉 */
+const awake = createAppAwake()
+onMounted(() => void awake.acquire())
+onUnmounted(() => {
+  session.dispose()
+  void awake.release()
+})
 </script>
 
 <template>

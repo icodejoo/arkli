@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   activeSets,
+  copyWithFallback,
   AMBIGUOUS,
   CHARSETS,
   DEFAULT_OPTIONS,
@@ -89,5 +90,23 @@ describe('activeSets / entropy / strength', () => {
     expect(strengthOf(40)).toBe('fair')
     expect(strengthOf(60)).toBe('good')
     expect(strengthOf(80)).toBe('strong')
+  })
+})
+
+describe('copyWithFallback', () => {
+  it('首选成功就不走回退', async () => {
+    const fb = vi.fn(async () => true)
+    expect(await copyWithFallback('a', async () => true, fb)).toBe(true)
+    expect(fb).not.toHaveBeenCalled()
+  })
+  it('首选返回 false 或抛错时回退', async () => {
+    const fb = vi.fn(async () => true)
+    expect(await copyWithFallback('a', async () => false, fb)).toBe(true)
+    expect(await copyWithFallback('b', async () => Promise.reject(new Error('x')), fb)).toBe(true)
+    expect(fb).toHaveBeenCalledTimes(2)
+    expect(fb).toHaveBeenLastCalledWith('b')
+  })
+  it('回退也失败则为 false', async () => {
+    expect(await copyWithFallback('a', async () => false, async () => false)).toBe(false)
   })
 })

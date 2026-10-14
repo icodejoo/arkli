@@ -67,4 +67,46 @@ object ImageConst {
 
     /** mime：png */
     const val MIME_PNG = "image/png"
+
+    /** 拼接：最少张数 */
+    const val STITCH_MIN_ITEMS = 2
+
+    /** 拼接：最多张数 */
+    const val STITCH_MAX_ITEMS = 20
+
+    /** 拼接：图间距上限（像素） */
+    const val STITCH_MAX_GAP = 200
+
+    /** 拼接：JPEG 默认质量（0..1） */
+    const val STITCH_DEFAULT_QUALITY = 0.92
+
+    /** 拼接：默认背景色 */
+    const val STITCH_DEFAULT_BG = "#ffffff"
+
+    /** 拼接：画布像素数上限（约 160MB 位图），超出报 BAD_PARAMS */
+    const val STITCH_MAX_PIXELS = 40_000_000L
+
+    /** 拼接：画布单边上限（像素） */
+    const val STITCH_MAX_EDGE = 30_000
+
+    /** 进度阶段：绘制 */
+    const val PHASE_DRAW = "draw"
+
+    /** 进度阶段：编码 */
+    const val PHASE_ENCODE = "encode"
+
+    /** 进度阶段：全部完成 */
+    const val PHASE_DONE = "done"
+
+    /** 编码进度节流：最小百分比步长 */
+    const val PROGRESS_MIN_STEP = 2
+
+    /** 编码进度节流：最小上报间隔（毫秒） */
+    const val PROGRESS_MIN_INTERVAL_MS = 250L
+
+    /** 缩略图最长边（像素） */
+    const val THUMB_EDGE = 256
+
+    /** 缩略图 JPEG 质量 */
+    const val THUMB_QUALITY = 80
 }

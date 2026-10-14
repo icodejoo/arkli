@@ -39,6 +39,8 @@ export interface PickedImage {
   url: string
   /** 原生缓存相对路径（如 cache/pick/a.jpg），仅有宿主时有值，可交给 native.image.compress */
   path?: string
+  /** 原图句柄（pick 时 keepSource 才有），交给 native.file.overwrite 写回原图 */
+  sourceHandle?: string
   /** 释放 ObjectURL 等资源（原生路径下为空操作） */
   release: () => void
 }
@@ -61,6 +63,8 @@ interface NativePickItem {
   width?: number
   /** 高（已摆正） */
   height?: number
+  /** 原图句柄，仅 keepSource 时返回 */
+  sourceHandle?: string
 }
 
 /** 原生调用函数形状，便于注入测试 */
@@ -160,20 +164,20 @@ function pickViaInput(multiple: boolean): Promise<File[]> {
  * 选图：有宿主走 native.file.pick，否则退回 input[type=file]。
  * 用户取消返回空数组；原生 failed 的文件会在 onFailed 里回调。
  *
- * @param opts multiple 是否多选；max 最多张数（原生上限 50）；onFailed 部分文件失败的回调
+ * @param opts multiple 是否多选；max 最多张数（原生上限 50）；keepSource 是否保留原图句柄（仅原生，用于覆盖原图）；onFailed 部分文件失败的回调
  * @param call 原生调用函数，默认走 bridge（仅测试注入）
  * @returns 选中的图片，宽高已探测
  * @example const imgs = await pickImages({ multiple: true, max: 9 })
  */
 export async function pickImages(
-  opts: { multiple?: boolean; max?: number; onFailed?: (failed: Array<{ name: string; message: string }>) => void } = {},
+  opts: { multiple?: boolean; max?: number; keepSource?: boolean; onFailed?: (failed: Array<{ name: string; message: string }>) => void } = {},
   call: CallFn = bridgeCall,
 ): Promise<PickedImage[]> {
   const { multiple = false, max = 20 } = opts
   if (isNativeAvailable()) {
     const res = await call<{ items: NativePickItem[]; failed: Array<{ name: string; message: string }> }>(
       'native.file.pick',
-      { mime: IMAGE_ACCEPT, multiple, max },
+      { mime: IMAGE_ACCEPT, multiple, max, ...(opts.keepSource ? { keepSource: true } : {}) },
       { timeoutMs: 0 },
     )
     if (res.failed?.length) opts.onFailed?.(res.failed)
@@ -181,7 +185,7 @@ export async function pickImages(
     for (const it of res.items.filter((i) => i.kind === 'image')) {
       const url = it.url || FILES_URL_PREFIX + (it.path ?? '')
       const size = it.width && it.height ? { width: it.width, height: it.height } : await probeSize(url)
-      list.push({ name: it.name, mime: it.mime, size: it.size, ...size, url, path: it.path, release: () => undefined })
+      list.push({ name: it.name, mime: it.mime, size: it.size, ...size, url, path: it.path, sourceHandle: it.sourceHandle, release: () => undefined })
     }
     return list
   }
@@ -358,4 +362,68 @@ export async function saveBlobs(
  */
 export function saveBlob(blob: Blob, name: string): Promise<SaveResult> {
   return saveBlobs([{ blob, name }])
+}
+
+/** 已写进原生缓存的预览文件：同一个 Blob 只写一次，再次预览直接复用 */
+const previewCache = new WeakMap<Blob, string>()
+
+/**
+ * 用原生全屏预览打开一张结果图（缩放、超长图局部高清）。首次要把 Blob 写进原生缓存，之后复用。
+ * 没有宿主时返回 false，调用方自行回退（如 vant 预览）。
+ *
+ * @param blob 图片内容
+ * @param name 文件名
+ * @param call 原生调用函数，默认走 bridge（仅测试注入）
+ * @returns 是否已交给原生预览
+ * @example if (!(await previewBlob(blob, 'a.png'))) showImagePreview({ images: [url] })
+ */
+export async function previewBlob(blob: Blob, name: string, call: CallFn = bridgeCall): Promise<boolean> {
+  if (!isNativeAvailable()) return false
+  let path = previewCache.get(blob)
+  if (!path) {
+    path = await writeBlobToCache(blob, name, call)
+    previewCache.set(blob, path)
+  }
+  await call('native.image.preview', { paths: [path] })
+  return true
+}
+
+/** 覆盖原图的结果 */
+export interface OverwriteResult {
+  /** 被覆盖的原图 URI */
+  uri: string
+  /** 写入字节数 */
+  size: number
+}
+
+/**
+ * 用缓存里的成品覆盖原图（会弹系统“允许修改照片”授权框，需 Android 11+）。
+ * 格式须与原图一致，失败按 BridgeError 抛出（FORMAT_MISMATCH / PERMISSION_DENIED / NOT_READY 等）。
+ *
+ * @param path 成品缓存相对路径
+ * @param handle pick 时 keepSource 返回的 sourceHandle
+ * @param call 原生调用函数，默认走 bridge（仅测试注入）
+ * @returns 原图 URI 与写入大小
+ * @example await overwriteOriginal('cache/out/a.png', img.sourceHandle!)
+ */
+export function overwriteOriginal(path: string, handle: string, call: CallFn = bridgeCall): Promise<OverwriteResult> {
+  return call<OverwriteResult>('native.file.overwrite', { path, handle }, { timeoutMs: 0 })
+}
+
+/**
+ * 丢弃 cache/out/ 里不再需要的成品，失败静默；无宿主或路径为空时什么都不做。
+ *
+ * @param paths 缓存相对路径，自动去重
+ * @param call 原生调用函数，默认走 bridge（仅测试注入）
+ * @returns 实际删除的文件数，失败为 0
+ * @example await discardOut(['cache/out/stitch_1.png'])
+ */
+export async function discardOut(paths: string[], call: CallFn = bridgeCall): Promise<number> {
+  const list = Array.from(new Set(paths.filter(Boolean)))
+  if (!list.length || !isNativeAvailable()) return 0
+  try {
+    return (await call<{ deleted: number }>('native.file.discard', { paths: list })).deleted
+  } catch {
+    return 0
+  }
 }

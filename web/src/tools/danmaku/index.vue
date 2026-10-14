@@ -3,7 +3,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { showToast } from 'vant'
 import { prefersReducedMotion } from '@/shared/motion'
-import { createWakeLock } from '@/shared/wakelock'
+import { createAppAwake } from '../clock-screen/awake'
 import {
   BG_COLORS,
   BLINK_SEC,
@@ -25,7 +25,7 @@ import {
 } from './logic'
 
 /** 不支持常亮时的提示 */
-const TIP_NO_WAKE = '这个系统不支持网页常亮，请在系统设置里调长息屏时间'
+const TIP_NO_WAKE = '常亮没打开，请在系统设置里调长息屏时间'
 
 /** 取本地存储，不可用时为 undefined */
 function getStorage(): Storage | undefined {
@@ -65,7 +65,7 @@ const still = ref(false)
 /** 滚动文字节点 */
 const textRef = ref<HTMLElement>()
 /** 常亮控制器 */
-const wake = createWakeLock()
+const wake = createAppAwake()
 
 /** 一圈滚动秒数，至少 1 秒防止异常值 */
 const duration = computed(() => Math.max(1, scrollDuration(textW.value, viewW.value, speed.value)))

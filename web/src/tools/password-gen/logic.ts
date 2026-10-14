@@ -146,3 +146,26 @@ export function strengthOf(bits: number): Strength {
   if (bits < STRENGTH_BITS[2]) return 'good'
   return 'strong'
 }
+
+/**
+ * 复制文本：先走原生剪贴板，失败（返回 false 或抛错）再回退到页面剪贴板。
+ *
+ * @param text 要复制的文本
+ * @param primary 首选写入函数，一般是 `(t) => clipboardWrite(t, true)`
+ * @param fallback 回退写入函数，一般是 `copyText`
+ * @returns 是否复制成功
+ * @example
+ * await copyWithFallback('abc', (t) => clipboardWrite(t, true), copyText)
+ */
+export async function copyWithFallback(
+  text: string,
+  primary: (text: string) => Promise<boolean>,
+  fallback: (text: string) => Promise<boolean>,
+): Promise<boolean> {
+  try {
+    if (await primary(text)) return true
+  } catch {
+    // 原生写入失败，继续走回退
+  }
+  return fallback(text)
+}

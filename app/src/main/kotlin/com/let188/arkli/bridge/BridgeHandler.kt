@@ -56,4 +56,7 @@ object BridgeErrors {
 
     /** 网络错误 */
     const val NETWORK = "NETWORK"
+
+    /** 输出格式与要覆盖的原图格式不一致（`native.file.overwrite`） */
+    const val FORMAT_MISMATCH = "FORMAT_MISMATCH"
 }

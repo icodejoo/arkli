@@ -242,3 +242,117 @@ export function readableOn(c: Rgba): string {
   const y = (c.r * 299 + c.g * 587 + c.b * 114) / 1000
   return y >= 150 ? '#000000' : '#ffffff'
 }
+
+// ---------- WCAG 对比度 ----------
+
+/** sRGB 线性化的分段阈值 */
+const SRGB_LINEAR_THRESHOLD = 0.03928
+/** 对比度公式里的亮度偏移 */
+const LUM_OFFSET = 0.05
+/** AA 普通文字所需对比度 */
+export const AA_NORMAL = 4.5
+/** AA 大号文字所需对比度 */
+export const AA_LARGE = 3
+/** AAA 普通文字所需对比度 */
+export const AAA_NORMAL = 7
+/** AAA 大号文字所需对比度 */
+export const AAA_LARGE = 4.5
+
+/**
+ * WCAG 2.x 相对亮度。
+ *
+ * @param c 颜色（只用 r/g/b，忽略透明度）
+ * @returns 0（黑）~ 1（白）
+ * @example
+ * relativeLuminance({ r: 255, g: 255, b: 255, a: 1 }) // 1
+ */
+export function relativeLuminance(c: Pick<Rgba, 'r' | 'g' | 'b'>): number {
+  const lin = (v: number): number => {
+    const s = clamp(v, 0, MAX_CHANNEL) / MAX_CHANNEL
+    return s <= SRGB_LINEAR_THRESHOLD ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
+  }
+  return 0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b)
+}
+
+/**
+ * WCAG 对比度，两个颜色顺序无关；半透明颜色按不透明处理。
+ *
+ * @param a 颜色一
+ * @param b 颜色二
+ * @returns 1 ~ 21
+ * @example
+ * contrastRatio({ r: 0, g: 0, b: 0, a: 1 }, { r: 255, g: 255, b: 255, a: 1 }) // 21
+ */
+export function contrastRatio(a: Pick<Rgba, 'r' | 'g' | 'b'>, b: Pick<Rgba, 'r' | 'g' | 'b'>): number {
+  const la = relativeLuminance(a)
+  const lb = relativeLuminance(b)
+  return (Math.max(la, lb) + LUM_OFFSET) / (Math.min(la, lb) + LUM_OFFSET)
+}
+
+/** 各等级的达标情况 */
+export interface WcagLevels {
+  /** AA 普通文字（≥ 4.5） */
+  aaNormal: boolean
+  /** AA 大号文字 / 图形（≥ 3） */
+  aaLarge: boolean
+  /** AAA 普通文字（≥ 7） */
+  aaaNormal: boolean
+  /** AAA 大号文字（≥ 4.5） */
+  aaaLarge: boolean
+}
+
+/**
+ * 根据对比度判定 AA / AAA 是否达标。
+ *
+ * @param ratio 对比度
+ * @returns 四项判定
+ * @example
+ * wcagLevels(4.6).aaNormal // true
+ */
+export function wcagLevels(ratio: number): WcagLevels {
+  return { aaNormal: ratio >= AA_NORMAL, aaLarge: ratio >= AA_LARGE, aaaNormal: ratio >= AAA_NORMAL, aaaLarge: ratio >= AAA_LARGE }
+}
+
+// ---------- 配色（基于 HSL） ----------
+
+/** 配色方案 */
+export type PaletteScheme = 'complementary' | 'analogous' | 'triadic' | 'split' | 'mono'
+
+/** 方案的中文名 */
+export const SCHEME_LABEL: Record<PaletteScheme, string> = {
+  complementary: '互补色',
+  analogous: '类似色',
+  triadic: '三等分',
+  split: '分裂互补',
+  mono: '单色渐变',
+}
+
+/** 各方案相对基色的色相偏移（度），基色自己固定在第一位或居中 */
+const HUE_OFFSETS: Record<Exclude<PaletteScheme, 'mono'>, number[]> = {
+  complementary: [0, 180],
+  analogous: [-30, 0, 30],
+  triadic: [0, 120, 240],
+  split: [0, 150, 210],
+}
+/** 单色渐变的亮度档（百分比） */
+const MONO_LIGHTNESS = [20, 35, 50, 65, 80]
+
+/**
+ * 按方案生成配色，保持基色的饱和度与亮度（单色渐变保留色相与饱和度，只换亮度）。
+ * 结果通道取整，透明度恒为 1。
+ *
+ * @param base 基色
+ * @param scheme 方案
+ * @returns 颜色列表：互补 2 个、类似 3 个（基色在中间）、三等分 3 个、分裂互补 3 个、单色 5 个
+ * @example
+ * buildPalette({ r: 255, g: 0, b: 0, a: 1 }, 'complementary') // 红与青
+ */
+export function buildPalette(base: Rgba, scheme: PaletteScheme): Rgba[] {
+  const hsl = rgbToHsl(base)
+  const toRgba = (h: number, s: number, l: number): Rgba => {
+    const c = hslToRgb({ h: ((h % 360) + 360) % 360, s, l })
+    return { r: Math.round(c.r), g: Math.round(c.g), b: Math.round(c.b), a: 1 }
+  }
+  if (scheme === 'mono') return MONO_LIGHTNESS.map((l) => toRgba(hsl.h, hsl.s, l))
+  return HUE_OFFSETS[scheme].map((d) => toRgba(hsl.h + d, hsl.s, hsl.l))
+}

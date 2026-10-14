@@ -3,6 +3,7 @@ package com.let188.arkli.image
 import com.let188.arkli.bridge.ArkliBridge
 import com.let188.arkli.files.FileConst
 import com.let188.arkli.files.FileEnv
+import android.util.Log
 import java.io.File
 
 /**
@@ -14,9 +15,18 @@ import java.io.File
  *
  * 使用示例：`ImageModule.install(bridge, env)`
  */
+/** 图片模块日志 tag */
+private const val IMAGE_LOG_TAG = "ArkliImage"
+
 object ImageModule {
     /** 方法名：批量压缩 / 转格式 */
     const val METHOD_COMPRESS = "native.image.compress"
+
+    /** 方法名：多图拼接，成品与缩略图写进 out/ */
+    const val METHOD_STITCH = "native.image.stitch"
+
+    /** 方法名：原生全屏图片预览 */
+    const val METHOD_PREVIEW = "native.image.preview"
 
     /**
      * 注册图片方法。
@@ -28,5 +38,7 @@ object ImageModule {
         val outDir = File(env.roots.cacheRoot, FileConst.DIR_OUT)
         val compressor = ImageCompressor(AndroidImageCodec(), outDir)
         bridge.register(METHOD_COMPRESS, ImageCompressHandler({ env.roots.resolveCache(it) }, compressor))
+        bridge.register(METHOD_STITCH, ImageStitchHandler({ env.roots.resolveCache(it) }, ImageStitcher(AndroidStitchBackend(), outDir, log = { Log.i(IMAGE_LOG_TAG, it) })))
+        bridge.register(METHOD_PREVIEW, ImagePreviewHandler({ env.roots.resolveCache(it) }, env.host))
     }
 }

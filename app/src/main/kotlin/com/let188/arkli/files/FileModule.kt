@@ -15,7 +15,8 @@ import org.json.JSONObject
 import java.io.File
 
 /**
- * 把文件相关方法注册进一个会话的 Bridge：pick / save / openWrite / write / closeWrite。
+ * 把文件相关方法注册进一个会话的 Bridge：pick / save / overwrite / discard / openWrite / write / closeWrite，
+ * 以及缓存的 native.cache.stats / clear。
  *
  * 每个会话一份写句柄登记与不透明句柄表，会话关闭（页面重载、渲染进程崩溃、销毁）时
  * 自动丢弃未关闭的写句柄及其临时文件。
@@ -25,6 +26,18 @@ import java.io.File
 object FileModule {
     /** 方法名：选文件 */
     const val METHOD_PICK = "native.file.pick"
+
+    /** 方法名：把缓存成品写回选图时保留的原图 */
+    const val METHOD_OVERWRITE = "native.file.overwrite"
+
+    /** 方法名：丢弃 out/ 内的成品 */
+    const val METHOD_DISCARD = "native.file.discard"
+
+    /** 方法名：缓存占用统计 */
+    const val METHOD_CACHE_STATS = "native.cache.stats"
+
+    /** 方法名：清空缓存 */
+    const val METHOD_CACHE_CLEAR = "native.cache.clear"
 
     /** 方法名：保存到公共目录 */
     const val METHOD_SAVE = "native.file.save"
@@ -43,8 +56,9 @@ object FileModule {
      *
      * @param bridge 当前会话的 Bridge
      * @param env 文件环境
+     * @return 本会话的不透明句柄表，其他模块（如媒体）凭它读取 `pick` 返回的视频句柄
      */
-    fun install(bridge: ArkliBridge, env: FileEnv) {
+    fun install(bridge: ArkliBridge, env: FileEnv): HandleTable<Uri> {
         val cacheRoot = env.roots.cacheRoot
         val registry = WriteRegistry(File(cacheRoot, FileConst.DIR_TMP), File(cacheRoot, FileConst.DIR_OUT))
         val handles = HandleTable<Uri>()
@@ -56,12 +70,17 @@ object FileModule {
             Log.i(FILE_LOG_TAG, "会话 ${bridge.session} 关闭，清理未关闭写句柄 $n 个")
         }
         bridge.register(METHOD_PICK, PickHandler(env, handles))
+        bridge.register(METHOD_OVERWRITE, OverwriteHandler(env, handles))
+        bridge.register(METHOD_DISCARD, DiscardHandler(env))
+        bridge.register(METHOD_CACHE_STATS, CacheStatsHandler(env))
+        bridge.register(METHOD_CACHE_CLEAR, CacheClearHandler(env))
         bridge.register(METHOD_SAVE, SaveHandler(env))
         bridge.register(METHOD_OPEN_WRITE, OpenWrite(registry))
         bridge.register(METHOD_WRITE, Write(registry))
         bridge.register(METHOD_CLOSE_WRITE, CloseWrite(registry) { f ->
             env.roots.pagePathOf(f)?.let { it to env.urlOf(it) }
         })
+        return handles
     }
 
     /**

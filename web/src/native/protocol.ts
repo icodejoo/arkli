@@ -16,6 +16,7 @@ export type BridgeErrorCode =
   | 'TIMEOUT'
   | 'CANCELLED'
   | 'NETWORK'
+  | 'FORMAT_MISMATCH'
 
 /** 页面发往原生的请求 */
 export interface BridgeRequest {
@@ -68,6 +69,8 @@ export interface NativeHello {
   session: number
   /** 能力字段 */
   features: NativeFeatures
+  /** 原生已注册的全部方法名（升序），页面据此探测某个能力是否存在；旧版原生没有此字段 */
+  methods?: string[]
 }
 
 /** 内置取消方法名 */

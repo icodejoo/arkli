@@ -38,7 +38,8 @@ private class PickFailure(message: String) : Exception(message)
  * - 视频：不拷贝，返回不透明句柄 `uri:<id>`，真实 content URI 只留在原生侧。
  * - 其他文件（`mime` 不是图片/视频）：走系统文档选择器，≤ 64MB 拷进缓存。
  *
- * 参数：`{ mime?: string = 图片通配, multiple?: boolean = false, max?: number = 20 }`。
+ * 参数：`{ mime?: string = 图片通配, multiple?: boolean = false, max?: number = 20, keepSource?: boolean = false }`。
+ * `keepSource` 为 true 时，图片项多返回不透明 `sourceHandle`（真实 URI 只留在原生侧），供 `native.file.overwrite` 写回原图。
  * 返回：`{ items: [...], failed: [{ name, message }] }`，用户关闭选择器时 `items` 为空数组。
  *
  * @param env 文件环境
@@ -58,6 +59,7 @@ internal class PickHandler(private val env: FileEnv, private val handles: Handle
         if (!PickKind.isValid(mime)) throw BridgeException(BridgeErrors.BAD_PARAMS, "mime 格式不对：$mime")
         val multiple = params.optBoolean("multiple", false)
         val max = params.optInt("max", FileConst.DEFAULT_PICK_MAX).coerceIn(1, FileConst.PICK_MAX_LIMIT)
+        val keepSource = params.optBoolean("keepSource", false)
         val uris = env.host.pickMedia(mime, multiple, max).take(if (multiple) max else 1)
         val items = JSONArray()
         val failed = JSONArray()
@@ -66,7 +68,7 @@ internal class PickHandler(private val env: FileEnv, private val handles: Handle
             for (uri in uris) {
                 coroutineContext.ensureActive()
                 try {
-                    items.put(withContext(Dispatchers.IO) { process(uri, made) })
+                    items.put(withContext(Dispatchers.IO) { process(uri, made, keepSource) })
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -82,13 +84,13 @@ internal class PickHandler(private val env: FileEnv, private val handles: Handle
     }
 
     /** 处理单个 URI，按 mime 分流 */
-    private suspend fun process(uri: Uri, made: MutableList<File>): JSONObject {
+    private suspend fun process(uri: Uri, made: MutableList<File>, keepSource: Boolean): JSONObject {
         val (rawName, rawSize) = queryMeta(uri)
         val mime = resolver.getType(uri) ?: mimeFromName(rawName) ?: "application/octet-stream"
         val name = FileNames.sanitize(rawName ?: "file")
         return when {
             mime.startsWith("video/") -> videoItem(uri, name, mime, rawSize)
-            mime.startsWith("image/") -> imageItem(uri, name, mime, made)
+            mime.startsWith("image/") -> imageItem(uri, name, mime, made).also { if (keepSource) it.put("sourceHandle", handles.put(uri)) }
             else -> fileItem(uri, name, mime, rawSize, made)
         }
     }

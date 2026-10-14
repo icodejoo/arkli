@@ -2,6 +2,7 @@ package com.let188.arkli
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.graphics.Bitmap
 import android.net.Uri
 import android.util.Log
@@ -17,6 +18,9 @@ import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import com.let188.arkli.ai.AiModule
+import com.let188.arkli.alarm.ReminderModule
+import com.let188.arkli.apps.AppsModule
 import com.let188.arkli.bridge.ArkliBridge
 import com.let188.arkli.bridge.BridgeHandler
 import com.let188.arkli.bridge.BridgeSessions
@@ -24,6 +28,14 @@ import com.let188.arkli.bridge.ReplyIo
 import com.let188.arkli.files.FileEnv
 import com.let188.arkli.files.FileModule
 import com.let188.arkli.image.ImageModule
+import com.let188.arkli.media.MediaModule
+import com.let188.arkli.shortcut.ShortcutModule
+import com.let188.arkli.system.SystemModule
+import com.let188.arkli.tts.TtsModule
+import com.let188.arkli.dircleaner.DirModule
+import com.let188.arkli.net.NetModule
+import com.let188.arkli.noise.NoiseModule
+import com.let188.arkli.wallpaper.WallpaperModule
 import com.let188.arkli.net.NetPolicy
 import com.let188.arkli.net.NetVerdict
 import java.io.ByteArrayInputStream
@@ -51,7 +63,7 @@ private const val MIME_HTML = "text/html"
 /** 给 HTML 文档响应补上 CSP 头，其它资源原样返回 */
 private fun WebResourceResponse.withCsp(): WebResourceResponse {
     if (mimeType != MIME_HTML) return this
-    responseHeaders = (responseHeaders ?: emptyMap()) + (NetPolicy.CSP_HEADER to NetPolicy.contentSecurityPolicy())
+    responseHeaders = (responseHeaders ?: emptyMap()) + (NetPolicy.CSP_HEADER to NetPolicy.contentSecurityPolicy(DevAssetHook.extraConnectSrc))
     return this
 }
 
@@ -101,6 +113,12 @@ class ArkliPage(context: Context, private val files: FileEnv, private val onRend
     init {
         // 让 Compose 的 onRelease 能从 View 找回页面
         webView.tag = this
+        // 必须显式 MATCH_PARENT：默认的 WRAP_CONTENT 会让 Chromium 把主文档布局高度强制置 0
+        // （AwLayoutSizer.updateLayoutSettings 按 layoutParams 高度是否 wrap_content 调 setForceZeroLayoutHeight），
+        // 页面里的 vh / dvh / svh 因此全变成 0px，Vant 弹窗、各工具的 max-height: 60vh 都会失效
+        webView.layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        // 仅 debuggable 构建开启远程调试（chrome://inspect / CDP），release 不受影响
+        if ((context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0) WebView.setWebContentsDebuggingEnabled(true)
         val loader = WebViewAssetLoader.Builder()
             .setDomain(ASSET_HOST)
             .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(context))
@@ -122,7 +140,7 @@ class ArkliPage(context: Context, private val files: FileEnv, private val onRend
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? =
                 when (NetPolicy.classify(request.url.toString(), ASSET_HOST)) {
                     NetVerdict.APP ->
-                        (files.server.intercept(request) ?: loader.shouldInterceptRequest(request.url))?.withCsp()
+                        (files.server.intercept(request) ?: DevAssetHook.proxy?.invoke(request) ?: loader.shouldInterceptRequest(request.url))?.withCsp()
                     NetVerdict.ALLOW -> null
                     NetVerdict.BLOCK -> {
                         Log.w(LOG_TAG, "拦截出站请求 ${NetPolicy.redact(request.url.toString())}")
@@ -191,8 +209,19 @@ class ArkliPage(context: Context, private val files: FileEnv, private val onRend
         created.register("rust.core.version", BridgeHandler { _, _ ->
             JSONObject().put("version", uniffi.arkli_ffi.coreVersion())
         })
-        FileModule.install(created, files)
+        val fileHandles = FileModule.install(created, files)
+        MediaModule.install(created, files, fileHandles)
         ImageModule.install(created, files)
+        SystemModule.install(created, files)
+        ReminderModule.install(created, files)
+        TtsModule.install(created, files)
+        ShortcutModule.install(created, files)
+        AppsModule.install(created, files)
+        NetModule.install(created)
+        DirModule.install(created, files)
+        NoiseModule.install(created, files)
+        WallpaperModule.install(created, files)
+        AiModule.install(created)
         return created
     }
 

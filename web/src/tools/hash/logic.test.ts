@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { FILE_CHUNK_BYTES, formatHex, hashBytes, hashFile, hashText, matchExpected } from './logic'
+import { describe, expect, it, vi } from 'vitest'
+import { copyWithFallback, FILE_CHUNK_BYTES, formatHex, hashBytes, hashFile, hashText, matchExpected } from './logic'
 
 /** 空串向量 */
 const EMPTY = {
@@ -71,5 +71,23 @@ describe('formatHex / matchExpected', () => {
     expect(matchExpected(d, 'a9993e364706816aba3e25717850c26c9cd0d89d')).toBe('sha1')
     expect(matchExpected(d, 'deadbeef')).toBeNull()
     expect(matchExpected(d, '  ')).toBeNull()
+  })
+})
+
+describe('copyWithFallback', () => {
+  it('首选成功就不走回退', async () => {
+    const fb = vi.fn(async () => true)
+    expect(await copyWithFallback('a', async () => true, fb)).toBe(true)
+    expect(fb).not.toHaveBeenCalled()
+  })
+  it('首选返回 false 或抛错时回退', async () => {
+    const fb = vi.fn(async () => true)
+    expect(await copyWithFallback('a', async () => false, fb)).toBe(true)
+    expect(await copyWithFallback('b', async () => Promise.reject(new Error('x')), fb)).toBe(true)
+    expect(fb).toHaveBeenCalledTimes(2)
+    expect(fb).toHaveBeenLastCalledWith('b')
+  })
+  it('回退也失败则为 false', async () => {
+    expect(await copyWithFallback('a', async () => false, async () => false)).toBe(false)
   })
 })

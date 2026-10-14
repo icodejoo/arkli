@@ -5,8 +5,40 @@
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
 
+    <!-- 自带多选图片页读相册：API 33+ 用细分的图片权限，32 及以下用旧存储权限 -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
     <!-- 联网：页面出站只放行 NetPolicy 白名单，原生联网后续接入 -->
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- 震动（普通权限，安装即授予） -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- 读网络类型（普通权限，安装即授予） -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- 通知权限：API 33+ 才需要运行时申请，供 native.permission 查询/申请 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- 噪音测量：麦克风，运行时申请；麦克风不设为必需硬件，没有的设备也能安装 -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+
+    <!-- CAMERA 刻意不在这里声明：等对应工具落地时再加，在此之前 native.permission 返回 not_declared -->
+
+    <!-- 包可见性：应用管理只能看到可启动应用（不申请 QUERY_ALL_PACKAGES）；TTS_SERVICE 让系统语音引擎在 API 30+ 可被绑定 -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
 
     <application
         android:networkSecurityConfig="@xml/network_security_config"
@@ -25,6 +57,31 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- 自带多选图片页，仅应用内部拉起 -->
+        <activity
+            android:name=".picker.ImagePickerActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode" />
+        <!-- 原生全屏图片预览，仅应用内部拉起 -->
+        <activity
+            android:name=".preview.ImagePreviewActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode" />
+        <!-- 系统分享用：只暴露缓存 arkli/out/ 下的成品文件 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+        <!-- 闹钟到点接收器，仅系统按 PendingIntent 回调；重启后闹钟失效，不做开机恢复 -->
+        <receiver
+            android:name=".alarm.AlarmReceiver"
+            android:exported="false" />
         <!-- spike：WebMessageListener 验证用，结论出来后由主会话决定去留 -->
         <activity
             android:name=".spike.SpikeActivity"

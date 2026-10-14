@@ -23,7 +23,10 @@ const recent = computed(() => (keyword.value.trim() ? [] : store.recent.slice(0,
 <template>
   <div class="home">
     <header class="home__head">
-      <h1 class="home__title">Arkli</h1>
+      <div class="home__row">
+        <h1 class="home__title">Arkli</h1>
+        <router-link class="home__setting" to="/settings">设置</router-link>
+      </div>
       <p class="home__sub">小工具，装一箱</p>
     </header>
 
@@ -60,6 +63,19 @@ const recent = computed(() => (keyword.value.trim() ? [] : store.recent.slice(0,
 
   &__head {
     padding: $space-2 $space-4 0;
+  }
+
+  // 标题与设置入口同一行，入口靠右
+  &__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  &__setting {
+    padding: $space-1 $space-2;
+    font-size: 14px;
+    color: var(--c-text-muted);
   }
 
   &__title {

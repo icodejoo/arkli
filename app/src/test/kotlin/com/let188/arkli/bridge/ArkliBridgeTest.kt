@@ -210,6 +210,19 @@ class ArkliBridgeTest {
     }
 
     @Test
+    fun helloListsRegisteredMethodsSorted() {
+        val sink = Sink()
+        val bridge = newBridge(sink)
+        bridge.register("t.b", BridgeHandler { _, _ -> null })
+        bridge.register("t.a", BridgeHandler { _, _ -> null })
+        bridge.dispatch(req("h", ArkliBridge.METHOD_HELLO))
+        val methods = sink.response("h").getJSONObject("data").getJSONArray("methods")
+        val list = (0 until methods.length()).map { methods.getString(it) }
+        assertEquals(list.sorted(), list)
+        assertTrue(list.containsAll(listOf("native.hello", "native.task.cancel", "t.a", "t.b")))
+    }
+
+    @Test
     fun helloReportsSessionAndBinaryCapability() {
         val sink = Sink()
         newBridge(sink, session = 5, binary = true).dispatch(req("h", ArkliBridge.METHOD_HELLO))

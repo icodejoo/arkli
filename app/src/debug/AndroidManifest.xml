@@ -7,5 +7,9 @@
             android:authorities="${applicationId}.debughooks"
             android:exported="false"
             android:initOrder="100" />
+        <!-- 仅调试：覆盖原图的真机探针，adb 手动拉起 -->
+        <activity
+            android:name="com.let188.arkli.debug.OverwriteProbeActivity"
+            android:exported="true" />
     </application>
 </manifest>

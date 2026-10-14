@@ -3,12 +3,12 @@
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { showToast } from 'vant'
 import { burnInOffset, clockParts, formatDateLine, lunarText, startSecondTicker, type LunarLib } from './logic'
-import { createWakeLock } from '@/shared/wakelock'
+import { createAppAwake } from './awake'
 
 /** 一分钟的毫秒数 */
 const MS_PER_MINUTE = 60000
 /** 不支持常亮时的提示 */
-const TIP_NO_WAKE = '这个系统不支持网页常亮，请在系统设置里调长息屏时间'
+const TIP_NO_WAKE = '常亮没打开，请在系统设置里调长息屏时间'
 /** 农历库加载失败提示 */
 const TIP_LUNAR_FAIL = '农历数据加载失败了'
 
@@ -29,7 +29,7 @@ const now = ref(new Date())
 /** 动态加载的农历库，未打开农历开关前一直为空 */
 const lunarLib = shallowRef<LunarLib | null>(null)
 /** 常亮控制器 */
-const wake = createWakeLock()
+const wake = createAppAwake()
 /** 整秒定时器的停止函数 */
 let stopTicker: (() => void) | undefined
 

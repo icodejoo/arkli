@@ -1,6 +1,7 @@
 package com.let188.arkli.files
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.util.Log
 import com.let188.arkli.ASSET_HOST
@@ -28,12 +29,53 @@ interface ActivityHost {
     suspend fun pickMedia(mime: String, multiple: Boolean, max: Int): List<Uri>
 
     /**
+     * 打开系统文件夹选择器（SAF 目录树授权）。用户直接关掉返回 null。
+     *
+     * @return 选中的目录树 URI；取消返回 null
+     */
+    suspend fun pickDirectory(): Uri?
+
+    /**
      * 申请一个运行时权限。
      *
      * @param permission 权限名
      * @return 用户是否授予
      */
     suspend fun requestPermission(permission: String): Boolean
+
+    /**
+     * 打开原生全屏图片预览（立即返回，不等用户关闭）。
+     *
+     * @param files 要预览的图片文件
+     * @param index 起始下标
+     */
+    fun previewImages(files: List<File>, index: Int)
+
+    /**
+     * 拉起一个外部 Intent（系统设置、分享面板、外部应用）。
+     *
+     * @param intent 要启动的 Intent
+     * @return 成功拉起返回 true；没有能处理的应用或被系统拒绝返回 false
+     */
+    fun startIntent(intent: Intent): Boolean
+
+    /**
+     * 调整本应用窗口的屏幕行为，为 null 的项保持不变。
+     *
+     * @param keepAwake 是否保持屏幕常亮
+     * @param brightness 窗口亮度 0~1，-1 表示跟随系统
+     * @param immersive 是否隐藏系统栏进入沉浸模式
+     */
+    fun setScreen(keepAwake: Boolean?, brightness: Float?, immersive: Boolean?)
+
+    /**
+     * 请求系统授权修改一张 MediaStore 图片（API 30+ 的 `createWriteRequest` 确认框）。
+     * 默认实现返回 false（不支持），由 Activity 覆盖。
+     *
+     * @param uri MediaStore 图片 URI（`content://media/external/images/media/<id>`）
+     * @return 用户是否允许
+     */
+    suspend fun requestWriteAccess(uri: Uri): Boolean = false
 }
 
 /**
@@ -87,9 +129,33 @@ class FileEnv(context: Context, val host: ActivityHost) {
             runCatching {
                 val idle = registries.sumOf { it.sweepIdle() }
                 val n = janitor.run(startup)
-                Log.i(FILE_LOG_TAG, "缓存清理 startup=$startup 删文件=$n 清空闲句柄=$idle")
+                // 进程重启后没有页面会话，out/ 里的拼图成品都是孤儿
+                val stitched = if (startup) OutFiles.purgeStitch(outDir) else 0
+                Log.i(FILE_LOG_TAG, "缓存清理 startup=$startup 删文件=$n 清空闲句柄=$idle 清拼图遗留=$stitched")
             }.onFailure { Log.w(FILE_LOG_TAG, "缓存清理失败", it) }
         }
+    }
+
+    /** 缓存根下的 out 目录（页面产物） */
+    val outDir: File get() = File(roots.cacheRoot, FileConst.DIR_OUT)
+
+    /**
+     * 统计缓存占用，见 [CacheJanitor.stats]。会遍历文件，请在 IO 线程调用。
+     *
+     * @return 总量与按一级目录分组的量
+     */
+    fun cacheStats(): CacheStats = janitor.stats()
+
+    /**
+     * 手动清空缓存，见 [CacheJanitor.clear]。会遍历并删除文件，请在 IO 线程调用。
+     *
+     * @return 释放字节、删除数、跳过数
+     */
+    fun clearCache(): ClearResult = janitor.clear()
+
+    /** 异步清掉 out/ 里的拼图遗留，Activity 销毁时尽力调用 */
+    fun purgeStitchOutputs() {
+        io.execute { runCatching { OutFiles.purgeStitch(outDir) } }
     }
 
     /**

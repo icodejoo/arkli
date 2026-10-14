@@ -3,7 +3,9 @@
 import { computed, reactive, ref } from 'vue'
 import { showFailToast, showSuccessToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
+import { clipboardWrite } from '@/native/system'
 import {
+  copyWithFallback,
   CHARSETS,
   DEFAULT_OPTIONS,
   entropyBits,
@@ -58,7 +60,7 @@ function generate(): void {
 
 /** 复制某一个密码 */
 async function copy(pw: string): Promise<void> {
-  if (await copyText(pw)) showSuccessToast('已复制，用完记得清理剪贴板')
+  if (await copyWithFallback(pw, (t) => clipboardWrite(t, true), copyText)) showSuccessToast('已复制，用完记得清理剪贴板')
   else showFailToast('复制失败，请长按密码手动选择')
 }
 

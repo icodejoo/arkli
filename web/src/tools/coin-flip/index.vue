@@ -1,8 +1,9 @@
 <script setup lang="ts">
 // 抛硬币：点一下抛一次，可连抛并统计；先定结果再播动画
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { prefersReducedMotion } from '@/shared/motion'
-import { countSides, flipCoin, flipCoins, MAX_FLIPS, SIDE_LABEL, type CoinSide } from './logic'
+import { countSides, flipCoin, flipCoins, loadFlag, MAX_FLIPS, saveFlag, SIDE_LABEL, SOUND_KEY, VIBRATE_KEY, VIBRATE_LAND, VIBRATE_START, type CoinSide } from './logic'
+import { createSoundPlayer, tryVibrate } from './feedback'
 
 /** 动画时长（毫秒），需与样式里的 --flip-ms 一致 */
 const ANIM_MS = 900
@@ -38,6 +39,30 @@ const batch = ref(1)
 const history = ref<CoinSide[]>([])
 /** 定时器句柄 */
 let timer: ReturnType<typeof setTimeout> | undefined
+/** 取 localStorage，不可用时为 undefined */
+function getStorage(): Storage | undefined {
+  try {
+    return window.localStorage
+  } catch {
+    return undefined
+  }
+}
+/** 震动反馈开关，默认开 */
+const vibrateOn = ref(loadFlag(getStorage(), VIBRATE_KEY, true))
+/** 音效开关，默认关 */
+const soundOn = ref(loadFlag(getStorage(), SOUND_KEY, false))
+/** 合成音播放器 */
+const sound = createSoundPlayer()
+
+/** 开关变化时落盘 */
+watch(vibrateOn, (v) => saveFlag(getStorage(), VIBRATE_KEY, v))
+watch(soundOn, (v) => saveFlag(getStorage(), SOUND_KEY, v))
+
+/** 触发某个时刻的反馈（震动与音效各自看开关） */
+function feedback(kind: 'start' | 'land'): void {
+  if (vibrateOn.value) void tryVibrate(kind === 'start' ? VIBRATE_START : VIBRATE_LAND)
+  if (soundOn.value) sound.play(kind)
+}
 
 /** 历史统计 */
 const stats = computed(() => countSides(history.value))
@@ -47,6 +72,8 @@ const recent = computed(() => history.value.slice(0, 30))
 /** 抛硬币：连抛时每次结果都入历史，硬币停在最后一次的结果上 */
 function toss(): void {
   if (flipping.value) return
+  // AudioContext 必须在用户手势里创建 / resume
+  if (soundOn.value) sound.unlock()
   const n = Math.min(Math.max(Math.floor(batch.value) || 1, 1), MAX_FLIPS)
   const results = n === 1 ? [flipCoin()] : flipCoins(n)
   const last = results[results.length - 1]
@@ -54,6 +81,7 @@ function toss(): void {
     side.value = last
     history.value = results.slice().reverse().concat(history.value).slice(0, 500)
     flipping.value = false
+    feedback('land')
   }
   /** 结果与当前朝向不同，要多翻半圈才能落到对应面 */
   const extra = last === side.value ? 0 : HALF_TURN
@@ -64,6 +92,7 @@ function toss(): void {
   }
   animated.value = true
   flipping.value = true
+  feedback('start')
   angle.value += SPIN_TURNS * FULL_TURN + extra
   timer = setTimeout(finish, ANIM_MS)
 }
@@ -73,7 +102,10 @@ function reset(): void {
   history.value = []
 }
 
-onBeforeUnmount(() => clearTimeout(timer))
+onBeforeUnmount(() => {
+  clearTimeout(timer)
+  sound.dispose()
+})
 </script>
 
 <template>
@@ -112,6 +144,17 @@ onBeforeUnmount(() => clearTimeout(timer))
       <van-radio-group v-model="batch" direction="horizontal" :disabled="flipping">
         <van-radio v-for="n in BATCH_OPTIONS" :key="n" :name="n">{{ n }} 次</van-radio>
       </van-radio-group>
+    </div>
+
+    <div class="tool-card">
+      <van-cell-group :border="false">
+        <van-cell title="震动反馈" center>
+          <template #right-icon><van-switch v-model="vibrateOn" size="20" /></template>
+        </van-cell>
+        <van-cell title="音效" center>
+          <template #right-icon><van-switch v-model="soundOn" size="20" /></template>
+        </van-cell>
+      </van-cell-group>
     </div>
 
     <van-button type="primary" block round :disabled="flipping" @click="toss">抛！</van-button>

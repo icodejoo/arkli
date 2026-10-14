@@ -150,11 +150,6 @@ export function saveScale(storage: KvStorage | undefined, scale: number): boolea
 export const STEP_MM = 0.1
 /** 每毫米对应的厘米数的倒数：10 毫米 = 1 厘米 */
 const MM_PER_CM = 10
-/** 色相环一圈的角度 */
-const FULL_TURN_DEG = 360
-/** 色相环上颜色的饱和度与亮度（百分比）：满饱和、中亮度，线细也看得清 */
-const WHEEL_SATURATION = 100
-const WHEEL_LIGHTNESS = 50
 /** 标记颜色预设：彩虹七色，从亮绿开始循环（默认第一个是亮绿）；属于内容色，不随主题变 */
 export const MARK_COLORS = [
   { name: '亮绿', value: '#1fe05c' },
@@ -251,54 +246,6 @@ export function nextColorIndex(index: number, count: number): number {
   return (Math.floor(index) + 1) % count
 }
 
-/**
- * 色相环上的点转成色相角：正上方为 0°，顺时针增大。
- *
- * @param dx 相对圆心的水平偏移（向右为正）
- * @param dy 相对圆心的垂直偏移（向下为正，屏幕坐标）
- * @returns 色相，[0, 360)；落在圆心（偏移全为 0）时为 0
- * @example angleToHue(0, -10) // 0（正上方）
- */
-export function angleToHue(dx: number, dy: number): number {
-  if (dx === 0 && dy === 0) return 0
-  const deg = (Math.atan2(dx, -dy) * 180) / Math.PI
-  return (deg + FULL_TURN_DEG) % FULL_TURN_DEG
-}
-
-/**
- * HSL 转十六进制颜色。
- *
- * @param h 色相，度，会按一圈取模
- * @param s 饱和度，0~100
- * @param l 亮度，0~100
- * @returns 形如 `#rrggbb` 的小写颜色
- * @example hslToHex(0, 100, 50) // '#ff0000'
- */
-export function hslToHex(h: number, s: number, l: number): string {
-  const hue = (((h % FULL_TURN_DEG) + FULL_TURN_DEG) % FULL_TURN_DEG) / 60
-  const sat = Math.max(0, Math.min(100, s)) / 100
-  const lig = Math.max(0, Math.min(100, l)) / 100
-  const c = (1 - Math.abs(2 * lig - 1)) * sat
-  const x = c * (1 - Math.abs((hue % 2) - 1))
-  const m = lig - c / 2
-  const sector = Math.floor(hue) % 6
-  const [r, g, b] = [[c, x, 0], [x, c, 0], [0, c, x], [0, x, c], [x, 0, c], [c, 0, x]][sector]
-  const to = (v: number): string => Math.round((v + m) * 255).toString(16).padStart(2, '0')
-  return `#${to(r)}${to(g)}${to(b)}`
-}
-
-/**
- * 在色相环上点一下得到的颜色：色相取自点击位置，饱和度与亮度固定。
- *
- * @param dx 相对圆心的水平偏移
- * @param dy 相对圆心的垂直偏移（向下为正）
- * @returns `#rrggbb` 颜色
- * @example hexFromWheel(0, -10) // '#ff0000'
- */
-export function hexFromWheel(dx: number, dy: number): string {
-  return hslToHex(angleToHue(dx, dy), WHEEL_SATURATION, WHEEL_LIGHTNESS)
-}
-
 /** 间距对比最多同时选中的标记数 */
 export const COMPARE_MAX = 2
 
@@ -336,4 +283,40 @@ export function togglePick(picked: readonly number[], id: number): number[] {
  */
 export function gapMm(aMm: number, bMm: number): number {
   return Math.abs(aMm - bMm)
+}
+
+/**
+ * 由原生屏幕的物理 dpi 估算「每毫米多少 CSS 像素」，免银行卡校准。
+ *
+ * 尺子沿屏幕长边（纵向）画，所以优先用 ydpi，没有再用 xdpi。
+ * 物理像素要除以 devicePixelRatio 才是 CSS 像素。densityDpi 是密度桶、不够准，不参与。
+ *
+ * @param display 原生屏幕参数（只用到 xdpi / ydpi），可为 null
+ * @param dpr 页面 devicePixelRatio
+ * @returns 合法比例；数据缺失、非法或超出合理范围时为 null
+ * @example
+ * scaleFromDpi({ xdpi: 400, ydpi: 403 }, 2.625) // ≈ 6.04 px/mm
+ */
+export function scaleFromDpi(display: { xdpi?: number | null; ydpi?: number | null } | null, dpr: number): number | null {
+  if (!display || !Number.isFinite(dpr) || dpr <= 0) return null
+  for (const dpi of [display.ydpi, display.xdpi]) {
+    if (typeof dpi === 'number' && Number.isFinite(dpi) && dpi > 0) {
+      const s = dpi / MM_PER_INCH / dpr
+      return isValidScale(s) ? s : null
+    }
+  }
+  return null
+}
+
+/**
+ * 决定生效的比例：手动校准 > 原生 dpi 自动值 > 96dpi 估算。
+ *
+ * @param saved 用户手动校准值
+ * @param auto 原生 dpi 自动值
+ * @returns 像素/毫米
+ * @example
+ * resolveScale(null, 6.04) // 6.04
+ */
+export function resolveScale(saved: number | null, auto: number | null): number {
+  return saved ?? auto ?? DEFAULT_PX_PER_MM
 }

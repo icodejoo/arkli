@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SolarDay } from 'tyme4ts'
-import { BURN_IN_RANGE, burnInOffset, clockParts, formatDateLine, lunarText, msToNextSecond, startSecondTicker } from './logic'
+import { BURN_IN_RANGE, createAwake, burnInOffset, clockParts, formatDateLine, lunarText, msToNextSecond, startSecondTicker } from './logic'
 
 describe('clockParts', () => {
   it('24 小时制补零', () => {
@@ -69,5 +69,38 @@ describe('lunarText', () => {
       },
     }
     expect(lunarText(bad, new Date())).toBe('')
+  })
+})
+
+describe('createAwake', () => {
+  /** 造一个网页兜底桩 */
+  const web = (ok = true) => ({ acquire: vi.fn(async () => ok), release: vi.fn(async () => undefined) })
+  it('原生成功就不动网页，释放时关原生', async () => {
+    const native = vi.fn(async () => undefined)
+    const w = web()
+    const a = createAwake({ native, web: w })
+    expect(await a.acquire()).toBe(true)
+    expect(w.acquire).not.toHaveBeenCalled()
+    await a.release()
+    expect(native).toHaveBeenNthCalledWith(1, true)
+    expect(native).toHaveBeenNthCalledWith(2, false)
+  })
+  it('原生抛错回退网页，结果取网页的', async () => {
+    const native = vi.fn(async () => Promise.reject(new Error('no host')))
+    const w = web(false)
+    const a = createAwake({ native, web: w })
+    expect(await a.acquire()).toBe(false)
+    await a.release()
+    expect(native).toHaveBeenCalledTimes(1)
+    expect(w.release).toHaveBeenCalled()
+  })
+  it('释放时原生抛错也不外泄', async () => {
+    let n = 0
+    const native = vi.fn(async () => {
+      if (n++ > 0) throw new Error('x')
+    })
+    const a = createAwake({ native, web: web() })
+    await a.acquire()
+    await expect(a.release()).resolves.toBeUndefined()
   })
 })

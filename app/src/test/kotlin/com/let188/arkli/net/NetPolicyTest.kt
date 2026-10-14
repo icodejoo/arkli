@@ -96,6 +96,15 @@ class NetPolicyTest {
     }
 
     @Test
+    fun cspExtraConnectOnlyAppendsToConnectSrc() {
+        val parts = NetPolicy.contentSecurityPolicy(listOf("ws://127.0.0.1:5173")).split("; ")
+        assertTrue("connect-src 'self' https://api.wikimedia.org ws://127.0.0.1:5173" in parts)
+        // 其余指令与不带额外来源时一致，条数不变
+        assertEquals(10, parts.size)
+        assertEquals(NetPolicy.contentSecurityPolicy(), NetPolicy.contentSecurityPolicy(emptyList()))
+    }
+
+    @Test
     fun redactDropsQuery() {
         assertEquals("https://api.wikimedia.org/a/b", NetPolicy.redact("https://api.wikimedia.org/a/b?token=1#x"))
         assertEquals("<invalid>", NetPolicy.redact("not a url"))

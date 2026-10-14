@@ -9,15 +9,14 @@ import {
   formatReading,
   formatReadingAlt,
   gapMm,
-  hexFromWheel,
-  hslToHex,
-  angleToHue,
   loadScale,
   MARK_COLORS,
   mmToPx,
   nextColorIndex,
   pxToMm,
   saveScale,
+  scaleFromDpi,
+  resolveScale,
   scaleFromCalibration,
   sortMarksByPosition,
   STEP_MM,
@@ -166,33 +165,6 @@ describe('彩虹循环与色相环', () => {
     expect(i).toBe(0)
   })
 
-  it('色相角：正上方 0°，右 90°，下 180°，左 270°，圆心为 0', () => {
-    expect(angleToHue(0, -10)).toBeCloseTo(0, 6)
-    expect(angleToHue(10, 0)).toBeCloseTo(90, 6)
-    expect(angleToHue(0, 10)).toBeCloseTo(180, 6)
-    expect(angleToHue(-10, 0)).toBeCloseTo(270, 6)
-    expect(angleToHue(0, 0)).toBe(0)
-  })
-
-  it('HSL 转十六进制：三原色与黑白', () => {
-    expect(hslToHex(0, 100, 50)).toBe('#ff0000')
-    expect(hslToHex(120, 100, 50)).toBe('#00ff00')
-    expect(hslToHex(240, 100, 50)).toBe('#0000ff')
-    expect(hslToHex(0, 0, 0)).toBe('#000000')
-    expect(hslToHex(0, 0, 100)).toBe('#ffffff')
-  })
-
-  it('色相按一圈取模，负数与超界都能转', () => {
-    expect(hslToHex(360, 100, 50)).toBe(hslToHex(0, 100, 50))
-    expect(hslToHex(-120, 100, 50)).toBe(hslToHex(240, 100, 50))
-    expect(hslToHex(480, 100, 50)).toBe(hslToHex(120, 100, 50))
-  })
-
-  it('色相环取色：上方红、右下偏绿、左下偏蓝', () => {
-    expect(hexFromWheel(0, -10)).toBe('#ff0000')
-    expect(hexFromWheel(10, 0)).toBe(hslToHex(90, 100, 50))
-    expect(hexFromWheel(0, 10)).toBe(hslToHex(180, 100, 50))
-  })
 })
 
 describe('标记间距对比', () => {
@@ -227,5 +199,28 @@ describe('标记间距对比', () => {
     expect(gapMm(30, 12.5)).toBeCloseTo(17.5, 9)
     expect(gapMm(12.5, 30)).toBeCloseTo(17.5, 9)
     expect(gapMm(5, 5)).toBe(0)
+  })
+})
+
+describe('scaleFromDpi / resolveScale', () => {
+  it('ydpi 优先，除以像素比换成 CSS 像素', () => {
+    expect(scaleFromDpi({ xdpi: 400, ydpi: 254 }, 2)).toBeCloseTo(5, 5)
+    expect(scaleFromDpi({ xdpi: 254, ydpi: null }, 1)).toBeCloseTo(10, 5)
+  })
+  it('数据缺失或非法返回 null', () => {
+    expect(scaleFromDpi(null, 2)).toBeNull()
+    expect(scaleFromDpi({ xdpi: null, ydpi: null }, 2)).toBeNull()
+    expect(scaleFromDpi({ ydpi: 0 }, 2)).toBeNull()
+    expect(scaleFromDpi({ ydpi: 400 }, 0)).toBeNull()
+    expect(scaleFromDpi({ ydpi: 400 }, Number.NaN)).toBeNull()
+  })
+  it('超出合理范围返回 null', () => {
+    expect(scaleFromDpi({ ydpi: 5 }, 1)).toBeNull()
+    expect(scaleFromDpi({ ydpi: 9000 }, 1)).toBeNull()
+  })
+  it('手动校准优先，其次自动，最后 96dpi', () => {
+    expect(resolveScale(5, 6)).toBe(5)
+    expect(resolveScale(null, 6)).toBe(6)
+    expect(resolveScale(null, null)).toBe(DEFAULT_PX_PER_MM)
   })
 })

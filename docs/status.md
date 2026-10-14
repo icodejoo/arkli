@@ -5,11 +5,13 @@ updated: 2026-10-13
 summary: 接手入口：做到哪、已拍板什么、验证到什么程度、下一步按顺序做什么、技术债、本机环境与工作约定
 ---
 ## TL;DR
-- **协议 v2、文件三件套、联网最小切片、原生图片压缩**已落地并在真机验证；**25 个 web 工具**已上线（含"历史上的今天"）；`arkli-ai`（OCR 管线）只做了宿主侧，没进 APK。
+- **协议 v2、文件三件套、联网最小切片、原生图片压缩**已落地并在真机验证；`arkli-ai`（OCR 管线）只做了宿主侧，没进 APK。
+- **2026-10-13 盲做冲刺（无真机）**：工具注册表由 25 增到 **90 个**（见 [落地跟踪表](design/rollout-tracker.md)）。新增原生能力：系统能力（剪贴板、分享、设置、Intent、震动、屏幕、设备信息、权限）、提醒与闹钟、系统 TTS、桌面快捷方式、应用管理、`native.net.*`（http/resolve/tcp/whois/speed，含 SSRF 防护）、原生全屏图片预览与自带多选图片页、返回键先关浮层。**这些全部只过了编译与单测，没上真机**，见跟踪表末尾的"待真机验证"清单。
+- 仍缺：二维码扫码、视频压缩/提取音频/转 GIF（等 CameraX + zxing-cpp、Media3 依赖确认）；OCR/超分/识别/抠图/融合/上色（页面已做，原生 `native.ai.*` 只有 `status` 桩，模型未接入）；查字的部首笔画、藏头诗等（缺合规数据）。
 - 当前 release APK **1,737,792 字节**（空壳基线 1,220,629）。测试：Kotlin 156、web 38 文件 413 例、`arkli-ai` 49 个单测加 9 个 doctest，全绿。
 - **下一步**：系统能力（权限、分享、剪贴板、震动等）→ 联网余下部分 → 视频音频（Media3，要先确认依赖）→ AI 运行时真机复验。见"待办"。
 - 仓库 https://github.com/icodejoo/arkli（公开，main，HTTPS 推送）。
-- **P0 工具还差 5 项**：二维码扫码、视频压缩、视频提取音频、OCR、番茄时钟。
+- **P0 工具还差 4 项**：二维码扫码、视频压缩、视频提取音频、OCR（番茄时钟已做）。
 
 ## 接手先读
 1. 本文。
@@ -27,7 +29,7 @@ summary: 接手入口：做到哪、已拍板什么、验证到什么程度、�
 | ABI / minSdk | 只发 arm64-v8a；minSdk 24；构建目标 `chrome80`（不得放宽） |
 | **固定竖屏** | `MainActivity` 锁 portrait；横屏需求全部作废 |
 | **Web 优先** | 页面 JS 与浏览器 API 能做好的只在 web 做 |
-| **图片压缩** | 统一原生做，`native.image.compress`；PNG 自写缩色编码器；**不用 Rust**；压缩与转换合并；拼接、九宫格仍在 web Canvas |
+| **图片压缩** | 统一原生做，`native.image.compress`；PNG 自写缩色编码器；**不用 Rust**；压缩与转换合并；拼接 App 内走原生 `native.image.stitch`（浏览器保留 Canvas 兜底），九宫格仍在 web Canvas |
 | **不引 FFmpeg** | 视频音频走 Media3 Transformer 与平台 API（Media3 是新增依赖，**落地前单独确认**） |
 | bridge 通道 | `WebMessageListener`（已落地，取代 `@JavascriptInterface`） |
 | INTERNET | 已加；出站只放行 `api.wikimedia.org`（精确主机名），页面直连、CSP `connect-src` 同步；其余一律拦截 |
@@ -42,8 +44,11 @@ summary: 接手入口：做到哪、已拍板什么、验证到什么程度、�
 - **文件三件套**：`native.file.pick/save/openWrite/write/closeWrite` 与 `/files/` 路径响应（Range、防穿越、`nosniff` 加 CSP sandbox、可执行类 mime 降级）。真机验证 24MB 分块写入 sha256 一致、Range 206、MediaStore 保存、选图（系统文档选择器）。
 - **联网切片**：`NetPolicy` 白名单（含子域伪装、`@` 技巧、端口、punycode 等绕过用例单测）、appassets 的 HTML 响应加 CSP 头、首帧深色脚本外置 `web/public/theme-init.js`。真机验证维基 200、`example.com` 与明文被拦。
 - **原生图片压缩**：JPEG、WebP（Android 12 用 `WEBP_LOSSY`）、PNG 无损与缩色；质量、最长边、目标体积（二分）、保留 EXIF、批量、`image.progress` 事件、取消并清理半成品。真机：12MP JPEG q80 约 0.6s；12MP 无损 PNG 11.7s、产物 19.9MB（比原图大）。
+- **原生图片拼接与覆盖原图（2026-10-14）**：`native.image.stitch`（Kotlin 布局与 web `stitchLayout` 对拍，PNG 按行编码，逐张解码即回收，画布上限 4000 万像素）、`native.file.pick` 的 `keepSource`/`sourceHandle`、`native.file.overwrite`、`native.file.discard`、`native.cache.stats`/`native.cache.clear`、启动与 `onDestroy` 清拼图遗留。真机 STG-AL00（Android 12）验证：3 张 4000×3000 拼 3600 万像素 JPEG/PNG 成功、取消无残留、discard 越界整体拒绝、clear 跳过活跃写句柄、启动清理只删 `stitch_*`。**覆盖原图结论：选图器 URI 只读（`Media is read-only`），必须走 MediaStore `createWriteRequest`（系统确认框），已端到端验证；API 33+ 真 Photo Picker URI、API 29 及以下、自带多选页 URI 没验证**，详见 [Bridge 协议](design/bridge-protocol.md)「native.file.overwrite」。新增错误码 `FORMAT_MISMATCH`，前端 `BridgeErrorCode` 已补。
+- **拼接 PNG 编码提速（2026-10-14）**：真机 2 张 1200 万像素原图纵拼 3072×8192，编码 136s → 4.1s（总 ~137s → ~4.8s），成品 19.4MB → 20.5MB，与旧输出逐像素一致，WebView 可显示；改为流式写出（`.part` 随编码增长），`image.progress` 新增 `phase`/`percent`（节流）；`native.image.compress` 的 PNG 仍用 `PngTuning.BEST`，未变。详见 [Bridge 协议](design/bridge-protocol.md)。
+- **图片拼接前端改接原生（2026-10-14）**：App 内选图带 `keepSource`，拼接走 `native.image.stitch`，结果列表只显示缩略图（新增 `shared/NativeResultList.vue`，不动 `ImageResultList`），点击走 `native.image.preview`；结果下方可“压缩”（复用 `native.image.compress`，格式与成品一致）；拼接与压缩结果各有“保存并覆盖原图”（覆盖 images[0]，二次确认，格式不一致前端禁用）；重拼、改图、页面卸载都会 `native.file.discard` 旧产物。`native/cache.ts` 封装缓存统计与清理，**拼接默认 JPEG、PNG 慢提示（阈值 2000 万像素）、百分比进度**已接入（`image-stitch/logic.ts`：`pngSlowHint`、`stitchPercent`），真机 2 张 4000×3000 随机噪点图纵拼 PNG（4000×6000）验证了默认选中 JPEG、切 PNG 出现提示、按钮 0%→100% 逐步递增、缩略图正常；顺带发现 vant 按钮 `loading` 时会隐藏文字，进度文案改用 `loading-text` 才显示。JPEG 单条 percent 事件只在单测里验证，真机没单独测。**设置页**：首页标题右侧“设置”入口 → `/settings`（`views/SettingsView.vue`，逻辑在 `views/settingsCache.ts`），目前只有“缓存”卡片（占用 + 确认后清理 + toast + 刷新，无宿主显示“仅 App 内可用”）。真机（STG-AL00）验证了 拼接、缩略图、压缩、原生预览调用、覆盖流程到确认框与错误提示（假句柄，得到“原图句柄已失效”）、卸载清理；**没验证**真实选图器与系统授权框的完整覆盖。已验证“出结果后改格式单选”修正（覆盖仍按成品格式禁用、压缩仍是 PNG 无损）与设置页缓存统计和清理（造了 300KB 文件，清后 0 B）。
 - **评审修复**：取消先于协程体补发 `CANCELLED`、权限与选图槽位启动失败必释放、`closeWrite` 严格校验、图片拷贝上限 128MB、wakelock 竞态、指南针卸载后不再监听、DB 候选按得分计数；`bridge.ts` 超时后通知原生取消。
-- **调试入口**（仅 debug 源集，release 不含）：`adb shell am broadcast -a com.let188.arkli.debug.CMD --es cmd <命令>`。命令：`crash` `hello` `ping` `state` `sleep` `ticker` `cancel` `filepick` `filesave` `writetest` `writeopen` `rangetest` `videotest` `listcache` `securitytest` `nettest` `imgprep` `imgrun` `exifdump` `imglist` `nav`。日志过滤 `adb logcat | grep -E "ArkliDebug|DBGMSG|DBGNET"`。
+- **调试入口**（仅 debug 源集，release 不含）：`adb shell am broadcast -a com.let188.arkli.debug.CMD --es cmd <命令>`。命令：`crash` `hello` `ping` `state` `sleep` `ticker` `cancel` `filepick` `filesave` `writetest` `writeopen` `rangetest` `videotest` `listcache` `securitytest` `nettest` `imgprep` `imgrun` `exifdump` `imglist` `nav` `rpc`（`--es method --es params [--es id]`，任意调一个 bridge 方法，结果看 `DBGMSG`）`previewtest`（生成 1080×20000 长图并打开原生预览，日志含底图/局部解码耗时）。日志过滤 `adb logcat | grep -E "ArkliDebug|DBGMSG|DBGNET"`。
 
 ### Rust
 - `core/crates/arkli-ai`：PP-OCR 管线的纯逻辑（预处理、DB 后处理、CTC、取消与进度）、provider 探测、推理后端 trait；`ort` 仅在 `ort-backend` 特性后。`arkli-core` 仍零依赖。**未接入 UniFFI，未进 APK，APK 进程内的 ORT 加载与 OCR 端到端耗时没复验。**
@@ -108,8 +113,9 @@ summary: 接手入口：做到哪、已拍板什么、验证到什么程度、�
 - 真机：序列号 `7NQBB23606003715`，华为 STG-AL00，Android 12，arm64，高通 SM6225；系统没有 Photo Picker，选图走 androidx 回退的文档选择器。
 - 构建 Rust 并生成绑定：`pwsh E:\workspaces\arkli\core\scripts\build-android.ps1`（必须 PowerShell 7；生成物不入库）。
 - 前端：`cd web; pnpm dev --host 127.0.0.1` → http://127.0.0.1:5173/assets/web/ ，**hash 路由**，如 `#/tool/ruler`；`pnpm build:app` 构建并同步进 assets（产物不入库）；`pnpm test`、`pnpm exec vue-tsc --noEmit`。
+- 真机热更新（仅 debug 包）：先装一次 debug 包，之后 `cd web; pnpm dev:device`（= `adb reverse tcp:5173 tcp:5173` + 固定 5173 端口的 vite），手机上的页面就走电脑的 vite，改前端保存即热更新（HMR）。原理：debug 源集的 `DevServerProxy` 把 `/assets/web/*` 转给 `127.0.0.1:5173`，页面来源仍是 appassets，通道与 CSP 不变；连不上开发服务器自动退回包内 assets，日志 `adb logcat -s ArkliDebug`。release 里没有这套代码（主代码只留一个空的 `DevAssetHook`）。改 Kotlin 仍要重新编译装机。
 - 测试：`.\gradlew.bat testDebugUnitTest`（Kotlin）、`cd core; cargo test --workspace`、`cd web; pnpm test`。
-- 打包与装机：`.\gradlew.bat assembleRelease` / `assembleDebug`；`adb -s 7NQBB23606003715 install -r <apk>`；`adb -s 7NQBB23606003715 shell am start -n com.let188.arkli/.MainActivity`。
+- 打包与装机：`.\gradlew.bat assembleRelease` / `assembleDebug`；`adb -s 7NQBB23606003715 install -r <apk>`；拉起应用用 `adb -s 7NQBB23606003715 shell monkey -p com.let188.arkli -c android.intent.category.LAUNCHER 1`（**别用 `am start -n`**：它的 Intent 没有 LAUNCHER 分类，之后点桌面图标会被当成新启动，新开一个实例，看起来像"后台回来就重启"）。
 - Windows 上 `curl` 访问 https 会因 schannel 吊销检查失败，加 `--ssl-no-revoke`。
 - git 提示 LF/CRLF 转换的 warning 是正常的；`gradle wrapper` 在带构建脚本的目录里会卡住，要在空目录生成再拷回；origin 用 HTTPS。
 

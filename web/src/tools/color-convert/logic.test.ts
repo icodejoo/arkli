@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatColor, hslToRgb, hsvToRgb, parseColor, readableOn, rgbToHsl, rgbToHsv, type Rgba } from './logic'
+import { AA_LARGE, AA_NORMAL, AAA_LARGE, AAA_NORMAL, buildPalette, contrastRatio, formatColor, hslToRgb, hsvToRgb, parseColor, readableOn, rgbToHsl, rgbToHsv, relativeLuminance, SCHEME_LABEL, wcagLevels, type PaletteScheme, type Rgba } from './logic'
 
 /** 解析并取颜色，失败则抛出 */
 function ok(s: string): Rgba {
@@ -94,5 +94,83 @@ describe('readableOn', () => {
   it('亮底配黑字，暗底配白字', () => {
     expect(readableOn({ r: 255, g: 255, b: 255, a: 1 })).toBe('#000000')
     expect(readableOn({ r: 0, g: 0, b: 0, a: 1 })).toBe('#ffffff')
+  })
+})
+
+describe('relativeLuminance', () => {
+  it('黑 0，白 1，绿最亮', () => {
+    expect(relativeLuminance({ r: 0, g: 0, b: 0 })).toBe(0)
+    expect(relativeLuminance({ r: 255, g: 255, b: 255 })).toBeCloseTo(1, 10)
+    expect(relativeLuminance({ r: 0, g: 255, b: 0 })).toBeCloseTo(0.7152, 4)
+    expect(relativeLuminance({ r: 300, g: -5, b: 0 })).toBeCloseTo(0.2126, 4)
+  })
+})
+
+describe('contrastRatio', () => {
+  it('黑白 21，同色 1，顺序无关', () => {
+    const k = { r: 0, g: 0, b: 0 }
+    const w = { r: 255, g: 255, b: 255 }
+    expect(contrastRatio(k, w)).toBeCloseTo(21, 6)
+    expect(contrastRatio(w, k)).toBeCloseTo(21, 6)
+    expect(contrastRatio(w, w)).toBe(1)
+  })
+  it('已知值：#777 配白约 4.48，#767676 配白约 4.54', () => {
+    const w = { r: 255, g: 255, b: 255 }
+    expect(contrastRatio({ r: 0x77, g: 0x77, b: 0x77 }, w)).toBeCloseTo(4.48, 2)
+    expect(contrastRatio({ r: 0x76, g: 0x76, b: 0x76 }, w)).toBeCloseTo(4.54, 2)
+  })
+})
+
+describe('wcagLevels', () => {
+  it('阈值边界', () => {
+    expect(wcagLevels(AA_NORMAL)).toEqual({ aaNormal: true, aaLarge: true, aaaNormal: false, aaaLarge: true })
+    expect(wcagLevels(AA_NORMAL - 0.01).aaNormal).toBe(false)
+    expect(wcagLevels(AA_LARGE - 0.01)).toEqual({ aaNormal: false, aaLarge: false, aaaNormal: false, aaaLarge: false })
+    expect(wcagLevels(AAA_NORMAL).aaaNormal).toBe(true)
+    expect(wcagLevels(AAA_LARGE).aaaLarge).toBe(true)
+    expect(wcagLevels(21)).toEqual({ aaNormal: true, aaLarge: true, aaaNormal: true, aaaLarge: true })
+  })
+})
+
+describe('buildPalette', () => {
+  const red: Rgba = { r: 255, g: 0, b: 0, a: 1 }
+  /** 取整后的 [r,g,b] */
+  const rgb = (c: Rgba) => [c.r, c.g, c.b]
+  it('互补：红与青', () => {
+    expect(buildPalette(red, 'complementary').map(rgb)).toEqual([[255, 0, 0], [0, 255, 255]])
+  })
+  it('类似：基色在中间，色相 ±30', () => {
+    const p = buildPalette(red, 'analogous')
+    expect(p.length).toBe(3)
+    expect(rgb(p[1])).toEqual([255, 0, 0])
+    expect(rgb(p[0])).toEqual([255, 0, 128])
+    expect(rgb(p[2])).toEqual([255, 128, 0])
+  })
+  it('三等分：红、绿、蓝', () => {
+    expect(buildPalette(red, 'triadic').map(rgb)).toEqual([[255, 0, 0], [0, 255, 0], [0, 0, 255]])
+  })
+  it('分裂互补：色相 0 / 150 / 210', () => {
+    const p = buildPalette(red, 'split')
+    expect(p.length).toBe(3)
+    expect(rgb(p[1])).toEqual([0, 255, 128])
+    expect(rgb(p[2])).toEqual([0, 128, 255])
+  })
+  it('单色渐变：色相与饱和度不变，亮度递增', () => {
+    const p = buildPalette({ r: 59, g: 108, b: 246, a: 1 }, 'mono')
+    expect(p.length).toBe(5)
+    const hsl = p.map(rgbToHsl)
+    for (const x of hsl) {
+      expect(x.h).toBeCloseTo(hsl[0].h, 0)
+      expect(x.s).toBeGreaterThan(80)
+    }
+    expect(hsl.map((x) => Math.round(x.l))).toEqual([20, 35, 50, 65, 80])
+  })
+  it('负色相偏移回绕，透明度恒为 1，灰色保持灰色', () => {
+    const p = buildPalette({ r: 128, g: 128, b: 128, a: 0.3 }, 'analogous')
+    expect(p.every((c) => c.a === 1 && c.r === 128 && c.g === 128 && c.b === 128)).toBe(true)
+    expect(buildPalette({ r: 255, g: 0, b: 128, a: 1 }, 'analogous')[2].r).toBeGreaterThan(0)
+  })
+  it('每个方案都有中文名', () => {
+    for (const k of Object.keys(SCHEME_LABEL) as PaletteScheme[]) expect(SCHEME_LABEL[k].length).toBeGreaterThan(0)
   })
 })

@@ -66,6 +66,11 @@ object DebugFileCommands {
                 val item = JSONObject().put("path", "cache/$FIXTURE_DIR/$name")
                 send("native.file.save", JSONObject().put("items", org.json.JSONArray().put(item)).toString())
             }
+            "previewtest" -> {
+                val name = makeTallPng(ctx)
+                probePreview(File(ctx.cacheDir, "arkli/$FIXTURE_DIR/$name"))
+                send("native.image.preview", JSONObject().put("paths", org.json.JSONArray().put("cache/$FIXTURE_DIR/$name")).toString())
+            }
             "writetest" -> js(wv, writeTestJs(mb, enc))
             "writeopen" -> js(wv, writeOpenJs())
             "rangetest" -> {
@@ -95,6 +100,44 @@ object DebugFileCommands {
         FileOutputStream(File(dir, name)).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
         bmp.recycle()
         return name
+    }
+
+    /** 生成 1080x20000 的超长 PNG（每 100px 一行带序号的小字），验证分块解码与放大清晰度，返回文件名 */
+    private fun makeTallPng(ctx: Context): String {
+        val dir = File(ctx.cacheDir, "arkli/$FIXTURE_DIR").apply { mkdirs() }
+        val name = "arkli-tall-${System.currentTimeMillis()}.png"
+        val w = 1080
+        val h = 20000
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
+        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { textSize = 28f }
+        for (row in 0 until h / 100) {
+            c.drawRect(0f, row * 100f, w.toFloat(), row * 100f + 100f, android.graphics.Paint().apply { color = if (row % 2 == 0) Color.rgb(235, 245, 255) else Color.rgb(255, 245, 230) })
+            paint.color = Color.BLACK
+            c.drawText("row $row  The quick brown fox jumps over the lazy dog 0123456789", 20f, row * 100f + 60f, paint)
+        }
+        FileOutputStream(File(dir, name)).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        bmp.recycle()
+        return name
+    }
+
+    /** 量一下超长图的底图与局部解码：尺寸与耗时进日志（tag ArkliDebug） */
+    private fun probePreview(file: File) {
+        val img = com.let188.arkli.preview.PreviewImage(file)
+        try {
+            Log.i(TAG, "预览探测 size=${img.width}x${img.height} hasDetail=${img.hasDetail}")
+            var t0 = System.nanoTime()
+            val base = img.decodeBase()
+            Log.i(TAG, "预览探测 底图=${base?.width}x${base?.height} 耗时=${(System.nanoTime() - t0) / 1_000_000}ms")
+            for ((label, top) in listOf("顶部" to 0, "中部" to 10000, "底部" to 19000)) {
+                val rect = com.let188.arkli.preview.RectI(0, top, 1080, top + 1000)
+                t0 = System.nanoTime()
+                val bmp = img.decodeRegion(rect, 1)
+                Log.i(TAG, "预览探测 局部$label=${bmp?.width}x${bmp?.height} 耗时=${(System.nanoTime() - t0) / 1_000_000}ms")
+            }
+        } finally {
+            img.close()
+        }
     }
 
     /** 生成 Range 夹具：第 i 字节是 i 对 251 取余 */

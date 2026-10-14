@@ -1,9 +1,11 @@
 <script setup lang="ts">
-// 颜色转换：输入任一写法，得到 HEX / RGB / HSL / HSV；三条滑杆可微调 RGB
+// 颜色助手：转换（HEX / RGB / HSL / HSV）、WCAG 对比度、HSL 配色三个分区
 import { computed, ref, watch } from 'vue'
 import { showFailToast, showSuccessToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
-import { formatColor, parseColor, readableOn, type Rgba } from './logic'
+import {
+  buildPalette, contrastRatio, formatColor, parseColor, readableOn, SCHEME_LABEL, wcagLevels, type PaletteScheme, type Rgba,
+} from './logic'
 
 /** 初始颜色 */
 const INITIAL = '#3B6CF6'
@@ -12,6 +14,22 @@ const CHANNELS = [
   { key: 'r', color: '#ee0a24' },
   { key: 'g', color: '#07c160' },
   { key: 'b', color: '#1989fa' },
+] as const
+
+/** 分区：转换 / 对比度 / 配色 */
+const tab = ref<'convert' | 'contrast' | 'palette'>('convert')
+/** 配色方案列表 */
+const SCHEMES = Object.keys(SCHEME_LABEL) as PaletteScheme[]
+/** 对比度默认前景色 */
+const DEFAULT_FG = '#1B1D22'
+/** 对比度默认背景色 */
+const DEFAULT_BG = '#FFFFFF'
+/** 对比度判定项：标签与取值字段 */
+const LEVEL_ROWS = [
+  { label: 'AA 普通文字（≥ 4.5）', key: 'aaNormal' },
+  { label: 'AA 大号文字（≥ 3）', key: 'aaLarge' },
+  { label: 'AAA 普通文字（≥ 7）', key: 'aaaNormal' },
+  { label: 'AAA 大号文字（≥ 4.5）', key: 'aaaLarge' },
 ] as const
 
 /** 输入框文本 */
@@ -57,6 +75,45 @@ function setChannel(key: 'r' | 'g' | 'b', v: number): void {
   text.value = formatColor(next).hex
 }
 
+/** 前景色输入 */
+const fgText = ref(DEFAULT_FG)
+/** 背景色输入 */
+const bgText = ref(DEFAULT_BG)
+/** 前景解析 */
+const fgParsed = computed(() => parseColor(fgText.value))
+/** 背景解析 */
+const bgParsed = computed(() => parseColor(bgText.value))
+/** 对比度结果；任一颜色非法时为空 */
+const contrast = computed(() => {
+  if (!fgParsed.value.ok || !bgParsed.value.ok) return null
+  const ratio = contrastRatio(fgParsed.value.color, bgParsed.value.color)
+  return { ratio, text: ratio.toFixed(2), levels: wcagLevels(ratio) }
+})
+/** 对比度预览样式；非法时回退到默认色 */
+const contrastStyle = computed(() => ({
+  color: fgParsed.value.ok ? formatColor({ ...fgParsed.value.color, a: 1 }).hex : DEFAULT_FG,
+  background: bgParsed.value.ok ? formatColor({ ...bgParsed.value.color, a: 1 }).hex : DEFAULT_BG,
+}))
+
+/** 前景背景互换 */
+function swapContrast(): void {
+  const t = fgText.value
+  fgText.value = bgText.value
+  bgText.value = t
+}
+
+/** 当前选中的配色方案 */
+const scheme = ref<PaletteScheme>('complementary')
+/** 配色结果：每个色块带 HEX 与文字色 */
+const swatches = computed(() =>
+  buildPalette(color.value, scheme.value).map((c) => ({ hex: formatColor(c).hex, fg: readableOn(c) })),
+)
+
+/** 点击色块：复制 HEX */
+async function copyHex(hex: string): Promise<void> {
+  await copy(hex)
+}
+
 /** 复制某一行 */
 async function copy(value: string): Promise<void> {
   if (await copyText(value)) showSuccessToast(`已复制 ${value}`)
@@ -66,6 +123,54 @@ async function copy(value: string): Promise<void> {
 
 <template>
   <div class="tool-page">
+    <van-tabs v-model:active="tab" type="card">
+      <van-tab title="转换" name="convert" />
+      <van-tab title="对比度" name="contrast" />
+      <van-tab title="配色" name="palette" />
+    </van-tabs>
+
+    <template v-if="tab === 'contrast'">
+      <div class="preview" :style="contrastStyle">
+        <span v-if="contrast">{{ contrast.text }} : 1</span>
+        <span v-else>颜色写法有误</span>
+      </div>
+      <div class="tool-card">
+        <h3 class="tool-card__title">前景色（文字）</h3>
+        <van-field v-model="fgText" clearable autocomplete="off" :spellcheck="false" placeholder="#1b1d22" :error-message="fgParsed.ok ? '' : fgParsed.error" />
+        <h3 class="tool-card__title cc-gap">背景色</h3>
+        <van-field v-model="bgText" clearable autocomplete="off" :spellcheck="false" placeholder="#ffffff" :error-message="bgParsed.ok ? '' : bgParsed.error" />
+        <van-button class="cc-gap" size="small" plain @click="swapContrast">前景背景互换</van-button>
+      </div>
+      <div v-if="contrast" class="tool-card">
+        <van-cell-group :border="false">
+          <van-cell v-for="r in LEVEL_ROWS" :key="r.key" :title="r.label" center>
+            <template #value>
+              <van-tag :type="contrast.levels[r.key] ? 'success' : 'danger'">{{ contrast.levels[r.key] ? '通过' : '不通过' }}</van-tag>
+            </template>
+          </van-cell>
+        </van-cell-group>
+        <p class="tool-hint cc-gap">大号文字指 18pt（24px）以上，或 14pt（约 19px）以上加粗。半透明颜色按不透明计算。</p>
+      </div>
+    </template>
+
+    <template v-else-if="tab === 'palette'">
+      <div class="tool-card">
+        <h3 class="tool-card__title">基色</h3>
+        <van-field v-model="text" clearable autocomplete="off" :spellcheck="false" placeholder="#3b6cf6" :error-message="error" />
+        <h3 class="tool-card__title cc-gap">方案</h3>
+        <van-radio-group v-model="scheme" direction="horizontal">
+          <van-radio v-for="s in SCHEMES" :key="s" :name="s">{{ SCHEME_LABEL[s] }}</van-radio>
+        </van-radio-group>
+      </div>
+      <div class="swatches">
+        <button v-for="(s, i) in swatches" :key="i" type="button" class="swatch" :style="{ background: s.hex, color: s.fg }" @click="copyHex(s.hex)">
+          {{ s.hex }}
+        </button>
+      </div>
+      <p class="tool-hint">点色块复制 HEX。配色基于 HSL，保持基色的饱和度与亮度。</p>
+    </template>
+
+    <template v-else>
     <div class="preview" :style="previewStyle">{{ formats.hex }}</div>
 
     <div class="tool-card">
@@ -107,6 +212,7 @@ async function copy(value: string): Promise<void> {
         </van-cell>
       </van-cell-group>
     </div>
+    </template>
   </div>
 </template>
 
@@ -120,6 +226,27 @@ async function copy(value: string): Promise<void> {
   border: 1px solid var(--c-border);
   border-radius: var(--tool-card-radius);
   font: 600 20px ui-monospace, Menlo, Consolas, monospace;
+}
+
+/* 对比度页里卡片内的间距 */
+.cc-gap {
+  margin-top: $space-3;
+}
+
+/* 配色色块区 */
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $space-2;
+}
+
+/* 单个色块：背景是内容色，文字色按亮度自动挑 */
+.swatch {
+  flex: 1 1 80px;
+  height: 88px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--tool-card-radius);
+  font: 600 14px ui-monospace, Menlo, Consolas, monospace;
 }
 
 /* 通道滑杆一行 */

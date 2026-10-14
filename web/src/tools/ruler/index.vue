@@ -1,27 +1,29 @@
 <script setup lang="ts">
 // 尺子：App 固定竖屏，尺子竖着贴在屏幕长边（左或右），Canvas 画刻度，靠实物（银行卡/硬币/自定义长度）校准像素与毫米的比例。
 // 另有一条可上下拖动的游标，实时预览读数，并可在游标处打下任意多条彩色标记。
+import ColorPicker from '@/shared/ColorPicker.vue'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { showToast } from 'vant'
+import { deviceDisplay } from '@/native/system'
 import {
   buildTicks,
   CARD_MM,
   clampPos,
   COIN_MM,
-  DEFAULT_PX_PER_MM,
   formatLength,
   formatReading,
   formatReadingAlt,
   gapMm,
-  hexFromWheel,
   isValidScale,
   loadScale,
   MARK_COLORS,
   mmToPx,
   nextColorIndex,
   pxToMm,
+  resolveScale,
   saveScale,
   scaleFromCalibration,
+  scaleFromDpi,
   sortMarksByPosition,
   STEP_MM,
   STORAGE_PREFIX,
@@ -75,8 +77,6 @@ const CMP_LABEL_X = 310
 const CMP_PICK_FILL = 0.14
 /** 选中行的描边不透明度 */
 const CMP_PICK_STROKE = 0.55
-/** 彩虹盘小圆点离盘边缘的最小距离（像素），避免圆点被盘边切掉 */
-const WHEEL_DOT_MARGIN = 6
 /** 校准线两端小竖线的半长（像素） */
 const CAL_CAP = 8
 /** 刻度数字离刻度线的偏移（像素） */
@@ -119,8 +119,10 @@ const topOffset = ref(HEADER_FALLBACK)
 const along = ref(640)
 /** 已保存的校准比例（像素/毫米），null 表示未校准 */
 const savedScale = ref<number | null>(loadScale(getStorage()))
-/** 生效的比例：校准过用校准值，否则用 96dpi 估算 */
-const scale = computed(() => savedScale.value ?? DEFAULT_PX_PER_MM)
+/** 原生 dpi 算出的比例（像素/毫米），无宿主或取不到为 null */
+const autoScale = ref<number | null>(null)
+/** 生效的比例：手动校准优先，其次原生 dpi，最后 96dpi 估算 */
+const scale = computed(() => resolveScale(savedScale.value, autoScale.value))
 /** 是否处于校准模式 */
 const calibrating = ref(false)
 /** 参照物类型 */
@@ -138,16 +140,16 @@ const cursorPx = ref(CURSOR_INIT_PX)
 const markColor = ref<string>(MARK_COLORS[0].value)
 /** 最近一次选中的预设色下标：打完标记后从这里接着往下走，用户自选色不打断这个顺序 */
 const colorIdx = ref(0)
-/** 用户在彩虹盘上选的自定义颜色，没选过为 null */
+/** 用户在取色器里选的自定义颜色，没选过为 null */
 const customColor = ref<string | null>(null)
-/** 彩虹盘是否展开 */
-const wheelOpen = ref(false)
-/** 彩虹盘 DOM，取圆心与半径用 */
-const wheelRef = ref<HTMLDivElement>()
-/** 彩虹盘上选中点的位置（相对盘面左上角，像素），没选过为 null */
-const wheelDot = ref<{ x: number; y: number } | null>(null)
-/** 是否正在彩虹盘上拖动 */
-let wheelDragging = false
+/** 取色器绑定的颜色：没自选过就显示当前标记色，选了就同时改标记色 */
+const pickerColor = computed({
+  get: () => customColor.value ?? markColor.value,
+  set: (v: string) => {
+    customColor.value = v
+    markColor.value = v
+  },
+})
 /** 是否把尺子上的标记线藏起来（只影响显示，标记数据和列表都保留） */
 const marksHidden = ref(false)
 /** 间距对比弹窗是否打开 */
@@ -463,56 +465,13 @@ function pickPreset(index: number): void {
 
 /**
  * 在游标当前位置打一条选中颜色的标记，数量不限制；
- * 打完收起彩虹盘，并自动切到彩虹循环里的下一个颜色，用户可以再手动改选。
+ * 打完自动切到彩虹循环里的下一个颜色，用户可以再手动改选。
  * 标记线原本是隐藏的话会自动显示出来，免得打了却看不到。
  */
 function addMark(): void {
   marks.value.push({ id: ++markSeq, mm: cursorMm.value, color: markColor.value })
-  wheelOpen.value = false
   marksHidden.value = false
   pickPreset(nextColorIndex(colorIdx.value, MARK_COLORS.length))
-}
-
-/** 按手指在彩虹盘上的位置取色，并把选中点画在盘上 */
-function pickFromWheel(e: PointerEvent): void {
-  const el = wheelRef.value
-  if (!el) return
-  const r = el.getBoundingClientRect()
-  const radius = r.width / 2
-  const dx = e.clientX - (r.left + radius)
-  const dy = e.clientY - (r.top + radius)
-  const color = hexFromWheel(dx, dy)
-  customColor.value = color
-  markColor.value = color
-  const len = Math.hypot(dx, dy) || 1
-  const d = Math.min(len, radius - WHEEL_DOT_MARGIN)
-  wheelDot.value = { x: radius + (dx / len) * d, y: radius + (dy / len) * d }
-}
-
-/** 手指按下彩虹盘：开始拖动并立即取色 */
-function onWheelDown(e: PointerEvent): void {
-  wheelDragging = true
-  try {
-    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-  } catch {
-    // 指针号无效（如合成事件）时不捕获
-  }
-  pickFromWheel(e)
-}
-
-/** 在彩虹盘上拖动：颜色跟手 */
-function onWheelMove(e: PointerEvent): void {
-  if (wheelDragging) pickFromWheel(e)
-}
-
-/** 抬手或被系统打断：结束取色 */
-function onWheelUp(e: PointerEvent): void {
-  wheelDragging = false
-  try {
-    ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
-  } catch {
-    // 没捕获过就没有可释放的，忽略
-  }
 }
 
 /** 删除一条标记 */
@@ -525,7 +484,7 @@ function clearMarks(): void {
   marks.value = []
 }
 
-watch([unit, side, savedScale, calibrating, calPx, refKind, customMm], redraw)
+watch([unit, side, savedScale, autoScale, calibrating, calPx, refKind, customMm], redraw)
 watch(refKind, syncCalPx)
 watch(along, (v) => {
   cursorPx.value = clampPos(cursorPx.value, v)
@@ -536,9 +495,19 @@ function onResize(): void {
   void redraw()
 }
 
+/** 向原生取屏幕 dpi 换算比例；失败静默，继续用估算 */
+async function loadAutoScale(): Promise<void> {
+  try {
+    autoScale.value = scaleFromDpi(await deviceDisplay(), window.devicePixelRatio)
+  } catch {
+    // 取不到就保持估算
+  }
+}
+
 /** 深色模式媒体查询，用于卸载时解绑 */
 let mql: MediaQueryList | undefined
 onMounted(() => {
+  void loadAutoScale()
   void redraw()
   // 挂载当帧顶栏可能还没排好版，下一帧再量一次，避免尺子顶端与顶栏下沿差几像素
   requestAnimationFrame(() => void redraw())
@@ -581,7 +550,8 @@ onUnmounted(() => {
       />
     </div>
 
-    <div v-if="!savedScale" class="tool-hint ruler-warn">未校准，刻度仅供参考。拿银行卡或硬币校准一次就准了。</div>
+    <div v-if="!savedScale && autoScale" class="tool-hint ruler-warn">已按屏幕物理密度自动换算，一般不用校准；对不上实物再手动校准。</div>
+    <div v-else-if="!savedScale" class="tool-hint ruler-warn">未校准，刻度仅供参考。拿银行卡或硬币校准一次就准了。</div>
 
     <div class="tool-card">
       <h3 class="tool-card__title">游标读数</h3>
@@ -609,27 +579,7 @@ onUnmounted(() => {
           :aria-label="c.name"
           @click="pickPreset(i)"
         />
-        <button
-          type="button"
-          class="ruler-swatch ruler-swatch--wheel"
-          :class="{ 'ruler-swatch--on': customColor !== null && markColor === customColor }"
-          aria-label="彩虹盘"
-          :aria-expanded="wheelOpen"
-          @click="wheelOpen = !wheelOpen"
-        />
-      </div>
-      <div
-        v-if="wheelOpen"
-        ref="wheelRef"
-        class="ruler-wheel"
-        role="slider"
-        aria-label="彩虹盘，点或拖动选颜色"
-        @pointerdown="onWheelDown"
-        @pointermove="onWheelMove"
-        @pointerup="onWheelUp"
-        @pointercancel="onWheelUp"
-      >
-        <i v-if="wheelDot" class="ruler-wheel__dot" :style="{ left: `${wheelDot.x}px`, top: `${wheelDot.y}px`, background: customColor ?? undefined }" />
+        <color-picker v-model="pickerColor" label="标记颜色" />
       </div>
       <div class="tool-actions ruler-gap">
         <van-button type="primary" size="small" @click="addMark">标记</van-button>
@@ -959,6 +909,7 @@ onUnmounted(() => {
 /* 一排颜色块：窄屏放不下就换行 */
 .ruler-swatches {
   display: flex;
+  align-items: center;
   flex-wrap: wrap;
   gap: $space-2;
 }
@@ -975,33 +926,6 @@ onUnmounted(() => {
 
   &--on {
     border-color: var(--c-text);
-  }
-}
-
-/* 彩虹盘按钮与展开的色相环：conic-gradient 从正上方起顺时针走一圈，与取色的色相角方向一致 */
-.ruler-swatch--wheel,
-.ruler-wheel {
-  background: conic-gradient(#f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
-}
-
-.ruler-wheel {
-  position: relative;
-  width: 168px;
-  height: 168px;
-  margin: $space-3 auto 0;
-  border-radius: 50%;
-  touch-action: none;
-
-  /* 选中点：白边小圆点，填充为选中的颜色 */
-  &__dot {
-    position: absolute;
-    width: 16px;
-    height: 16px;
-    margin: -8px 0 0 -8px;
-    border: 2px solid #fff;
-    border-radius: 50%;
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
-    pointer-events: none;
   }
 }
 

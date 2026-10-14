@@ -3,7 +3,8 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { showFailToast, showSuccessToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
-import { BIG_FILE_BYTES, formatHex, HASH_ALGOS, hashFile, hashText, matchExpected, type HashDigests } from './logic'
+import { clipboardWrite } from '@/native/system'
+import { BIG_FILE_BYTES, copyWithFallback, formatHex, HASH_ALGOS, hashFile, hashText, matchExpected, type HashDigests } from './logic'
 
 /** 防抖毫秒数 */
 const DEBOUNCE_MS = 150
@@ -81,7 +82,7 @@ function cancel(): void {
 
 /** 复制某一项 */
 async function copy(hex: string): Promise<void> {
-  if (await copyText(formatHex(hex, upper.value))) showSuccessToast('已复制')
+  if (await copyWithFallback(formatHex(hex, upper.value), (t) => clipboardWrite(t, false), copyText)) showSuccessToast('已复制')
   else showFailToast('复制失败，请长按文字手动选择')
 }
 

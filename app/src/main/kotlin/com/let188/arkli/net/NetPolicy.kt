@@ -70,10 +70,11 @@ object NetPolicy {
     /**
      * 生成页面 CSP 头的值。
      *
+     * @param extraConnect 额外放进 connect-src 的来源，仅开发期热更新用（如 `ws://127.0.0.1:5173`），默认没有
      * @return 形如 `default-src 'self'; connect-src 'self' https://api.wikimedia.org; ...`
      */
-    fun contentSecurityPolicy(): String {
-        val connect = (listOf("'self'") + ALLOWED_HOSTS.sorted().map { "$SCHEME_HTTPS://$it" }).joinToString(" ")
+    fun contentSecurityPolicy(extraConnect: List<String> = emptyList()): String {
+        val connect = (listOf("'self'") + ALLOWED_HOSTS.sorted().map { "$SCHEME_HTTPS://$it" } + extraConnect).joinToString(" ")
         return listOf(
             "default-src 'self'",
             "connect-src $connect",

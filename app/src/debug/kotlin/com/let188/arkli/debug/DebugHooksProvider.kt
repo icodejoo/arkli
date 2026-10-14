@@ -50,7 +50,7 @@ private const val NET_URL_PLAIN = "http://api.wikimedia.org/feed/v1/wikipedia/zh
  *
  * 触发示例：`adb shell am broadcast -a com.let188.arkli.debug.CMD --es cmd crash`
  * 命令：nettest / crash / hello / ping / sleep(--ei ms) / ticker / cancel(--es id) / state，
- * 文件类见 [DebugFileCommands]：filepick(--es mime --ez multiple) / filesave / writetest(--ei mb --es enc) / writeopen / rangetest / securitytest / videotest / listcache
+ * 文件类见 [DebugFileCommands]：filepick(--es mime --ez multiple) / filesave / writetest(--ei mb --es enc) / writeopen / rangetest / securitytest / videotest / listcache / previewtest
  */
 class DebugHooksProvider : ContentProvider() {
 
@@ -89,6 +89,7 @@ class DebugHooksProvider : ContentProvider() {
         // adb shell 发的广播需要接收器导出
         if (Build.VERSION.SDK_INT >= 33) ctx.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
         else ctx.registerReceiver(receiver, filter)
+        DevServerProxy.install()
         Log.i(TAG, "调试钩子已就绪")
         return true
     }
@@ -164,11 +165,13 @@ class DebugHooksProvider : ContentProvider() {
             }
             "ticker" -> { bridge(); send(wv, METHOD_TICKER, "{}") }
             "cancel" -> send(wv, ArkliBridge.METHOD_CANCEL, "{\"id\":\"${i.getStringExtra("id")}\"}")
-            "filepick", "filesave", "writetest", "writeopen", "rangetest", "videotest", "securitytest", "listcache" -> DebugFileCommands.handle(
+            "filepick", "filesave", "writetest", "writeopen", "rangetest", "videotest", "securitytest", "listcache", "previewtest" -> DebugFileCommands.handle(
                 cmd, wv.context, wv, i.getStringExtra("mime"), i.getBooleanExtra("multiple", false),
                 i.getIntExtra("mb", 6), i.getStringExtra("enc") ?: "latin1",
             ) { method, params -> send(wv, method, params) }
             "imgprep", "imgrun", "exifdump", "imglist", "nav" -> DebugImageCommands.handle(cmd, wv.context, wv, i.getStringExtra("path"))
+            "rpc" -> send(wv, i.getStringExtra("method") ?: "native.ping", i.getStringExtra("params") ?: "{}", i.getStringExtra("id"))
+            "evaljs" -> wv.evaluateJavascript(i.getStringExtra("js") ?: "0", null)
             "nettest" -> netTest(wv)
             "state" -> Log.i(TAG, "state url=${wv.url} pid=${android.os.Process.myPid()} session=${bridge()?.session}")
         }

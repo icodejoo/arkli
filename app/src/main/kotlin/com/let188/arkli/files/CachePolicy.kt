@@ -114,6 +114,32 @@ class CacheJanitor(
         return n
     }
 
+    /**
+     * 统计缓存占用。
+     *
+     * @return 总量与按一级目录分组的量
+     */
+    fun stats(): CacheStats = CacheMaintenance.stats(scan())
+
+    /**
+     * 手动清空缓存：删除全部文件，但跳过活跃写句柄的临时文件与保护期内修改过的文件，再清掉空目录。
+     *
+     * @return 释放的字节数、删除的文件数、跳过的文件数
+     */
+    fun clear(): ClearResult {
+        val plan = CacheMaintenance.planClear(scan(), clock(), activeParts())
+        var freed = 0L
+        var n = 0
+        for (v in plan.victims) {
+            if (File(root, v.path).delete()) {
+                n++
+                freed += v.size
+            }
+        }
+        pruneEmptyDirs()
+        return ClearResult(freed, n, plan.skipped)
+    }
+
     /** 删掉空的子目录（保留根目录本身），由深到浅 */
     private fun pruneEmptyDirs() {
         if (!root.isDirectory) return

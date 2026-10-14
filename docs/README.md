@@ -4,6 +4,8 @@
 
 ## 续做（接手先看）
 - [当前状态与待办](status.md) — 做到哪了、验证到什么程度、下一步、技术债、本机环境与命令。接手入口。active。
+- [工具落地跟踪表](design/rollout-tracker.md) — 116 项逐项状态、批次与阻塞原因，盲做模式下的接力清单。active。
+- [真机验证清单](design/device-test-checklist.md) — 盲做阶段攒下的全部待验证项，按风险排序，可照着逐条测。active。
 
 ## 原则
 - [项目原则](principles.md) — 体积、分层、工具归属的优先级。active。

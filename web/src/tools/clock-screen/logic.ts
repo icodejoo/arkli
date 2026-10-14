@@ -131,3 +131,64 @@ export function lunarText(lib: LunarLib, d: Date): string {
     return ''
   }
 }
+
+/** 网页常亮句柄的最小形状（与 `@/shared/wakelock` 的 WakeLockHandle 兼容） */
+export interface WebAwake {
+  /** 申请，返回是否成功 */
+  acquire(): Promise<boolean>
+  /** 释放 */
+  release(): Promise<void>
+}
+
+/** 常亮依赖：原生开关与网页兜底 */
+export interface AwakeDeps {
+  /** 原生常亮开关；无宿主或失败时应抛错 */
+  native: (on: boolean) => Promise<void>
+  /** 网页 wakeLock 兜底 */
+  web: WebAwake
+}
+
+/** 常亮控制器 */
+export interface Awake {
+  /** 申请常亮：优先原生，失败退回网页；返回是否成功 */
+  acquire(): Promise<boolean>
+  /** 释放当前持有的常亮（两路都清，永不抛错） */
+  release(): Promise<void>
+}
+
+/**
+ * 创建「优先原生、失败回退网页」的常亮控制器。
+ *
+ * @param deps 原生开关与网页兜底
+ * @returns 控制器
+ * @example
+ * const awake = createAwake({ native: keepAwake, web: createWakeLock() })
+ * if (!(await awake.acquire())) tip('请调长息屏时间')
+ * onUnmounted(() => void awake.release())
+ */
+export function createAwake(deps: AwakeDeps): Awake {
+  let nativeHeld = false
+  return {
+    async acquire() {
+      try {
+        await deps.native(true)
+        nativeHeld = true
+        return true
+      } catch {
+        // 无宿主或原生失败，走网页常亮
+      }
+      return deps.web.acquire()
+    },
+    async release() {
+      if (nativeHeld) {
+        nativeHeld = false
+        try {
+          await deps.native(false)
+        } catch {
+          // 释放失败忽略
+        }
+      }
+      await deps.web.release()
+    },
+  }
+}
