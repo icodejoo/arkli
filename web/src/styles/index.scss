@@ -2,6 +2,13 @@
 // 兼容变量：旧工具页仍在用 --c-*，这里映射到同一套色板
 // 双 :root 提高权重，避免被懒加载的 Vant 组件 CSS 覆盖
 :root:root {
+  // 安全区：原生（MainActivity 边到边）把系统栏与刘海的尺寸推到 <html> 的内联样式里覆盖这几个变量；
+  // 没有宿主（浏览器调试）时回退到 env()。所有页面的顶部/底部/左右留白一律读这里，不要直接写 env()
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+
   // 色板
   --c-bg: #f4f5f7;
   --c-surface: #ffffff;
@@ -83,23 +90,89 @@ body {
   touch-action: manipulation;
 }
 
-// 路由切换：淡入加轻微位移，系统要求减少动画时直接关掉
-.route-enter-active,
-.route-leave-active {
+// 页面转场：iOS 风格。
+// 前进（page-push）：新页面从右侧推入并带左侧阴影，旧页面同时向左退 28% 并略微变暗；
+// 后退（page-pop）：当前页面向右滑出，下面的页面从左侧 -28% 回到原位。
+// 转场期间新旧页面都脱离文档流（position: fixed）叠在一起，结束后新页面回到文档流。
+$page-ease: cubic-bezier(0.32, 0.72, 0, 1); // iOS 导航转场的曲线：起步快、收尾慢
+$page-duration: 0.36s;
+$page-parallax: -28%; // 下层页面的视差位移
+$page-dim: brightness(0.92); // 下层页面的变暗
+
+.page-push-enter-active,
+.page-push-leave-active,
+.page-pop-enter-active,
+.page-pop-leave-active {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  overflow: hidden;
+  background: var(--c-bg);
+  pointer-events: none;
+  will-change: transform;
   transition:
-    opacity 0.16s ease,
-    transform 0.16s ease;
+    transform $page-duration $page-ease,
+    filter $page-duration $page-ease;
 }
 
-.route-enter-from,
-.route-leave-to {
-  opacity: 0;
-  transform: translateY(6px);
+// 转场中的页面带着滚动位置（内联 top: -scrollY：离开的页面停在原处，回到缓存的首页时还原到上次的位置），
+// 里面固定定位的导航栏、状态栏遮罩要往回补偿，才停在视口顶部
+.page-push-enter-active.page-push-enter-active,
+.page-push-leave-active.page-push-leave-active,
+.page-pop-enter-active.page-pop-enter-active,
+.page-pop-leave-active.page-pop-leave-active {
+  .van-nav-bar--fixed,
+  .home__scrim {
+    top: var(--hold-scroll, 0px);
+  }
 }
 
+// 前进：新页面在上
+.page-push-enter-active {
+  z-index: 2;
+  box-shadow: -10px 0 28px rgba(0, 0, 0, 0.14);
+}
+
+.page-push-leave-active {
+  z-index: 1;
+}
+
+.page-push-enter-from {
+  transform: translateX(100%);
+}
+
+.page-push-leave-to {
+  transform: translateX($page-parallax);
+  filter: $page-dim;
+}
+
+// 后退：当前页面在上
+.page-pop-enter-active {
+  z-index: 1;
+}
+
+.page-pop-leave-active {
+  z-index: 2;
+  box-shadow: -10px 0 28px rgba(0, 0, 0, 0.14);
+}
+
+.page-pop-enter-from {
+  transform: translateX($page-parallax);
+  filter: $page-dim;
+}
+
+.page-pop-leave-to {
+  transform: translateX(100%);
+}
+
+// 系统要求减少动画：直接切换
 @media (prefers-reduced-motion: reduce) {
-  .route-enter-active,
-  .route-leave-active {
+  .page-push-enter-active,
+  .page-push-leave-active,
+  .page-pop-enter-active,
+  .page-pop-leave-active {
     transition: none;
   }
 }
@@ -228,4 +301,14 @@ body {
   margin: 0;
   font-size: 12px;
   color: var(--c-text-muted);
+}
+
+// Vant 的 safe-area-inset-top / -bottom 属性给组件加的是 .van-safe-area-top / -bottom，内部写死用 env()，
+// 这里改读我们的变量（html 前缀提高权重，不受懒加载的组件 CSS 顺序影响）
+html .van-safe-area-top {
+  padding-top: var(--safe-top);
+}
+
+html .van-safe-area-bottom {
+  padding-bottom: var(--safe-bottom);
 }

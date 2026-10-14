@@ -30,6 +30,7 @@ import com.let188.arkli.files.FileModule
 import com.let188.arkli.image.ImageModule
 import com.let188.arkli.media.MediaModule
 import com.let188.arkli.shortcut.ShortcutModule
+import com.let188.arkli.splash.SplashGate
 import com.let188.arkli.system.SystemModule
 import com.let188.arkli.tts.TtsModule
 import com.let188.arkli.dircleaner.DirModule
@@ -47,6 +48,9 @@ internal const val ASSET_HOST = "appassets.androidplatform.net"
 
 /** 首页地址 */
 private const val START_URL = "https://$ASSET_HOST/assets/web/index.html"
+
+/** WebView 底色：与启动动画的底色一致，页面没画出来前不会透出默认的纯白 */
+private const val WEBVIEW_BACKGROUND = 0xFF8B5CF6.toInt()
 
 /** 通道允许的来源规则，只放 appassets 域 */
 private const val ALLOWED_ORIGIN = "https://$ASSET_HOST"
@@ -85,10 +89,11 @@ private const val GUARD_SCRIPT = "(function(){var o=window.${ArkliBridge.JS_OBJE
  *
  * @param context 上下文
  * @param files 文件能力环境（选择器、PathHandler、写句柄、缓存清理）
+ * @param startRoute 首屏路由（如 /tool/ruler，调用方需已校验），为空进首页
  * @param onRenderGone 渲染进程崩溃时回调，宿主应销毁并重建页面
  */
 @SuppressLint("SetJavaScriptEnabled")
-class ArkliPage(context: Context, private val files: FileEnv, private val onRenderGone: () -> Unit) {
+class ArkliPage(context: Context, private val files: FileEnv, startRoute: String? = null, private val onRenderGone: () -> Unit) {
 
     /** 承载页面的 WebView */
     val webView: WebView = WebView(context)
@@ -124,6 +129,7 @@ class ArkliPage(context: Context, private val files: FileEnv, private val onRend
             .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(context))
             .build()
 
+        webView.setBackgroundColor(WEBVIEW_BACKGROUND)
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -157,6 +163,12 @@ class ArkliPage(context: Context, private val files: FileEnv, private val onRend
                 if (firstLoadSeen) rotateSession() else firstLoadSeen = true
             }
 
+            /** 新文档首次可见：写入安全区，页面第一帧就有正确的留白 */
+            override fun onPageCommitVisible(view: WebView, url: String?) = applySafeInsets()
+
+            /** 文档加载完成：再写一次兜底 */
+            override fun onPageFinished(view: WebView, url: String?) = applySafeInsets()
+
             /** 渲染进程崩溃：先关会话，再交给宿主重建，返回 true 避免 App 被连带杀掉 */
             override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
                 bridge.close()
@@ -167,7 +179,7 @@ class ArkliPage(context: Context, private val files: FileEnv, private val onRend
 
         // 顺序固定：先注册通道与守卫，最后才 loadUrl（通道必须在页面加载前注册）
         installChannel()
-        webView.loadUrl(START_URL)
+        webView.loadUrl(if (startRoute == null) START_URL else "$START_URL#$startRoute")
     }
 
     /**
@@ -177,6 +189,24 @@ class ArkliPage(context: Context, private val files: FileEnv, private val onRend
      * @param data 事件数据，可为 null
      */
     fun emit(event: String, data: Any? = null) = bridge.emit(event, data)
+
+    /** 当前安全区；文档重新加载后要重写，所以要记住 */
+    private var safeInsets = SafeInsets.ZERO
+
+    /**
+     * 更新页面的安全区（`--safe-*` CSS 变量）。必须在主线程调用。
+     *
+     * @param insets 系统栏与刘海挡住的四边尺寸（dp）
+     */
+    fun setSafeInsets(insets: SafeInsets) {
+        safeInsets = insets
+        applySafeInsets()
+    }
+
+    /** 把记住的安全区写进当前文档 */
+    private fun applySafeInsets() {
+        if (!destroyed) webView.evaluateJavascript(safeInsets.toScript(), null)
+    }
 
     /** 是否已销毁，避免重复销毁 */
     private var destroyed = false
@@ -205,6 +235,11 @@ class ArkliPage(context: Context, private val files: FileEnv, private val onRend
         val created = ArkliBridge(BridgeSessions.next(), io, binary = binarySupported)
         created.register("native.ping", BridgeHandler { _, _ ->
             JSONObject().put("pong", true).put("ts", System.currentTimeMillis())
+        })
+        // 页面挂载完成：通知启动动画可以淡出
+        created.register("native.app.ready", BridgeHandler { _, _ ->
+            SplashGate.markReady()
+            JSONObject().put("ready", true)
         })
         created.register("rust.core.version", BridgeHandler { _, _ ->
             JSONObject().put("version", uniffi.arkli_ffi.coreVersion())

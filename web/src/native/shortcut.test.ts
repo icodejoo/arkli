@@ -30,4 +30,14 @@ describe('shortcut', () => {
     const { pinShortcut, NativeUnavailableError } = await load(false)
     await expect(pinShortcut({ id: 'a', label: 'x', url: 'https://a.com' }, fakeCall(null))).rejects.toBeInstanceOf(NativeUnavailableError)
   })
+  it('pinToolShortcut：拼出 /tool/ 路由并透传结果', async () => {
+    const { pinToolShortcut } = await load(true)
+    const call = fakeCall({ requested: true })
+    expect(await pinToolShortcut({ label: '尺子', icon: '📏', toolId: 'ruler' }, call)).toEqual({ requested: true })
+    expect(call).toHaveBeenCalledWith('native.shortcut.pinTool', { label: '尺子', icon: '📏', route: '/tool/ruler' })
+  })
+  it('pinToolShortcut 无宿主：抛 NativeUnavailableError', async () => {
+    const { pinToolShortcut, NativeUnavailableError } = await load(false)
+    await expect(pinToolShortcut({ label: 'x', icon: 'x', toolId: 'a' })).rejects.toBeInstanceOf(NativeUnavailableError)
+  })
 })

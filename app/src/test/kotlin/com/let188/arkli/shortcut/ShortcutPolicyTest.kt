@@ -45,4 +45,25 @@ class ShortcutPolicyTest {
         }
         assertTrue(ShortcutPolicy.PALETTE.toSet().size == ShortcutPolicy.PALETTE.size)
     }
+
+    @Test
+    fun parseToolBuildsIdAndValidates() {
+        val spec = ShortcutPolicy.parseTool(" 尺子 ", "📏", "/tool/ruler")
+        assertEquals("tool-ruler", spec.id)
+        assertEquals("尺子", spec.label)
+        assertEquals("/tool/ruler", spec.route)
+        for (bad in listOf("", "/tool/", "/tool/A", "/tool/a/b", "/other/a", "tool/a", "/tool/a?x=1", "https://evil/tool/a")) {
+            assertThrows(IllegalArgumentException::class.java) { ShortcutPolicy.parseTool("x", "📏", bad) }
+        }
+        assertThrows(IllegalArgumentException::class.java) { ShortcutPolicy.parseTool("", "📏", "/tool/a") }
+        assertThrows(IllegalArgumentException::class.java) { ShortcutPolicy.parseTool("x", " ", "/tool/a") }
+        assertThrows(IllegalArgumentException::class.java) { ShortcutPolicy.parseTool("x", "a".repeat(17), "/tool/a") }
+    }
+
+    @Test
+    fun isToolRouteRejectsNullAndJunk() {
+        assertTrue(ShortcutPolicy.isToolRoute("/tool/coin-flip"))
+        assertTrue(!ShortcutPolicy.isToolRoute(null))
+        assertTrue(!ShortcutPolicy.isToolRoute("/tool/x\n"))
+    }
 }

@@ -493,7 +493,7 @@ applySolar(todaySolar())
 
 // 事项说明面板
 .taboo-note {
-  padding: 20px 20px calc(16px + env(safe-area-inset-bottom));
+  padding: 20px 20px calc(16px + var(--safe-bottom));
   background: var(--c-surface);
 
   &__head {
@@ -651,7 +651,7 @@ applySolar(todaySolar())
   &__foot {
     flex: none;
     margin: 0;
-    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+    padding: 10px 16px calc(10px + var(--safe-bottom));
     font-size: 12px;
     color: var(--c-text-muted);
     border-top: 1px solid var(--c-border);

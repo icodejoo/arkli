@@ -1,0 +1,4 @@
+<resources>
+    <!-- 系统启动页只能用纯色：取渐变中段色，与整屏渐变的平均色差最小 -->
+    <color name="splash_color">#8B5CF6</color>
+</resources>

@@ -1,6 +1,16 @@
 <resources>
-    <!-- 最简系统主题，无 ActionBar，不依赖任何组件库 -->
+    <!-- 最简系统主题，无 ActionBar，不依赖任何组件库；窗口背景是“纯色 + 合盖箱子”，与启动动画第一帧一致 -->
     <style name="Theme.Arkli" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:windowBackground">@android:color/white</item>
+        <item name="android:windowBackground">@drawable/splash_background</item>
+    </style>
+
+    <!-- 启动动画页：半透明窗口让下层 MainActivity 保持可见从而继续渲染 WebView，
+         但窗口背景是不透明的“纯色 + 箱子”，第一帧由系统直接画出，不等 Compose，也不会透出下层 -->
+    <style name="Theme.Arkli.Splash" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@drawable/splash_background</item>
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
 </resources>

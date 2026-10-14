@@ -13,6 +13,9 @@ object ShortcutModule {
     /** 方法名：固定快捷方式到桌面 */
     const val METHOD_PIN = "native.shortcut.pin"
 
+    /** 方法名：把某个工具固定到桌面 */
+    const val METHOD_PIN_TOOL = "native.shortcut.pinTool"
+
     /**
      * 注册快捷方式方法。
      *
@@ -21,5 +24,6 @@ object ShortcutModule {
      */
     fun install(bridge: ArkliBridge, env: FileEnv) {
         bridge.register(METHOD_PIN, ShortcutPinHandler(env.appContext))
+        bridge.register(METHOD_PIN_TOOL, ShortcutPinToolHandler(env.appContext))
     }
 }

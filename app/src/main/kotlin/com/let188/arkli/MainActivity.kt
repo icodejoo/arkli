@@ -1,6 +1,7 @@
 package com.let188.arkli
 
 import android.app.Activity
+import android.graphics.Color
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
@@ -11,23 +12,39 @@ import android.view.WindowManager
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.viewinterop.AndroidView
 import com.let188.arkli.bridge.ArkliBridge
 import com.let188.arkli.files.ActivityHost
 import com.let188.arkli.files.FileEnv
 import com.let188.arkli.files.PendingSlot
 import com.let188.arkli.files.PickKind
+import com.let188.arkli.shortcut.ACTION_OPEN_TOOL
+import com.let188.arkli.shortcut.EXTRA_ROUTE
+import com.let188.arkli.shortcut.ShortcutPolicy
+import com.let188.arkli.splash.SplashActivity
+import com.let188.arkli.splash.SplashGate
 import com.let188.arkli.picker.PickOutcome
 import com.let188.arkli.picker.PickerContract
 import com.let188.arkli.preview.ImagePreviewActivity
@@ -94,9 +111,43 @@ class MainActivity : ComponentActivity(), ActivityHost {
     /** 运行时权限申请 */
     private val permReq = registerForActivityResult(ActivityResultContracts.RequestPermission()) { permSlot.complete(it) }
 
+    /** 当前安全区；页面重建（渲染进程崩溃）后要重新推给新页面 */
+    private var safeInsets = SafeInsets.ZERO
+
+    /** 桌面快捷方式带来的首屏路由，首次创建页面后清空（崩溃重建回首页） */
+    private var launchRoute: String? = null
+
+    /** 从 Intent 取经校验的工具路由；不合法或没有返回 null */
+    private fun routeOf(intent: Intent?): String? =
+        intent?.takeIf { it.action == ACTION_OPEN_TOOL }?.getStringExtra(EXTRA_ROUTE)?.takeIf { ShortcutPolicy.isToolRoute(it) }
+
+    /** App 已在运行时点桌面快捷方式：直接切到对应工具页 */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        val route = routeOf(intent) ?: return
+        page?.webView?.evaluateJavascript("location.hash=" + org.json.JSONObject.quote("#$route"), null)
+    }
+
     /** 创建界面并接管返回键 */
     override fun onCreate(savedInstanceState: Bundle?) {
+        // 边到边：状态栏、导航栏透明（图标深浅随系统深色模式自动切换），WebView 铺满整个屏幕，
+        // 顶部/底部安全区由页面（Vue）读 --safe-* 变量自己留
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT),
+        )
         super.onCreate(savedInstanceState)
+        // 系统启动页一出完就立刻摘掉，不让系统再走一遍自己的退出动画（会和我们的动画叠出闪烁）
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            splashScreen.setOnExitAnimationListener { it.remove() }
+        }
+        launchRoute = routeOf(intent)
+        // 冷启动才播启动动画（含桌面快捷方式冷启动）；动画页盖在上面，WebView 在下面预热
+        if (savedInstanceState == null && SplashGate.claim()) {
+            startActivity(Intent(this, SplashActivity::class.java))
+            @Suppress("DEPRECATION")
+            overridePendingTransition(0, 0)
+        }
         files = FileEnv(this, this)
         files.cleanup(startup = true)
         setContent {
@@ -115,12 +166,30 @@ class MainActivity : ComponentActivity(), ActivityHost {
                     }
                 }
             }
+            // 系统栏与刘海挡住的尺寸，推给页面的 --safe-* 变量；输入法弹出时底部归零（WebView 用 imePadding 避开键盘）
+            val density = LocalDensity.current
+            val bars = WindowInsets.systemBars.union(WindowInsets.displayCutout)
+            val imeBottom = WindowInsets.ime.getBottom(density)
+            val insets = SafeInsets(
+                top = bars.getTop(density) / density.density,
+                bottom = if (imeBottom > 0) 0f else bars.getBottom(density) / density.density,
+                left = bars.getLeft(density, LayoutDirection.Ltr) / density.density,
+                right = bars.getRight(density, LayoutDirection.Ltr) / density.density,
+            )
+            LaunchedEffect(insets) {
+                safeInsets = insets
+                page?.setSafeInsets(insets)
+            }
             // generation 变化即换 key，旧 AndroidView 释放、新的重建
             key(generation) {
                 AndroidView(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().imePadding(),
                     factory = { ctx ->
-                        ArkliPage(ctx, files) { onRenderGone() }.also { page = it }.webView
+                        ArkliPage(ctx, files, launchRoute.also { launchRoute = null }) { onRenderGone() }
+                            .also {
+                                page = it
+                                it.setSafeInsets(safeInsets)
+                            }.webView
                     },
                     onRelease = { (it.tag as? ArkliPage)?.destroy() },
                 )

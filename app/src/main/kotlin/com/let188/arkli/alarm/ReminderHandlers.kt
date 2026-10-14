@@ -65,8 +65,13 @@ internal class AlarmScheduler(private val context: Context, private val store: A
         try {
             manager.setAlarmClock(AlarmManager.AlarmClockInfo(entry.atEpochMs, showIntent), pendingOf(entry.id))
         } catch (e: SecurityException) {
-            store.remove(entry.id)
-            throw BridgeException(BridgeErrors.PERMISSION_DENIED, "系统拒绝设置闹钟")
+            // 精确闹钟权限被收回时降级为非精确闹钟，仍在 Doze 下触发
+            try {
+                manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, entry.atEpochMs, pendingOf(entry.id))
+            } catch (e2: SecurityException) {
+                store.remove(entry.id)
+                throw BridgeException(BridgeErrors.PERMISSION_DENIED, "系统拒绝设置闹钟：${e2.message}")
+            }
         }
     }
 

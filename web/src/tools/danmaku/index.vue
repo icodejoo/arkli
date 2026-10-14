@@ -300,7 +300,7 @@ onUnmounted(() => {
   right: 0;
   bottom: 0;
   left: 0;
-  padding: $space-4 $space-4 calc(#{$space-4} + env(safe-area-inset-bottom, 0px));
+  padding: $space-4 $space-4 calc(#{$space-4} + var(--safe-bottom));
   background: rgba(0, 0, 0, 0.78);
   color: #fff;
 

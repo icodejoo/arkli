@@ -55,7 +55,7 @@ watchEffect(() => {
     max-width: 720px;
     margin: 0 auto;
     padding: $space-4;
-    padding-bottom: calc(#{$space-4} + env(safe-area-inset-bottom));
+    padding-bottom: calc(#{$space-4} + var(--safe-bottom));
   }
 }
 </style>

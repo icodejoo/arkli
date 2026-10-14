@@ -1,0 +1,8 @@
+<resources>
+    <!-- Android 12+ 系统启动页：纯色底 + 合盖箱子，之后窗口背景、启动动画第一帧都是同一幅画面 -->
+    <style name="Theme.Arkli" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@drawable/splash_background</item>
+        <item name="android:windowSplashScreenBackground">@color/splash_color</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
+    </style>
+</resources>

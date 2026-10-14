@@ -254,8 +254,8 @@ onUnmounted(() => {
 /* 退出按钮 */
 .clock__close {
   position: absolute;
-  top: calc(12px + env(safe-area-inset-top, 0px));
-  right: calc(12px + env(safe-area-inset-right, 0px));
+  top: calc(12px + var(--safe-top));
+  right: calc(12px + var(--safe-right));
   opacity: 0.6;
 }
 

@@ -10,6 +10,7 @@ import { requireNative, type CallFn } from './system'
 /** 方法名常量 */
 export const SHORTCUT_METHODS = {
   pin: 'native.shortcut.pin',
+  pinTool: 'native.shortcut.pinTool',
 } as const
 
 /** 固定快捷方式参数 */
@@ -41,4 +42,27 @@ export interface PinShortcutResult {
 export async function pinShortcut(options: PinShortcutOptions, call: CallFn = bridgeCall): Promise<PinShortcutResult> {
   requireNative(SHORTCUT_METHODS.pin)
   return call<PinShortcutResult>(SHORTCUT_METHODS.pin, { id: options.id, label: options.label, url: options.url })
+}
+
+/** 把工具固定到桌面的参数 */
+export interface PinToolOptions {
+  /** 桌面显示名，1~24 字 */
+  label: string
+  /** 图标 emoji */
+  icon: string
+  /** 工具 id，对应路由 /tool/<id> */
+  toolId: string
+}
+
+/**
+ * 把某个工具固定到桌面，点图标直接进该工具页。系统会弹窗让用户确认。
+ *
+ * @param options 工具名称、图标与 id
+ * @param call 原生调用函数，默认走 bridge（仅测试注入）
+ * @returns 请求结果
+ * @example await pinToolShortcut({ label: '尺子', icon: '📏', toolId: 'ruler' })
+ */
+export async function pinToolShortcut(options: PinToolOptions, call: CallFn = bridgeCall): Promise<PinShortcutResult> {
+  requireNative(SHORTCUT_METHODS.pinTool)
+  return call<PinShortcutResult>(SHORTCUT_METHODS.pinTool, { label: options.label, icon: options.icon, route: `/tool/${options.toolId}` })
 }
