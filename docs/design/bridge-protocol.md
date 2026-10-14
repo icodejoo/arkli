@@ -387,7 +387,7 @@ await call('native.file.save', { items: [{ path, name: 'out.bin' }] })
 | `native.net.tcp` | `{ host, port（1~65535）, timeoutMs?: 5000（1~15000） }` | `{ ok, elapsedMs, error? }`。连不上、超时、域名解析失败都返回 `ok:false` 不抛错；目标在内网才抛 `PERMISSION_DENIED` |
 | `native.net.whois` | `{ query, server? }` | `{ server（最终应答的服务器）, text, truncated }`。`query` 只允许字母数字与 `.-:`（≤253）；`server` 缺省 `whois.iana.org`，连 43 端口发 `query\r\n`；应答里的 `refer:` / `whois:` / `ReferralServer:` 行指向下一级，最多再跟 2 级；每次 8 秒超时，文本上限 64KB。后续级失败（被拒、超时、连不上）回退到上一级的结果，第一级失败才抛错 |
 | `native.net.speed` | `{ url, maxBytes?: 26214400（≤52428800）, durationMs?: 8000（≤15000） }` | `{ bytes, elapsedMs, bps }`。流式下载并丢弃，到量或到时即停，`bps = bytes*8/秒`；`elapsedMs` 从响应头到达后算起（不含建连与握手）；最多跟 3 跳重定向；非 2xx 抛 `NETWORK` |
-| `native.ai.status` | `{}` | `{ models: { ocr, upscale, classify, matte, fuse, colorize } }`，布尔。原生 AI 运行时未接入，目前恒为全 `false`，其余 `native.ai.*` 不注册；待 sherpa / ort 接入后替换 |
+| `native.ai.status` | `{}` | `{ models: { ocr, upscale, classify, matte, fuse, colorize } }`，布尔。原生 AI 运行时未接入，目前恒为全 `false`，本地模型的 `native.ai.ocr` 等不注册；待 sherpa / ort 接入后替换。提供者类方法见下面「AI 提供者方法」 |
 
 **`native.net.http` 细节**
 
@@ -404,6 +404,26 @@ await call('native.file.save', { items: [{ path, name: 'out.bin' }] })
 - IP 字面量的 url 走同样的判断。
 
 **已知局限**：校验时解析一次，`HttpURLConnection` 连接时会再解析一次，**DNS 重绑定（两次解析结果不同）在这一层无法完全消除**；也没有按 IP 直连（直连会破坏 TLS 的 SNI 与证书校验）。威胁模型是「本地 App、用户自己输入网址」，这套校验是纵深防御，不是安全边界。另外：DNS 解析本身（`getaddrinfo`）不可中断，取消时要等它返回；`HttpURLConnection` 建连阶段的取消依赖 `disconnect()`，各 Android 版本的实际表现无真机时未验证。
+
+## AI 提供者方法
+
+前端封装在 `web/src/native/ai.ts`（`aiProviders()` / `aiRun()`）与 `useAiProviders`。全部只接受主 frame（`PERMISSION_DENIED`）。代码在 `com.let188.arkli.ai`，决策见 [0004](../decisions/0004-ai-provider-abstraction.md)。页面只看**能力**，不认厂商；提供者不可用时页面隐藏入口或降级。
+
+| 方法 | params | 成功时的 data | 错误 |
+|---|---|---|---|
+| `native.ai.providers` | `{}` | `{ providers: [{ id, displayName, available, reason?, tasks[] }], capabilities: string[] }`。`providers` 含不可用的（带 `reason`），按注册顺序；`capabilities` 是**可用**提供者 `tasks` 的并集，按固定顺序排列。`reason` 取 `no_handler`（系统里没有能接手文本的应用）/ `unsupported_device` / `not_installed` / `not_configured`，页面遇到不认识的值按“不可用”处理。`tasks` 取 `summarize` / `proofread` / `rewrite` / `describeImage` / `prompt` / `translate` | 仅主 frame 限制 |
+| `native.ai.run` | `{ provider: string, task: string, input: string }`。`provider` 1~64 字符；`task` 取上面六个之一；`input` 去空白后非空、≤ 50000 字符。`describeImage` 要图片输入，本方法只收文本，当前一律 `BAD_PARAMS` | 交接类：`{ handoff: true, handled: boolean }`，`handled=false` 表示没有应用接手，拿不回结果；直接结果类（将来）：`{ handoff: false, handled: true, text: string }` | `BAD_PARAMS`（字段缺失或类型不对、task 未知、provider 未注册、provider 不支持该 task、input 为空或超长）；`NOT_READY`（提供者当前不可用，message 带 `reason`） |
+
+当前提供者：
+
+| id | 说明 |
+|---|---|
+| `intent-handoff` | 系统应用交接。支持全部文本类任务（除 `describeImage`）。可用性：`queryIntentActivities(ACTION_PROCESS_TEXT, text/plain)` 非空。执行：`ACTION_PROCESS_TEXT`（`EXTRA_PROCESS_TEXT_READONLY=true`）经 `ActivityHost.startIntent` 拉起；`task` 只用于页面文案，**不会传给对方应用**，因为系统接口只能带文本 |
+
+约定与取舍：
+- **清单**：API 30+ 的包可见性限制下，探测 `ACTION_PROCESS_TEXT` 响应者需要清单 `<queries>` 声明该 Intent（`text/plain`），已加。
+- 校验、可用性汇总、能力合并、结果序列化是纯函数（`AiPolicy`），登记处是 `ProviderRegistry`，都有 JVM 单测。
+- 预留位置（未实现，代码里没有 ML Kit 类）：`MlKitGenAiProvider`（谷歌 ML Kit GenAI / AICore，依赖白名单机型，要提 minSdk）、本地 ONNX、在线 OpenAI。接入时只需新增 `AiProvider` 实现并注册，桥方法与页面不改。
 
 ## 文件夹清理方法
 
@@ -448,6 +468,19 @@ await call('native.file.save', { items: [{ path, name: 'out.bin' }] })
 采集在 `Dispatchers.IO` 的会话任务里跑；**stop、协程取消、会话关闭（页面重载 / 渲染进程崩溃）都会停止并释放 `AudioRecord`**。清单新增 `RECORD_AUDIO`，并声明 `android.hardware.microphone` 为非必需。
 
 **未在真机验证的点**：各机型对 16kHz 的支持与实际采样率；部分系统在后台或通话中给静音数据；自动增益（AGC）与降噪对读数的影响；与他应用同时占用麦克风时的行为。
+
+## 二维码识别方法
+
+前端封装在 `web/src/native/qrcode.ts`，代码在 `com.let188.arkli.qrcode`。全部只接受主 frame。解码用 zxing-cpp，formats 留空识别全部码种；一帧里有多个码时全部返回。
+
+| 方法 | params | 成功时的 data | 错误 |
+|---|---|---|---|
+| `native.qrcode.scan` | `{}` | `{ cancelled: boolean, results: [{ text, format, bytes }] }`。拉起全屏取景页，识别到码即返回；`format` 为 zxing-cpp 枚举名（`QR_CODE`、`EAN_13` 等），`bytes` 为原始字节 base64。用户返回键取消时 `cancelled` 为 true | 相机权限被拒 `PERMISSION_DENIED`；已有扫码页在显示 `NOT_READY` |
+| `native.qrcode.decodeImage` | `{ path: string }`（缓存路径，如选图得到的 `cache/pick/...`） | `{ results: [{ text, format, bytes }] }`，没识别到为空数组 | `BAD_PARAMS`（路径不在缓存内、文件不存在、无法解码） |
+
+实时取景把 `tryHarder/tryRotate/tryInvert` 关掉保帧率；相册识图全部打开，大图先降采样到约 4096 边长。扫码页自己申请相机权限，清单新增 `CAMERA`，相机与自动对焦声明为非必需硬件。
+
+**未在真机验证的点**：低端机帧率与发热、反色码、小码、强反光、扫码页返回键与 WebView 路由的配合、HEIC 等选图结果的识别。
 
 ## 获取壁纸方法
 

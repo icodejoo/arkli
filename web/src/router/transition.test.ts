@@ -1,35 +1,41 @@
 import { describe, expect, it } from 'vitest'
-import { holdScroll, isCachedRoute, pageTransition, releaseScroll, routeDepth } from './transition'
+import { holdScroll, isCachedRoute, isTabPath, pageTransition, releaseScroll, routeDepth } from './transition'
 
-describe('routeDepth', () => {
-  it('首页为 0，工具页与设置页为 1', () => {
-    expect(routeDepth('/')).toBe(0)
-    expect(routeDepth('')).toBe(0)
+describe('isTabPath / routeDepth', () => {
+  it('四个根 tab 为 0，工具页为 1', () => {
+    for (const p of ['/', '', '/ai', '/favorites', '/settings']) {
+      expect(isTabPath(p)).toBe(true)
+      expect(routeDepth(p)).toBe(0)
+    }
+    expect(isTabPath('/tool/ruler')).toBe(false)
     expect(routeDepth('/tool/ruler')).toBe(1)
-    expect(routeDepth('/settings')).toBe(1)
   })
 })
 
 describe('pageTransition', () => {
-  it('首页 → 工具页、设置页：推入', () => {
+  it('tab 之间切换：淡入淡出', () => {
+    expect(pageTransition('/ai', '/')).toBe('fade')
+    expect(pageTransition('/', '/settings')).toBe('fade')
+    expect(pageTransition('/favorites', '/ai')).toBe('fade')
+  })
+  it('tab → 工具页：推入', () => {
     expect(pageTransition('/tool/ruler', '/')).toBe('push')
-    expect(pageTransition('/settings', '/')).toBe('push')
+    expect(pageTransition('/tool/ruler', '/favorites')).toBe('push')
   })
-  it('工具页、设置页 → 首页：弹出（含 replace 回首页的兜底）', () => {
+  it('工具页 → tab：弹出（含 replace 回首页的兜底）', () => {
     expect(pageTransition('/', '/tool/ruler')).toBe('pop')
-    expect(pageTransition('/', '/settings')).toBe('pop')
+    expect(pageTransition('/favorites', '/tool/ruler')).toBe('pop')
   })
-  it('同层切换（深链从一个工具跳到另一个）和首页到首页：按推入', () => {
+  it('同层切换（深链从一个工具跳到另一个）和同一 tab 到自己：按推入', () => {
     expect(pageTransition('/tool/a', '/tool/b')).toBe('push')
     expect(pageTransition('/', '/')).toBe('push')
   })
 })
 
 describe('isCachedRoute', () => {
-  it('只有首页被缓存', () => {
-    expect(isCachedRoute('home')).toBe(true)
+  it('四个根 tab 被缓存，工具页不缓存', () => {
+    for (const n of ['home', 'ai', 'favorites', 'settings']) expect(isCachedRoute(n)).toBe(true)
     expect(isCachedRoute('tool')).toBe(false)
-    expect(isCachedRoute('settings')).toBe(false)
     expect(isCachedRoute(undefined)).toBe(false)
     expect(isCachedRoute(Symbol('x'))).toBe(false)
   })

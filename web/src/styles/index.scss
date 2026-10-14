@@ -37,6 +37,8 @@
   --van-radius-md: 8px;
   --van-radius-lg: 14px;
   --van-base-font: system-ui, -apple-system, 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', 'Segoe UI', Roboto, sans-serif;
+  --van-tabbar-background: var(--c-surface);
+  --van-tabbar-item-active-background: var(--c-surface);
   --van-nav-bar-background: var(--c-surface);
   --van-nav-bar-title-text-color: var(--c-text);
   --van-nav-bar-icon-color: var(--c-text);
@@ -45,6 +47,9 @@
   --van-grid-item-content-background: var(--c-surface);
   --van-grid-item-content-active-color: var(--c-surface-active);
   --van-cell-group-inset-radius: var(--van-radius-lg);
+
+  // 底栏总高度（Vant 默认 50px + 底部安全区）；四个 tab 页的内容底部留这么多（底栏不用 placeholder），免得被底栏盖住
+  --tabbar-total: calc(var(--van-tabbar-height, 50px) + var(--safe-bottom));
 
   // 工具页公共尺寸
   --tool-gap: 12px;
@@ -98,11 +103,14 @@ $page-ease: cubic-bezier(0.32, 0.72, 0, 1); // iOS 导航转场的曲线：起�
 $page-duration: 0.36s;
 $page-parallax: -28%; // 下层页面的视差位移
 $page-dim: brightness(0.92); // 下层页面的变暗
+$page-fade-duration: 0.18s; // 底栏 tab 之间淡入淡出的时长
 
 .page-push-enter-active,
 .page-push-leave-active,
 .page-pop-enter-active,
-.page-pop-leave-active {
+.page-pop-leave-active,
+.page-fade-enter-active,
+.page-fade-leave-active {
   position: fixed;
   top: 0;
   right: 0;
@@ -114,7 +122,8 @@ $page-dim: brightness(0.92); // 下层页面的变暗
   will-change: transform;
   transition:
     transform $page-duration $page-ease,
-    filter $page-duration $page-ease;
+    filter $page-duration $page-ease,
+    opacity $page-fade-duration ease;
 }
 
 // 转场中的页面带着滚动位置（内联 top: -scrollY：离开的页面停在原处，回到缓存的首页时还原到上次的位置），
@@ -122,7 +131,9 @@ $page-dim: brightness(0.92); // 下层页面的变暗
 .page-push-enter-active.page-push-enter-active,
 .page-push-leave-active.page-push-leave-active,
 .page-pop-enter-active.page-pop-enter-active,
-.page-pop-leave-active.page-pop-leave-active {
+.page-pop-leave-active.page-pop-leave-active,
+.page-fade-enter-active.page-fade-enter-active,
+.page-fade-leave-active.page-fade-leave-active {
   .van-nav-bar--fixed,
   .home__scrim {
     top: var(--hold-scroll, 0px);
@@ -167,12 +178,20 @@ $page-dim: brightness(0.92); // 下层页面的变暗
   transform: translateX(100%);
 }
 
+// tab 之间：淡入淡出，不位移（同级页面不该有进退感）
+.page-fade-enter-from,
+.page-fade-leave-to {
+  opacity: 0;
+}
+
 // 系统要求减少动画：直接切换
 @media (prefers-reduced-motion: reduce) {
   .page-push-enter-active,
   .page-push-leave-active,
   .page-pop-enter-active,
-  .page-pop-leave-active {
+  .page-pop-leave-active,
+  .page-fade-enter-active,
+  .page-fade-leave-active {
     transition: none;
   }
 }

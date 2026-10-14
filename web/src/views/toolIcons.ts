@@ -29,6 +29,7 @@ const ICONS: Record<string, string> = {
   hash: '🧬',
   pinyin: '🈶',
   'qrcode-gen': '🏷️',
+  'qrcode-scan': '📷',
   level: '📐',
   protractor: '📏',
   vibrator: '📳',

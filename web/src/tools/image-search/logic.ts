@@ -1,7 +1,7 @@
 // 以图搜图：分享图片的三级降级（原生分享 → 浏览器分享 → 保存图片）与站点入口打开
 // 原生分享使用 @/native/system 的 share；该模块不可用或失败时回退，不会让页面报错
 import { isNativeAvailable } from '@/native/bridge'
-import { share, type ShareOptions } from '@/native/system'
+import { openIntent, share, type ShareOptions } from '@/native/system'
 import { saveBlob, writeBlobToCache } from '@/shared/image-io'
 import { SEARCH_SITES, type SearchSite } from './data'
 
@@ -90,17 +90,43 @@ export function invalidSites(sites: ReadonlyArray<SearchSite> = SEARCH_SITES): s
     .map((s) => s.name)
 }
 
+/** 打开站点所需的外部能力，便于测试注入 */
+export interface OpenDeps {
+  /** 是否在宿主（原生壳）里；宿主的 WebView 里 window.open 无效，必须走原生 */
+  isNative: () => boolean
+  /** 原生打开外部浏览器，返回是否成功 */
+  nativeOpen: (url: string) => Promise<boolean>
+  /** 浏览器里的新窗口打开 */
+  open: (url: string, target: string, features: string) => unknown
+}
+
+/** 默认依赖：宿主走 native.intent.open，浏览器走 window.open */
+function defaultOpenDeps(): OpenDeps {
+  return {
+    isNative: isNativeAvailable,
+    nativeOpen: (url) => openIntent('url', url),
+    open: (u, t, f) => window.open(u, t, f),
+  }
+}
+
 /**
- * 在外部打开站点入口页（宿主里会走外部浏览器）。
+ * 在外部打开站点入口页：宿主里交给系统浏览器，浏览器里开新窗口。
  *
  * @param url 入口页地址，必须是 https
- * @param open 打开函数，默认 window.open，仅测试注入
- * @returns 是否发起了打开；非 https 地址返回 false
- * @example openSite('https://tineye.com/')
+ * @param deps 外部能力，默认真实实现，仅测试注入
+ * @returns 是否成功发起打开；非 https 地址或原生打开失败返回 false
+ * @example await openSite('https://tineye.com/')
  */
-export function openSite(url: string, open: (u: string, target: string, features: string) => unknown = (u, t, f) => window.open(u, t, f)): boolean {
+export async function openSite(url: string, deps: OpenDeps = defaultOpenDeps()): Promise<boolean> {
   if (!/^https:\/\//i.test(url)) return false
-  open(url, '_blank', 'noopener')
+  if (deps.isNative()) {
+    try {
+      return await deps.nativeOpen(url)
+    } catch {
+      return false
+    }
+  }
+  deps.open(url, '_blank', 'noopener')
   return true
 }
 

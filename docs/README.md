@@ -14,6 +14,8 @@
 - [0001 技术栈与分层](decisions/0001-tech-stack.md) — Compose 壳 + Rust 核心 + WebView Vue SPA。active。
 - [0002 AI 推理基座](decisions/0002-ai-inference-base.md) — 统一用 sherpa-onnx，模型只要兼容 ONNX。active。
 - [0003 Web 优先、固定竖屏、图片与音视频走原生](decisions/0003-web-first-and-native-media.md) — 能放 web 的不放原生；固定竖屏；图片压缩统一原生、不用 Rust 与 FFmpeg。覆盖早期设计说法。active。
+- [0004 AI 提供者抽象与本机 AI 增强项](decisions/0004-ai-provider-abstraction.md) — AiProvider 抽象、系统应用交接、ML Kit GenAI 只预留；可用才显示。active。
+- [0005 AI 四层约束](decisions/0005-ai-four-layers.md) — 本地小模型 / 本地大模型 / 本机 AI / 远端 API；本地模型按需下载；用户自选；本机 AI 不支持就隐藏。active。
 
 ## 设计
 - [总体架构](design/architecture.md) — 分层职责、工具归属规则、目录、体积策略、构建流水线。active。
@@ -33,4 +35,8 @@
 - [开源库选型清单](research/open-source-libs.md) — 按工具类别的成熟开源库、许可证、体积、sherpa-onnx 与 NPU 结论。draft。
 - [Spike：WebMessageListener 与 ArrayBuffer 通道](research/spike-webmessage-arraybuffer.md) — 真机有条件 GO：不支持 ArrayBuffer，含吞吐、内存、来源限制。draft。
 - [Spike：ort 对接 sherpa 自带 ORT 与 OCR](research/spike-ort-sherpa.md) — 真机验证 GO，含耗时、内存、体积。draft。
+- [垃圾分类拍照识别：CLIP 零样本选型与四模型对比](research/garbage-classify-clip.md) — 路线对比、SigLIP2/TinyCLIP/Chinese-CLIP 实测、top-3 策略、中文处理。draft。
+- [本机 AI 与系统智能体接入调研](research/on-device-ai-agents.md) — ML Kit GenAI、AppFunctions、Chrome 内置 AI、国内厂商、PROCESS_TEXT 交接的结论与真机核实表。draft。
+- [对联 GPT-2 ONNX 导出与评估](research/couplet-gpt2-onnx.md) — fp32/int8/int4 体积、速度、质量，诗词与成语支持度，许可证状态，release 下载地址。draft。
+- [端侧 LLM 选型对比：模型与运行时](research/on-device-llm-comparison.md) — Qwen3.5/Qwen3/Qwen2.5 在 ORT、ORT GenAI、llama.cpp、MNN 上的真机速度、体积、内存，对 0002 的影响。draft。
 - [「一个木函」功能清单](research/woobx-feature-list.md) — 对标产品 116 项功能，按 11 类列出，含形态与置信度。draft。

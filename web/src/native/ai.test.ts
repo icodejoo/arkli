@@ -118,3 +118,47 @@ describe('其他', () => {
     await expect(m.fetchAiResult('x', bad)).rejects.toThrow('读取结果失败')
   })
 })
+
+describe('aiProviders / aiRun', () => {
+  const SAMPLE = {
+    providers: [{ id: 'intent-handoff', displayName: '系统应用交接', available: true, tasks: ['translate'] }],
+    capabilities: ['translate'],
+  }
+  /** 造固定返回值的 call */
+  const ret = (v: unknown) => vi.fn(async () => v) as unknown as Call & ReturnType<typeof vi.fn>
+  /** 造抛错的 call */
+  const boom = (code: string) =>
+    vi.fn(async () => {
+      throw { code }
+    }) as unknown as Call
+
+  it('aiProviders：有宿主走 native.ai.providers', async () => {
+    const { aiProviders } = await load(true)
+    const call = ret(SAMPLE)
+    expect(await aiProviders(call)).toEqual(SAMPLE)
+    expect(call).toHaveBeenCalledWith('native.ai.providers', {})
+  })
+  it('aiProviders：无宿主返回空且不调原生', async () => {
+    const { aiProviders } = await load(false)
+    const call = ret(SAMPLE)
+    expect(await aiProviders(call)).toEqual({ providers: [], capabilities: [] })
+    expect(call).not.toHaveBeenCalled()
+  })
+  it('aiProviders：UNKNOWN_METHOD 容错，其他错误照抛', async () => {
+    const { aiProviders } = await load(true)
+    expect(await aiProviders(boom('UNKNOWN_METHOD'))).toEqual({ providers: [], capabilities: [] })
+    await expect(aiProviders(boom('INTERNAL'))).rejects.toMatchObject({ code: 'INTERNAL' })
+  })
+  it('aiRun：参数原样传给 native.ai.run，不设超时', async () => {
+    const { aiRun, HANDOFF_PROVIDER_ID } = await load(true)
+    const call = ret({ handoff: true, handled: false })
+    expect(await aiRun(HANDOFF_PROVIDER_ID, 'translate', 'hello', call)).toEqual({ handoff: true, handled: false })
+    expect(call).toHaveBeenCalledWith('native.ai.run', { provider: 'intent-handoff', task: 'translate', input: 'hello' }, { timeoutMs: 0 })
+  })
+  it('aiRun：无宿主抛 NativeUnavailableError；原生错误透传', async () => {
+    const off = await load(false)
+    await expect(off.aiRun('p', 'prompt', 'x', ret({}))).rejects.toMatchObject({ name: 'NativeUnavailableError' })
+    const on = await load(true)
+    await expect(on.aiRun('p', 'prompt', 'x', boom('NOT_READY'))).rejects.toMatchObject({ code: 'NOT_READY' })
+  })
+})

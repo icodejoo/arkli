@@ -7,12 +7,14 @@ summary: 接手入口：做到哪、已拍板什么、验证到什么程度、�
 ## TL;DR
 - **协议 v2、文件三件套、联网最小切片、原生图片压缩**已落地并在真机验证；`arkli-ai`（OCR 管线）只做了宿主侧，没进 APK。
 - **2026-10-13 盲做冲刺（无真机）**：工具注册表由 25 增到 **90 个**（见 [落地跟踪表](design/rollout-tracker.md)）。新增原生能力：系统能力（剪贴板、分享、设置、Intent、震动、屏幕、设备信息、权限）、提醒与闹钟、系统 TTS、桌面快捷方式、应用管理、`native.net.*`（http/resolve/tcp/whois/speed，含 SSRF 防护）、原生全屏图片预览与自带多选图片页、返回键先关浮层。**这些全部只过了编译与单测，没上真机**，见跟踪表末尾的"待真机验证"清单。
+- **底部 tab 导航（2026-10-14）**：首页 / AI / 收藏 / 设置四个根 tab（`van-tabbar` route+replace），tab 之间淡入淡出，进 `/tool/:id` 仍推入、返回回到来的 tab，工具页无底栏；四页 keep-alive 并按路由名还原滚动；`ToolMeta.tags`（`'ai'`）驱动 AI 页，收藏存 localStorage（`stores/favorites.ts`），工具页导航栏右侧星标切换。首页原右上角设置入口已移除（设置现为 tab）。真机 safe-area 与底栏高度待在手机上看。
 - **长按图标添加到桌面（2026-10-14）**：首页任意工具长按 500ms → 底部菜单“添加到桌面” → `native.shortcut.pinTool`（`label/icon/route`，路由只认 `/tool/<id>`）。图标用工具 emoji 画在浅灰圆角底上，点桌面图标直达 `#/tool/<id>`（`MainActivity` 改 `singleTop`，冷启动走 `startRoute`，热启动走 `onNewIntent`）。STG-AL00 真机验证：长按弹菜单且不误进页面、系统确认框图标与名称正确、冷/热启动均直达、单实例。已知：从快捷方式冷启动进工具页后按返回直接回桌面（不经首页）。另修闹钟：补声明 `SCHEDULE_EXACT_ALARM`，被拒时降级非精确闹钟。
-- 仍缺：二维码扫码、视频压缩/提取音频/转 GIF（等 CameraX + zxing-cpp、Media3 依赖确认）；OCR/超分/识别/抠图/融合/上色（页面已做，原生 `native.ai.*` 只有 `status` 桩，模型未接入）；查字的部首笔画、藏头诗等（缺合规数据）。
+- **二维码扫码原型（2026-10-14）**：`native.qrcode.scan`（Compose 全屏取景 + CameraX `ImageAnalysis` Y 平面 + zxing-cpp，闪光灯，相机权限）、`native.qrcode.decodeImage`（相册图，选项全开）、web 工具页 `qrcode-scan`；CameraX 1.5.3、zxing-cpp 3.1.1 已获批准。**只过编译与单测，未上真机**。zxing-cpp 3.1.1 由 Kotlin 2.3 编译、会把 kotlin-stdlib 拉到 2.3.20，所以 Kotlin 插件从 2.1.21 升到 2.3.20（`kotlinOptions` 改 `compilerOptions`）。release APK 2,501,582 → 4,917,628 字节（+2.4MB，其中 so 1.75MB 以未压缩存入，dex +0.7MB），口径见 [落地跟踪表](design/rollout-tracker.md)。
+- 仍缺：视频压缩/提取音频/转 GIF 的 Media3 替换（平台 API 版已有）；OCR/超分/识别/抠图/融合/上色（页面已做，本地模型方法只有 `native.ai.status` 桩，模型未接入；另有 AI 提供者抽象 `native.ai.providers` / `native.ai.run` 与系统应用交接，见 [0004](decisions/0004-ai-provider-abstraction.md)，真机验证待做）；查字的部首笔画、藏头诗等（缺合规数据）。
 - 当前 release APK **1,737,792 字节**（空壳基线 1,220,629）。测试：Kotlin 156、web 38 文件 413 例、`arkli-ai` 49 个单测加 9 个 doctest，全绿。
 - **下一步**：系统能力（权限、分享、剪贴板、震动等）→ 联网余下部分 → 视频音频（Media3，要先确认依赖）→ AI 运行时真机复验。见"待办"。
 - 仓库 https://github.com/icodejoo/arkli（公开，main，HTTPS 推送）。
-- **P0 工具还差 4 项**：二维码扫码、视频压缩、视频提取音频、OCR（番茄时钟已做）。
+- **P0 工具还差 3 项**：视频压缩、视频提取音频、OCR（番茄时钟、二维码扫码原型已做）。
 
 ## 接手先读
 1. 本文。
@@ -35,7 +37,7 @@ summary: 接手入口：做到哪、已拍板什么、验证到什么程度、�
 | bridge 通道 | `WebMessageListener`（已落地，取代 `@JavascriptInterface`） |
 | INTERNET | 已加；出站只放行 `api.wikimedia.org`（精确主机名），页面直连、CSP `connect-src` 同步；其余一律拦截 |
 | AI 基座 | sherpa-onnx；视觉类复用其 ORT；`ort` 钉死 `=2.0.0-rc.14` + `load-dynamic`；NPU 暂不做 |
-| 已批准的新依赖 | `vant`、`unplugin-vue-components`、`@vant/auto-import-resolver`、`vitest`、`tyme4ts` 1.5.3、`@noble/hashes` 2.4.0、`pinyin-pro` 3.29.5、`kotlinx-coroutines`、JUnit、`org.json`（测试）、`ort`；二维码生成用 nayuki 单文件（MIT，`web/src/vendor/`） |
+| 已批准的新依赖 | CameraX 1.5.3（`camera-core/camera2/lifecycle/view`，2026-10-14 已批准）、`io.github.zxing-cpp:android` 3.1.1（2026-10-14 已批准）、`vant`、`unplugin-vue-components`、`@vant/auto-import-resolver`、`vitest`、`tyme4ts` 1.5.3、`@noble/hashes` 2.4.0、`pinyin-pro` 3.29.5、`kotlinx-coroutines`、JUnit、`org.json`（测试）、`ort`；二维码生成用 nayuki 单文件（MIT，`web/src/vendor/`） |
 | 其余 | tools-overview.md "B. 不反对就按默认执行"整张表，按默认走 |
 
 ## 已完成与证据
@@ -81,7 +83,12 @@ summary: 接手入口：做到哪、已拍板什么、验证到什么程度、�
 `arkli-ai` 经 UniFFI 接入（`CancelToken` 做 Object、进度做 callback interface）；**在 APK 进程里复验**裸名 dlopen 与 sherpa 共用 ORT；通道顺序 BGR/RGB、cls 模型输入尺寸（v5 未核实）、默认参数在 1080×2400 截图上的检出率、耗时与内存；每次升级 sherpa 加一条 OCR 端到端回归；NNAPI 默认关。模型文件来源（约 21.5MB，ModelScope RapidAI）与托管位置待定。PNG 解码 `png` crate 未批准，输入暂由原生解码成像素。
 
 ### 5. 其余 P0
-二维码扫码（CameraX + zxing-cpp，新增依赖）、番茄时钟、OCR 工具页（依赖 4）。
+OCR 工具页（依赖 4）。二维码扫码原型已做，待真机验证。
+
+### 5b. AI 四层与模型（决策见 [0005](decisions/0005-ai-four-layers.md)）
+- **全部任务完成后，找一台有点积（`asimddp`）和 fp16（`fphp`）的手机复测** Rust ort、llama.cpp、MNN，再决定是否改 0002（见 [端侧 LLM 对比](research/on-device-llm-comparison.md)）。
+- 对联 GPT-2 int4 在 Android 真机上跑通并实测速度、对联工具页接入（下载、解码、上联 ≤14 字、拦截英文数字括号、等长约束）；垃圾分类 SigLIP2 q4f16 真机验证、识物工具页接入；L4 在线 OpenAI 先出方案（密钥存储、`native.net` 加 POST 与流式）；AI 页“模型配置”占位入口接管理功能。
+- 设备上 `/data/local/tmp/qwenspike/`（约 641MB）是探测残留，用户尚未说清理。
 
 ### 6. 工具与前端小项
 - 手持弹幕、时间屏幕固定竖屏后体验受限，**是否页面内旋转 90° 模拟横屏待用户定**。
@@ -96,6 +103,8 @@ summary: 接手入口：做到哪、已拍板什么、验证到什么程度、�
 - 模型与数据包托管位置；拼豆色号表数据来源；国内商店对按需下载 so 的规则（没查到原文）。
 - AI 运行时（ORT + sherpa JNI，arm64 约 27MB 未压缩）是否随包：默认随包，等体积基线复议。
 - 高通、华为运行库再分发许可（NPU 暂搁置）。
+- **对联 GPT-2 的 release（`couplet-gpt2-v1`，公开仓库）许可证无法确认可再分发**：用户决定不向作者确认、风险自负；作者若不允许要删除 release（见 [对联 GPT-2](research/couplet-gpt2-onnx.md)）。
+- 端侧 LLM 的 tokenizer：引入 `tokenizers` crate（新依赖）还是自写 BPE 解析，未定。
 - `ArkliPage` 里 `bridge` 字段先于 `binarySupported` 初始化，`native.hello` 的 `features.binary` 可能一直是 false（只会永远走 base64 兜底，不出错但慢）：修不修待定。
 - 宜忌释义 123 条非"待核对"条目是通俗改写，没有逐条对权威黄历核过，正式上线前建议找懂行的人过一遍。
 

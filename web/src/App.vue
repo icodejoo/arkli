@@ -1,35 +1,53 @@
 <script setup lang="ts">
-// 根组件：只放路由出口（iOS 风格的推入/弹出转场），并让 Vant 暗色类跟随系统深浅色
-import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { holdScroll, isCachedRoute, pageTransition, releaseScroll, type PageTransition } from '@/router/transition'
+// 根组件：路由出口（工具页 iOS 风格推入/弹出，底栏 tab 之间淡入淡出）+ 底部 tab 栏，并让 Vant 暗色类跟随系统深浅色
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { holdScroll, isCachedRoute, isTabPath, pageTransition, releaseScroll, type PageTransition } from '@/router/transition'
 
 /** Vant 暗色主题的 class 名 */
 const DARK_CLASS = 'van-theme-dark'
 /** 深色模式媒体查询 */
 const DARK_QUERY = '(prefers-color-scheme: dark)'
 
+/** keep-alive 缓存的视图组件名（与 CACHED_ROUTES 对应） */
+const CACHED_VIEWS = ['HomeView', 'AiView', 'FavoritesView', 'SettingsView']
+
+/** 底栏四个 tab：路径、文案、Vant 图标（顺序与 TAB_PATHS 一致） */
+const TABS = [
+  { to: '/', label: '首页', icon: 'home-o' },
+  { to: '/ai', label: 'AI', icon: 'bulb-o' },
+  { to: '/favorites', label: '收藏', icon: 'star-o' },
+  { to: '/settings', label: '设置', icon: 'setting-o' },
+] as const
+
 /** 路由器 */
 const router = useRouter()
+/** 当前路由 */
+const route = useRoute()
+/** 底栏只在四个根 tab 页显示，工具页不显示 */
+const showTabbar = computed(() => isTabPath(route.path))
 /** 当前这次切换用的转场：进入更深一层推入，回到更浅一层弹出；在导航开始前定好，Transition 读到的就是它 */
 const kind = ref<PageTransition>('push')
 /** 这次切换的来源、目标路由名，用来判断哪个页面被缓存 */
 let leavingName: unknown
 let enteringName: unknown
-/** 被缓存页面（首页）上次离开时的滚动位置；回来时还原 */
-let cachedScroll = 0
+/** 导航开始时（DOM 还没变）的滚动位置：新页面挂载后文档可能变短，scrollY 会被夹小，所以必须在守卫里先记 */
+let leavingScroll = 0
+/** 被缓存页面（四个根 tab）上次离开时的滚动位置，按路由名记；回来时还原 */
+const cachedScroll: Record<string, number> = {}
 /** 本次进入的页面是否正在还原滚动位置，转场结束要真正 scrollTo */
 let restoring = 0
 const removeGuard = router.beforeEach((to, from) => {
   kind.value = pageTransition(to.path, from.path)
   leavingName = from.name
   enteringName = to.name
+  leavingScroll = window.scrollY
 })
 
 /** 离开的页面脱离文档流前：被缓存的记下滚动位置，然后让它停在原处 */
 function onBeforeLeave(el: Element): void {
-  const y = window.scrollY
-  if (isCachedRoute(leavingName)) cachedScroll = y
+  const y = leavingScroll
+  if (isCachedRoute(leavingName)) cachedScroll[leavingName as string] = y
   holdScroll(el as HTMLElement, y)
 }
 
@@ -40,7 +58,7 @@ function onAfterLeave(el: Element): void {
 
 /** 进入的页面脱离文档流前：回到被缓存的页面时，让它先停在上次离开的位置 */
 function onBeforeEnter(el: Element): void {
-  restoring = isCachedRoute(enteringName) ? cachedScroll : 0
+  restoring = isCachedRoute(enteringName) ? (cachedScroll[enteringName as string] ?? 0) : 0
   holdScroll(el as HTMLElement, restoring)
 }
 
@@ -81,10 +99,14 @@ onBeforeUnmount(() => {
       @before-enter="onBeforeEnter"
       @after-enter="onAfterEnter"
     >
-      <!-- 首页缓存：回来时保留搜索词等状态，滚动位置在上面的钩子里还原；工具页每次重建 -->
-      <keep-alive include="HomeView">
+      <!-- 四个 tab 页缓存：回来时保留搜索词等状态，滚动位置在上面的钩子里还原；工具页每次重建 -->
+      <keep-alive :include="CACHED_VIEWS">
         <component :is="Component" />
       </keep-alive>
     </transition>
   </router-view>
+  <!-- 底栏：route 模式按当前路径高亮；tab 之间用 replace，不堆历史，返回键从工具页回到来的那个 tab -->
+  <van-tabbar v-if="showTabbar" route replace fixed safe-area-inset-bottom>
+    <van-tabbar-item v-for="t in TABS" :key="t.to" :to="t.to" :icon="t.icon">{{ t.label }}</van-tabbar-item>
+  </van-tabbar>
 </template>

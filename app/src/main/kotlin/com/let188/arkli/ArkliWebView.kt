@@ -21,6 +21,7 @@ import androidx.webkit.WebViewFeature
 import com.let188.arkli.ai.AiModule
 import com.let188.arkli.alarm.ReminderModule
 import com.let188.arkli.apps.AppsModule
+import com.let188.arkli.qrcode.QrModule
 import com.let188.arkli.bridge.ArkliBridge
 import com.let188.arkli.bridge.BridgeHandler
 import com.let188.arkli.bridge.BridgeSessions
@@ -252,11 +253,12 @@ class ArkliPage(context: Context, private val files: FileEnv, startRoute: String
         TtsModule.install(created, files)
         ShortcutModule.install(created, files)
         AppsModule.install(created, files)
+        QrModule.install(created, files)
         NetModule.install(created)
         DirModule.install(created, files)
         NoiseModule.install(created, files)
         WallpaperModule.install(created, files)
-        AiModule.install(created)
+        AiModule.install(created, files)
         return created
     }
 

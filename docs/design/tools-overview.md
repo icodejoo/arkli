@@ -28,8 +28,8 @@ summary: 六份工具设计的汇总：优先级统计、体积估计、全部�
 
 | 依赖 | 版本 | 许可证 | 层 | 用途 | 来自 |
 |---|---|---|---|---|---|
-| zxing-cpp | 3.1.1 | Apache-2.0 | 原生 | 二维码识别 | image |
-| CameraX | 待定 | Apache-2.0 | 原生 | 扫码取景 | image |
+| zxing-cpp | 3.1.1（已批准） | Apache-2.0 | 原生 | 二维码识别 | image |
+| CameraX | 1.5.3（已批准） | Apache-2.0 | 原生 | 扫码取景 | image |
 | nayuki QR-Code-generator | 单文件 | MIT | Web | 二维码生成 | image |
 | cropperjs | 待定 | MIT | Web | 裁剪框 | image |
 | gif | 0.14.2 | MIT/Apache-2.0 | Rust | GIF 编解码 | image / media-ai |

@@ -8,9 +8,17 @@ export interface ToolMeta {
   name: string
   /** 一句话简介 */
   description: string
+  /**
+   * 可选标签，用于聚合页筛选；目前只有 `'ai'`（AI 页展示所有带该标签的工具）。
+   * @example tags: ['ai']
+   */
+  tags?: string[]
   /** 懒加载组件，每个工具会被打成独立 chunk */
   load: () => Promise<{ default: Component }>
 }
+
+/** AI 工具的标签值，AI 页按它筛选 */
+export const TAG_AI = 'ai'
 
 /**
  * 工具注册表。新增工具：在 `src/tools/<id>/` 下建 index.vue，再在此处加一行。
@@ -46,6 +54,7 @@ export const tools: ToolMeta[] = [
   { id: 'image-grid', name: '九宫格切图', description: '把图片切成 2×2、3×3 等多张', load: () => import('./image-grid/index.vue') },
   { id: 'hash', name: '哈希计算', description: 'MD5、SHA-1、SHA-256、SHA-512，支持文件', load: () => import('./hash/index.vue') },
   { id: 'pinyin', name: '中文转拼音', description: '带声调、数字声调、首字母，多音字提示', load: () => import('./pinyin/index.vue') },
+  { id: 'qrcode-scan', name: '二维码识别', description: '扫码或相册识图，识别全部二维码与条码', load: () => import('./qrcode-scan/index.vue') },
   { id: 'qrcode-gen', name: '二维码生成', description: '自定义纠错、颜色与尺寸，导出 PNG', load: () => import('./qrcode-gen/index.vue') },
   { id: 'text-process', name: '文字处理', description: '正则提取、查找替换、去重排序、全半角、统计', load: () => import('./text-process/index.vue') },
   { id: 'word-split', name: '拆分选词', description: '把句子拆成词，点选后拼起来复制', load: () => import('./word-split/index.vue') },
@@ -96,14 +105,14 @@ export const tools: ToolMeta[] = [
   { id: 'speed-test', name: '网速测试', description: '测 TCP 延迟与下行速率', load: () => import('./speed-test/index.vue') },
   { id: 'bilibili-cover', name: 'B 站封面', description: '提取并保存 B 站视频封面', load: () => import('./bilibili-cover/index.vue') },
   { id: 'exchange-rate', name: '汇率换算', description: '约 30 种币种，支持缓存与手动汇率', load: () => import('./exchange-rate/index.vue') },
-  { id: 'ocr', name: '文字识别', description: '图片转文字，逐行复制（需本地模型）', load: () => import('./ocr/index.vue') },
-  { id: 'image-upscale', name: '图像放大', description: '2×/4× 超分，前后对比（需本地模型）', load: () => import('./image-upscale/index.vue') },
-  { id: 'image-classify', name: 'AI 图像识别', description: '识别图里是什么（需本地模型）', load: () => import('./image-classify/index.vue') },
-  { id: 'object-count', name: '对象计数', description: '数图里有几个物体，可点击修正', load: () => import('./object-count/index.vue') },
+  { id: 'ocr', name: '文字识别', description: '图片转文字，逐行复制（需本地模型）', tags: [TAG_AI], load: () => import('./ocr/index.vue') },
+  { id: 'image-upscale', name: '图像放大', description: '2×/4× 超分，前后对比（需本地模型）', tags: [TAG_AI], load: () => import('./image-upscale/index.vue') },
+  { id: 'image-classify', name: 'AI 图像识别', description: '识别图里是什么（需本地模型）', tags: [TAG_AI], load: () => import('./image-classify/index.vue') },
+  { id: 'object-count', name: '对象计数', description: '数图里有几个物体，可点击修正', tags: [TAG_AI], load: () => import('./object-count/index.vue') },
   { id: 'id-photo', name: '证件照', description: '裁剪换底色，纯色背景可自动抠图', load: () => import('./id-photo/index.vue') },
   { id: 'table-extract', name: '图片转表格', description: '识别表格，复制 TSV/CSV，也能粘贴文字拆表', load: () => import('./table-extract/index.vue') },
-  { id: 'face-fusion', name: '人脸融合', description: '两张脸按比例合成（需本地模型）', load: () => import('./face-fusion/index.vue') },
-  { id: 'colorize', name: '黑白上色', description: '给黑白照上色（需本地模型）', load: () => import('./colorize/index.vue') },
+  { id: 'face-fusion', name: '人脸融合', description: '两张脸按比例合成（需本地模型）', tags: [TAG_AI], load: () => import('./face-fusion/index.vue') },
+  { id: 'colorize', name: '黑白上色', description: '给黑白照上色（需本地模型）', tags: [TAG_AI], load: () => import('./colorize/index.vue') },
   { id: 'pomodoro', name: '番茄时钟', description: '专注休息轮换，到点系统提醒', load: () => import('./pomodoro/index.vue') },
   { id: 'notify-self', name: '通知自己', description: '立即或定时给自己发通知', load: () => import('./notify-self/index.vue') },
   { id: 'tts', name: '文字转语音', description: '朗读文字，可存成音频分享', load: () => import('./tts/index.vue') },

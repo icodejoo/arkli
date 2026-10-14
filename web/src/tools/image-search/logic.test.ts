@@ -5,7 +5,7 @@ vi.hoisted(() => {
 })
 
 import { NOTES, SEARCH_SITES, STEPS } from './data'
-import { invalidSites, openSite, shareImage, shareName, type ShareDeps } from './logic'
+import { invalidSites, openSite, shareImage, shareName, type OpenDeps, type ShareDeps } from './logic'
 
 /** 构造依赖，可按需覆盖 */
 function deps(over: Partial<ShareDeps> = {}): ShareDeps {
@@ -87,17 +87,39 @@ describe('shareImage', () => {
   })
 })
 
-describe('openSite', () => {
-  it('https 地址用新窗口打开', () => {
-    const open = vi.fn()
-    expect(openSite('https://tineye.com/', open)).toBe(true)
-    expect(open).toHaveBeenCalledWith('https://tineye.com/', '_blank', 'noopener')
+/** 构造 openSite 的假依赖 */
+function openDeps(native: boolean, nativeResult: boolean | Error = true) {
+  const nativeOpen = vi.fn(async (_url: string) => {
+    if (nativeResult instanceof Error) throw nativeResult
+    return nativeResult
   })
-  it('非 https 不打开', () => {
-    const open = vi.fn()
-    expect(openSite('http://tineye.com/', open)).toBe(false)
-    expect(openSite('javascript:alert(1)', open)).toBe(false)
-    expect(open).not.toHaveBeenCalled()
+  const open = vi.fn((_u: string, _t: string, _f: string) => undefined)
+  const deps: OpenDeps = { isNative: () => native, nativeOpen, open }
+  return Object.assign(deps, { nativeOpen, open })
+}
+
+describe('openSite', () => {
+  it('浏览器里 https 地址用新窗口打开', async () => {
+    const d = openDeps(false)
+    expect(await openSite('https://tineye.com/', d)).toBe(true)
+    expect(d.open).toHaveBeenCalledWith('https://tineye.com/', '_blank', 'noopener')
+    expect(d.nativeOpen).not.toHaveBeenCalled()
+  })
+  it('宿主里走原生，不调 window.open', async () => {
+    const d = openDeps(true)
+    expect(await openSite('https://tineye.com/', d)).toBe(true)
+    expect(d.nativeOpen).toHaveBeenCalledWith('https://tineye.com/')
+    expect(d.open).not.toHaveBeenCalled()
+  })
+  it('原生打开失败或抛错返回 false', async () => {
+    expect(await openSite('https://tineye.com/', openDeps(true, false))).toBe(false)
+    expect(await openSite('https://tineye.com/', openDeps(true, new Error('x')))).toBe(false)
+  })
+  it('非 https 不打开', async () => {
+    const d = openDeps(false)
+    expect(await openSite('http://tineye.com/', d)).toBe(false)
+    expect(await openSite('javascript:alert(1)', d)).toBe(false)
+    expect(d.open).not.toHaveBeenCalled()
   })
 })
 

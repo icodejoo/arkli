@@ -80,7 +80,7 @@ summary: 「图片」分类全部工具的落地方案：层归属、所用库�
 ## 逐工具方案
 
 ### 1. 二维码工具｜组合｜M｜P0
-- 生成（Web）：把 nayuki QR-Code-generator 的 TypeScript 单文件直接放进仓库（MIT，不走 npm），拿到模块矩阵后用 Canvas 自己画：前景/背景色、圆点/圆角码点、中心 Logo（自动把纠错级别提到 H）、边距；导出 PNG，另外拼 SVG 字符串导出矢量。内置文本、网址、WiFi、名片几种内容模板。条码（EAN/Code128）生成 v1 不做。
+- 生成（Web）：把 nayuki QR-Code-generator 的 TypeScript 单文件直接放进仓库（MIT，不走 npm），拿到模块矩阵后用 Canvas 自己画：前景/背景色、圆点/圆角码点、中心 Logo（不擅自改纠错：选 L/M 时提示并给一键升 Q/H；logo 底板对齐模块网格、奇数格居中，大小上限按码字几何算——被盖码字在最差纠错块里不超过其纠错上限的一半，滑块上限随版本和纠错等级变化）、边距；导出 PNG，另外拼 SVG 字符串导出矢量。内置文本、网址、WiFi、名片几种内容模板。条码（EAN/Code128）生成 v1 不做。
 - 扫码（原生）：Compose 全屏取景，CameraX `ImageAnalysis` 把 Y 平面喂给 zxing-cpp，支持 QR/DataMatrix/常见一维码，带闪光灯和变焦。
 - 相册识别（原生）：同一个 zxing-cpp 解 Bitmap，所以不再引 Rust 的 rqrr/rxing。
 - 结果页回到 Web：网址点了才打开（先确认），WiFi 码只展示 SSID 和密码并提供复制，v1 不做自动连接。

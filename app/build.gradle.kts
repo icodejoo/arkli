@@ -33,7 +33,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
 
     buildFeatures { compose = true }
 
@@ -61,6 +60,9 @@ android {
     }
 }
 
+// Kotlin 2.3 起 kotlinOptions 已移除，改用 compilerOptions
+kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
+
 dependencies {
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
@@ -70,6 +72,12 @@ dependencies {
     // UniFFI 绑定依赖 JNA，用 AAR 形式（内含各 ABI 的 libjnidispatch，由 abiFilters 裁成 arm64）
     implementation("${libs.jna.get()}@aar")
     implementation(libs.kotlinx.coroutines.android)
+    // 二维码扫码：CameraX 取景 + zxing-cpp 解码
+    implementation(libs.camerax.core)
+    implementation(libs.camerax.camera2)
+    implementation(libs.camerax.lifecycle)
+    implementation(libs.camerax.view)
+    implementation(libs.zxing.cpp)
 
     testImplementation(libs.junit)
     // JVM 单测里 Android 自带的 org.json 是桩，换成真实实现

@@ -41,8 +41,8 @@ async function doShare(): Promise<void> {
 }
 
 /** 打开站点 */
-function open(url: string): void {
-  if (!openSite(url)) showFailToast('无法打开该链接')
+async function open(url: string): Promise<void> {
+  if (!(await openSite(url))) showFailToast('无法打开该链接')
 }
 
 /** 复制站点链接 */

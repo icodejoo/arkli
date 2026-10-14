@@ -49,6 +49,8 @@ import com.let188.arkli.picker.PickOutcome
 import com.let188.arkli.picker.PickerContract
 import com.let188.arkli.preview.ImagePreviewActivity
 import com.let188.arkli.preview.PreviewConst
+import com.let188.arkli.qrcode.QrScanContract
+import com.let188.arkli.qrcode.QrScanOutcome
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -107,6 +109,12 @@ class MainActivity : ComponentActivity(), ActivityHost {
     private val writeReq = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) {
         writeSlot.complete(it.resultCode == Activity.RESULT_OK)
     }
+
+    /** 正在等待结果的扫码页，同一时刻只允许一个 */
+    private val scanSlot = PendingSlot<QrScanOutcome>("已有扫码页在显示")
+
+    /** 全屏扫码页（CameraX + zxing-cpp） */
+    private val scanReq = registerForActivityResult(QrScanContract()) { scanSlot.complete(it) }
 
     /** 运行时权限申请 */
     private val permReq = registerForActivityResult(ActivityResultContracts.RequestPermission()) { permSlot.complete(it) }
@@ -222,6 +230,10 @@ class MainActivity : ComponentActivity(), ActivityHost {
             }
         }
     }
+
+    /** 打开扫码页，见 [ActivityHost.scanQr]；扫码页盖在上面，取消协程后槽位保留到结果到达 */
+    override suspend fun scanQr(): QrScanOutcome =
+        scanSlot.await(releaseOnCancel = false) { withContext(Dispatchers.Main) { scanReq.launch(Unit) } }
 
     /** 打开原生全屏图片预览，见 [ActivityHost.previewImages]；拉起要在主线程 */
     override fun previewImages(files: List<File>, index: Int) {

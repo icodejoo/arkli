@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.util.Log
 import com.let188.arkli.ASSET_HOST
+import com.let188.arkli.qrcode.QrScanOutcome
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
@@ -76,6 +77,13 @@ interface ActivityHost {
      * @return 用户是否允许
      */
     suspend fun requestWriteAccess(uri: Uri): Boolean = false
+
+    /**
+     * 打开全屏扫码页，识别到码即返回。默认实现视为用户取消（不支持），由 Activity 覆盖。
+     *
+     * @return 识别到的全部码、用户取消或相机权限被拒
+     */
+    suspend fun scanQr(): QrScanOutcome = QrScanOutcome.Cancelled
 }
 
 /**

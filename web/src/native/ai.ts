@@ -9,6 +9,7 @@
  * 统一抛 {@link AiNotReadyError}，页面据此展示「模型未就绪」。
  */
 import { call as bridgeCall, isNativeAvailable } from './bridge'
+import { NativeUnavailableError } from './system'
 
 /** 原生调用函数形状，便于注入测试 */
 export type CallFn = <T = unknown>(method: string, params?: Record<string, unknown>, options?: { timeoutMs?: number }) => Promise<T>
@@ -16,6 +17,8 @@ export type CallFn = <T = unknown>(method: string, params?: Record<string, unkno
 /** 方法名常量 */
 export const AI_METHODS = {
   status: 'native.ai.status',
+  providers: 'native.ai.providers',
+  run: 'native.ai.run',
   ocr: 'native.ai.ocr',
   upscale: 'native.ai.upscale',
   classify: 'native.ai.classify',
@@ -243,4 +246,87 @@ export async function fetchAiResult(path: string, fetchFn: typeof fetch = (...a)
   const res = await fetchFn(FILES_URL_PREFIX + path)
   if (!res.ok) throw new Error('读取结果失败')
   return res.blob()
+}
+
+/** AI 任务：页面只认任务，不认厂商 */
+export type AiTask = 'summarize' | 'proofread' | 'rewrite' | 'describeImage' | 'prompt' | 'translate'
+
+/** 提供者不可用的原因（未知值按字符串透传，页面不认识就当「不可用」） */
+export type AiUnavailableReason = 'no_handler' | 'unsupported_device' | 'not_installed' | 'not_configured' | (string & {})
+
+/** 一个 AI 提供者 */
+export interface AiProviderInfo {
+  /** 稳定标识，如 `intent-handoff` */
+  id: string
+  /** 展示名 */
+  displayName: string
+  /** 当前是否可用 */
+  available: boolean
+  /** 不可用时的原因 */
+  reason?: AiUnavailableReason
+  /** 支持的任务 */
+  tasks: AiTask[]
+}
+
+/** `native.ai.providers` 的结果 */
+export interface AiProviders {
+  /** 全部提供者，含不可用的 */
+  providers: AiProviderInfo[]
+  /** 可用提供者支持的任务并集 */
+  capabilities: AiTask[]
+}
+
+/** `native.ai.run` 的结果 */
+export interface AiRunResult {
+  /** 是否只是把输入交给了别的应用（拿不回结果） */
+  handoff: boolean
+  /** 是否真的有应用接手；非交接时恒为 true */
+  handled: boolean
+  /** 直接结果文本，仅非交接时有 */
+  text?: string
+}
+
+/** 提供者 id：把文本交给系统里已有的应用 */
+export const HANDOFF_PROVIDER_ID = 'intent-handoff'
+
+/** 空的提供者结果：无宿主或原生没有该方法时使用 */
+function emptyProviders(): AiProviders {
+  return { providers: [], capabilities: [] }
+}
+
+/**
+ * 探测有哪些 AI 提供者可用，页面据此决定显示或隐藏入口。
+ *
+ * 无宿主或原生返回 UNKNOWN_METHOD 时视为没有任何提供者；其他错误照常抛出。
+ *
+ * @param call 原生调用函数，默认走 bridge（仅测试注入）
+ * @returns 提供者列表与可用任务并集
+ * @example const { capabilities } = await aiProviders(); if (capabilities.includes('translate')) showButton()
+ */
+export async function aiProviders(call: CallFn = bridgeCall): Promise<AiProviders> {
+  if (!isNativeAvailable()) return emptyProviders()
+  try {
+    const res = await call<Partial<AiProviders>>(AI_METHODS.providers, {})
+    return { providers: res?.providers ?? [], capabilities: res?.capabilities ?? [] }
+  } catch (e) {
+    if ((e as { code?: string } | null)?.code === 'UNKNOWN_METHOD') return emptyProviders()
+    throw e
+  }
+}
+
+/**
+ * 让某个提供者执行任务。交接类提供者只是把文本交给系统里的其他应用，拿不回结果。
+ *
+ * @param provider 提供者 id，如 {@link HANDOFF_PROVIDER_ID}
+ * @param task 任务
+ * @param input 输入文本，1~5 万字符
+ * @param call 原生调用函数，默认走 bridge（仅测试注入）
+ * @returns 交接标记或直接结果
+ * @throws NativeUnavailableError 不在 Arkli 容器内
+ * @throws 原生错误 BAD_PARAMS（参数或提供者不对）、NOT_READY（提供者当前不可用）
+ * @example const r = await aiRun(HANDOFF_PROVIDER_ID, 'translate', 'hello'); if (r.handoff && !r.handled) tip('没有可用应用')
+ */
+export async function aiRun(provider: string, task: AiTask, input: string, call: CallFn = bridgeCall): Promise<AiRunResult> {
+  if (!isNativeAvailable()) throw new NativeUnavailableError(AI_METHODS.run)
+  return call<AiRunResult>(AI_METHODS.run, { provider, task, input }, NO_TIMEOUT)
 }

@@ -1,21 +1,35 @@
 /**
- * 页面转场的方向判断：iOS 风格，进入更深一层是推入（push），回到更浅一层是弹出（pop）。
+ * 页面转场的方向判断：iOS 风格，进入更深一层是推入（push），回到更浅一层是弹出（pop）；底栏 tab 之间是同级，淡入淡出（fade）。
  *
  * 只看路由层级，不依赖 history API，所以 `router.replace('/')` 这类“没有历史就回首页”的兜底也能判成后退。
  */
 
-/** 转场种类：推入（前进）或弹出（后退） */
-export type PageTransition = 'push' | 'pop'
+/** 转场种类：推入（前进）、弹出（后退）、淡入淡出（底栏 tab 之间切换） */
+export type PageTransition = 'push' | 'pop' | 'fade'
+
+/** 底栏四个根 tab 的路径，顺序即底栏顺序；这些页面互为同级 */
+export const TAB_PATHS: readonly string[] = ['/', '/ai', '/favorites', '/settings']
 
 /**
- * 路由层级深度：首页为 0，其余页面（工具页、设置页）为 1。
+ * 路径是否属于底栏的根 tab（首页为 `/`，其余精确匹配）。
+ *
+ * @param path 路由路径
+ * @returns 是根 tab 页返回 true
+ * @example isTabPath('/ai') // true
+ */
+export function isTabPath(path: string): boolean {
+  return path === '' || TAB_PATHS.includes(path)
+}
+
+/**
+ * 路由层级深度：四个根 tab 页为 0，其余页面（工具页）为 1。
  *
  * @param path 路由路径，如 `/`、`/tool/ruler`
  * @returns 层级深度
  * @example routeDepth('/tool/ruler') // 1
  */
 export function routeDepth(path: string): number {
-  return path === '' || path === '/' ? 0 : 1
+  return isTabPath(path) ? 0 : 1
 }
 
 /**
@@ -23,15 +37,17 @@ export function routeDepth(path: string): number {
  *
  * @param toPath 目标路由路径
  * @param fromPath 来源路由路径
- * @returns 目标更浅（回首页）为 `pop`，其余（含同层切换）为 `push`
+ * @returns 两个不同的根 tab 之间为 `fade`；目标更浅（回 tab）为 `pop`，其余（含同层切换）为 `push`
  * @example pageTransition('/', '/tool/ruler') // 'pop'
+ * @example pageTransition('/ai', '/') // 'fade'
  */
 export function pageTransition(toPath: string, fromPath: string): PageTransition {
+  if (isTabPath(toPath) && isTabPath(fromPath) && toPath !== fromPath) return 'fade'
   return routeDepth(toPath) < routeDepth(fromPath) ? 'pop' : 'push'
 }
 
-/** 页面名（路由 name）里需要 keep-alive 缓存并记住滚动位置的那些：目前只有首页 */
-export const CACHED_ROUTES: ReadonlySet<string> = new Set(['home'])
+/** 需要 keep-alive 缓存并记住滚动位置的路由 name：四个根 tab 页 */
+export const CACHED_ROUTES: ReadonlySet<string> = new Set(['home', 'ai', 'favorites', 'settings'])
 
 /**
  * 判断某个路由是否被 keep-alive 缓存。
