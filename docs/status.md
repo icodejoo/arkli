@@ -103,7 +103,7 @@ OCR 工具页（依赖 4）。二维码扫码原型已做，待真机验证。
 
 ## 待用户拍板 / 未知
 - **开源协议**还没选（仓库无 LICENSE）：GPL 类依赖（如 libimagequant）会牵连整个 App，选协议要早于引入这类依赖。
-- 模型与数据包托管位置（**识物 `q4_half.onnx` 的 GitHub release `siglip2-q4half-v1` 尚未发布，清单 URL 是占位**；发布后要实测一次真实 302 落点主机，并考虑补镜像）；拼豆色号表数据来源；国内商店对按需下载 so 的规则（没查到原文）。
+- 模型与数据包托管位置（识物 `q4_half.onnx` 已于 2026-10-15 发布到 GitHub release `siglip2-q4half-v1`（公开仓库），真实下载链路已实测：302 直接落到 `release-assets.githubusercontent.com`，下载后 sha256 与清单一致；后续考虑补镜像，单连接在菲律宾偏慢）；拼豆色号表数据来源；国内商店对按需下载 so 的规则（没查到原文）。
 - AI 运行时（ORT + sherpa JNI，arm64 约 27MB 未压缩）是否随包：**ORT 已随包**（只带 `libonnxruntime.so` 22.25MB，不带 sherpa JNI；release APK 4,917,752 → 27,643,404 字节，gzip -9 3,309,480 → 11,605,440），是否改为按需下载 ORT 等复议；sherpa JNI 等接 sherpa 能力时再定。**新增构建步骤待确认**：Gradle 任务 `fetchOrtRuntime` 构建时从 GitHub 下载 50MB 的 sherpa AAR 并校验 sha256，缓存在 `.gradle/arkli-ort/`。
 - 高通、华为运行库再分发许可（NPU 暂搁置）。
 - **对联 GPT-2 的 release（`couplet-gpt2-v1`，公开仓库）许可证无法确认可再分发**：用户决定不向作者确认、风险自负；作者若不允许要删除 release（见 [对联 GPT-2](research/couplet-gpt2-onnx.md)）。
