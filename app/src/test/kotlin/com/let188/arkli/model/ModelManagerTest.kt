@@ -74,6 +74,30 @@ class ModelManagerTest {
     }
 
     @Test
+    fun listener_pushesStartThenFinalInstalled() {
+        val t = FakeTransport { _, h, _ -> serve(data, h) }
+        val m = manager(t)
+        val seen = java.util.Collections.synchronizedList(mutableListOf<ModelState>())
+        m.setListener { seen.add(it.state) }
+        m.ensure("m1")
+        settle(m)
+        // 任务收尾的推送在 settle 之后一点点才到，等一下
+        val end = System.currentTimeMillis() + 2_000
+        while (seen.lastOrNull() != ModelState.INSTALLED && System.currentTimeMillis() < end) Thread.sleep(5)
+        assertEquals(ModelState.DOWNLOADING, seen.first())
+        assertEquals(ModelState.INSTALLED, seen.last())
+    }
+
+    @Test
+    fun listener_throwingDoesNotBreakDownload() {
+        val t = FakeTransport { _, h, _ -> serve(data, h) }
+        val m = manager(t)
+        m.setListener { error("监听者出错") }
+        m.ensure("m1")
+        assertEquals(ModelState.INSTALLED, settle(m).state)
+    }
+
+    @Test
     fun ensure_downloadsVerifiesAndMarksInstalled_thenIsIdempotent() {
         val t = FakeTransport { _, h, _ -> serve(data, h) }
         val m = manager(t, metered = true)

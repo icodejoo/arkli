@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "note": "随包信任锚：下载地址只能来自这里，页面不能传 URL。q4_half 的托管 release 尚未发布，URL 为占位，发布前请核对。",
+  "note": "随包信任锚：下载地址只能来自这里，页面不能传 URL。q4_half 的托管 release 尚未发布，URL 为占位，发布前请核对。nllb600m-un6-ccm-int4 的 URL 也是占位（托管待定：解压后的单文件尚未上传到 release，见 docs/status.md「待确认」）；该模型为 CC-BY-NC-4.0，仅限非商业使用，署名与授权说明见 docs/design/bridge-protocol.md。",
   "models": [
     {
       "id": "siglip2-q4_half",
@@ -17,6 +17,70 @@
           "role": "model",
           "urls": [
             "https://github.com/icodejoo/arkli/releases/download/siglip2-q4half-v1/q4_half.onnx"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "nllb600m-un6-ccm-int4",
+      "displayName": "本地翻译模型（NLLB-200 600M，6 语）",
+      "version": "1",
+      "dir": "models/nllb600m-un6-ccm-int4",
+      "totalBytes": 404501627,
+      "license": "cc-by-nc-4.0",
+      "files": [
+        {
+          "name": "encoder.onnx",
+          "bytes": 4440868,
+          "sha256": "68308e2858410378fb208625d80fb11c6801a96c0e8dcc57301838c1b25f4bc2",
+          "role": "model",
+          "urls": [
+            "https://github.com/icodejoo/Cisox/releases/download/models/encoder.onnx"
+          ]
+        },
+        {
+          "name": "encoder.onnx_data",
+          "bytes": 158297088,
+          "sha256": "9c8ad41d3ba3bc1cf7f0b37820fcc32f121703e1734c8d5ee1d77df7a0b17e49",
+          "role": "weights",
+          "urls": [
+            "https://github.com/icodejoo/Cisox/releases/download/models/encoder.onnx_data"
+          ]
+        },
+        {
+          "name": "decoder.onnx",
+          "bytes": 9185018,
+          "sha256": "05687c19b11c4ff6ffa1c3a03c22d8936716c23f043e1626e3908d03a352073d",
+          "role": "model",
+          "urls": [
+            "https://github.com/icodejoo/Cisox/releases/download/models/decoder.onnx"
+          ]
+        },
+        {
+          "name": "decoder.onnx_data",
+          "bytes": 229598080,
+          "sha256": "d0f06b5c89c80eb657efa961418e8568d62d7e250e7517180cb91ec548619549",
+          "role": "weights",
+          "urls": [
+            "https://github.com/icodejoo/Cisox/releases/download/models/decoder.onnx_data"
+          ]
+        },
+        {
+          "name": "tokenizer.json",
+          "bytes": 2979534,
+          "sha256": "d7c3b1f913f4af10503b41202e36623c997aca6480a97643a6105d364000bebb",
+          "role": "tokenizer",
+          "urls": [
+            "https://github.com/icodejoo/Cisox/releases/download/models/tokenizer.json"
+          ]
+        },
+        {
+          "name": "model.json",
+          "bytes": 1039,
+          "sha256": "e04baa1238772af4dc9bbd0febb0833741be2380e79a3cfb6823c7a9be5c7a57",
+          "role": "config",
+          "urls": [
+            "https://github.com/icodejoo/Cisox/releases/download/models/model.json"
           ]
         }
       ]

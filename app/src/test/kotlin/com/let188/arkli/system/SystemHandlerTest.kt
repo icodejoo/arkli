@@ -22,6 +22,9 @@ class SystemHandlerTest {
         /** 最近一次 setScreen 的参数 */
         var screen: Triple<Boolean?, Float?, Boolean?>? = null
 
+        /** 最近一次 setOrientation 的参数 */
+        var landscape: Boolean? = null
+
         override suspend fun pickMedia(mime: String, multiple: Boolean, max: Int): List<Uri> = emptyList()
         override suspend fun pickDirectory(): Uri? = null
         override suspend fun requestPermission(permission: String): Boolean = false
@@ -29,6 +32,9 @@ class SystemHandlerTest {
         override fun startIntent(intent: Intent): Boolean = false
         override fun setScreen(keepAwake: Boolean?, brightness: Float?, immersive: Boolean?) {
             screen = Triple(keepAwake, brightness, immersive)
+        }
+        override fun setOrientation(landscape: Boolean) {
+            this.landscape = landscape
         }
     }
 
@@ -69,6 +75,20 @@ class SystemHandlerTest {
         assertEquals(-1f, host.screen!!.second!!, 0f)
         call(install, SystemModule.METHOD_SCREEN_IMMERSIVE, JSONObject().put("on", false))
         assertEquals(Triple<Boolean?, Float?, Boolean?>(null, null, false), host.screen)
+    }
+
+    @Test
+    fun orientationForwardsAndValidates() {
+        val host = FakeHost()
+        val install = { b: ArkliBridge -> b.register(SystemModule.METHOD_SCREEN_ORIENTATION, OrientationHandler(host)) }
+        assertTrue(call(install, SystemModule.METHOD_SCREEN_ORIENTATION, JSONObject().put("mode", "landscape")).getBoolean("ok"))
+        assertEquals(true, host.landscape)
+        call(install, SystemModule.METHOD_SCREEN_ORIENTATION, JSONObject().put("mode", "portrait"))
+        assertEquals(false, host.landscape)
+        host.landscape = null
+        assertEquals("BAD_PARAMS", call(install, SystemModule.METHOD_SCREEN_ORIENTATION, JSONObject().put("mode", "diagonal")).code())
+        assertEquals("BAD_PARAMS", call(install, SystemModule.METHOD_SCREEN_ORIENTATION, JSONObject()).code())
+        assertNull(host.landscape)
     }
 
     @Test

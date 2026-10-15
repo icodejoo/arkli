@@ -54,7 +54,7 @@ async function submit(): Promise<void> {
 
 <template>
   <div class="tool-page">
-    <van-notice-bar v-if="!hosted" wrap-able :scrollable="false" left-icon="info-o">{{ TIP_NO_HOST }}</van-notice-bar>
+    <van-notice-bar v-if="!hosted" wrapable :scrollable="false" left-icon="info-o">{{ TIP_NO_HOST }}</van-notice-bar>
 
     <div class="tool-card">
       <van-field v-model="url" label="网址" type="url" placeholder="例如 zhihu.com" clearable />

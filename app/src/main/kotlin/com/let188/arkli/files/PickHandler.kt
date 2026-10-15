@@ -14,6 +14,7 @@ import com.let188.arkli.bridge.BridgeErrors
 import com.let188.arkli.bridge.BridgeException
 import com.let188.arkli.bridge.BridgeHandler
 import com.let188.arkli.bridge.CallContext
+import com.let188.arkli.picker.PickerPolicy
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
@@ -40,6 +41,7 @@ private class PickFailure(message: String) : Exception(message)
  *
  * 参数：`{ mime?: string = 图片通配, multiple?: boolean = false, max?: number = 20, keepSource?: boolean = false }`。
  * `keepSource` 为 true 时，图片项多返回不透明 `sourceHandle`（真实 URI 只留在原生侧），供 `native.file.overwrite` 写回原图。
+ * `camera` 为 true（仅图片）时一律走自带选图页并显示拍照按钮，点它返回 `{ items: [], failed: [], camera: true }`。
  * 返回：`{ items: [...], failed: [{ name, message }] }`，用户关闭选择器时 `items` 为空数组。
  *
  * @param env 文件环境
@@ -60,7 +62,9 @@ internal class PickHandler(private val env: FileEnv, private val handles: Handle
         val multiple = params.optBoolean("multiple", false)
         val max = params.optInt("max", FileConst.DEFAULT_PICK_MAX).coerceIn(1, FileConst.PICK_MAX_LIMIT)
         val keepSource = params.optBoolean("keepSource", false)
-        val uris = env.host.pickMedia(mime, multiple, max).take(if (multiple) max else 1)
+        val camera = PickerPolicy.wantsCamera(params.optBoolean("camera", false), PickKind.of(mime))
+        val picked = env.host.pickMediaOrCamera(mime, multiple, max, camera)
+        val uris = picked.uris.take(PickerPolicy.resolveMaxCount(multiple, max))
         val items = JSONArray()
         val failed = JSONArray()
         val made = ArrayList<File>()
@@ -80,7 +84,7 @@ internal class PickHandler(private val env: FileEnv, private val handles: Handle
             made.forEach { it.delete() }
             throw e
         }
-        return JSONObject().put("items", items).put("failed", failed)
+        return PickerPolicy.buildPickResponse(items, failed, picked.camera)
     }
 
     /** 处理单个 URI，按 mime 分流 */

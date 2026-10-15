@@ -205,8 +205,8 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="tool-page">
-    <van-notice-bar v-if="!hosted" wrap-able :scrollable="false" left-icon="info-o">{{ TIP_NO_HOST }}</van-notice-bar>
-    <van-notice-bar wrap-able :scrollable="false" color="var(--c-warn-text)" background="var(--c-warn-bg)" left-icon="warning-o">{{ TIP_UNCALIBRATED }}</van-notice-bar>
+    <van-notice-bar v-if="!hosted" wrapable :scrollable="false" left-icon="info-o">{{ TIP_NO_HOST }}</van-notice-bar>
+    <van-notice-bar wrapable :scrollable="false" color="var(--c-warn-text)" background="var(--c-warn-bg)" left-icon="warning-o">{{ TIP_UNCALIBRATED }}</van-notice-bar>
 
     <div class="tool-card nm-main">
       <div class="nm-db" :style="{ color }">{{ formatDb(shown) }}<span class="nm-unit">dB</span></div>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { COLOR_PRESETS, hexToHsv, hsvToHex, ratioIn, toHex6 } from './color-picker'
+import { COLOR_PRESETS, hexToHsv, hsvToHex, loupeAbove, ratioIn, readableOn, toHex6 } from './color-picker'
 
 describe('项目规则：颜色选择统一用 ColorPicker', () => {
   it('除 ColorPicker 自身外，.vue 里不许出现原生 type="color"', () => {
@@ -45,5 +45,20 @@ describe('ratioIn', () => {
     expect(ratioIn(50, 100, 200)).toBe(0)
     expect(ratioIn(999, 100, 200)).toBe(1)
     expect(ratioIn(10, 0, 0)).toBe(0)
+  })
+})
+
+describe('放大镜气泡', () => {
+  it('上方放得下就放上方，放不下放下方', () => {
+    expect(loupeAbove(150, 64, 16)).toBe(true)
+    expect(loupeAbove(60, 64, 16)).toBe(false)
+    expect(loupeAbove(60, 64, 16, 40)).toBe(true)
+  })
+  it('浅色底用黑字，深色底用白字，认不出按浅色处理', () => {
+    expect(readableOn('#ffffff')).toBe('#000000')
+    expect(readableOn('#ffeb3b')).toBe('#000000')
+    expect(readableOn('#000000')).toBe('#ffffff')
+    expect(readableOn('#1565c0')).toBe('#ffffff')
+    expect(readableOn('nope')).toBe('#000000')
   })
 })

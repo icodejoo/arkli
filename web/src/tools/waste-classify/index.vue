@@ -1,11 +1,12 @@
 <script setup lang="ts">
 // 垃圾分类识别：选图 → 本地 CLIP 识物 → 顶部大字分类 + top-3 候选（点哪个就采纳哪个）。
-// 模型不随包发布，首次使用先下载（native.model.*）；页面只做装配，逻辑都在 logic.ts。
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
-import { showConfirmDialog, showToast } from 'vant'
+// 模型的下载/删除/校验归 AI 中心与模型选择器，本页只读状态、只使用；页面只做装配，逻辑都在 logic.ts。
+import { computed, onBeforeUnmount, ref, shallowRef } from 'vue'
+import { showToast } from 'vant'
 import { isNativeAvailable } from '@/native/bridge'
+import { cameraItemToPicked, captureCamera, clearCamera, isAlbum, isCancelled } from '@/native/camera'
 import { aiClassifyImage, type ImageClassifyResult } from '@/native/ai'
-import { useModelState } from '@/native/useModelState'
+import { useModelsStore } from '@/stores/models'
 import { pickImages, type PickedImage } from '@/shared/image-io'
 import { resolveImagePath } from '@/tools/_ai/aiImage'
 import {
@@ -13,17 +14,11 @@ import {
   busyText,
   classifyFailure,
   defaultSelection,
-  DISCLAIMER,
-  downloadErrorText,
   HEAT_TEXT,
   matchHints,
-  megaText,
   MODEL_ID,
   NO_HOST_TEXT,
-  progressText,
   shouldWarnHeat,
-  sizeLabel,
-  speedText,
   stageOf,
   TOP_K,
 } from './logic'
@@ -31,10 +26,18 @@ import {
 /** 忙碌文案刷新间隔（毫秒） */
 const TICK_MS = 500
 
+/** 模型未就绪时重新探测状态的间隔（毫秒）：用户在选择器里下完后页面自动解锁 */
+const RECHECK_MS = 2000
+
+/** 拍照产物所在缓存目录前缀，用来判断当前图是不是拍的 */
+const CAM_PATH_PREFIX = 'cache/pick/cam/'
+
 /** 是否在 App 容器内 */
 const host = isNativeAvailable()
-/** 模型状态与下载操作 */
-const model = useModelState(MODEL_ID)
+/** 模型状态源（只读；状态由原生推送实时更新） */
+const models = useModelsStore()
+/** 识别用的模型 */
+const model = computed(() => models.get(MODEL_ID))
 
 /** 当前图片 */
 const image = shallowRef<PickedImage | null>(null)
@@ -48,55 +51,20 @@ const busy = ref(false)
 const count = ref(0)
 /** 本次识别已等待毫秒 */
 const elapsed = ref(0)
-/** 已确认过计费网络，不再重复问 */
-let meteredOk = false
-/** 已静默校验过一次，避免校验失败后反复触发 */
-let verifyTried = false
 /** 忙碌计时器 */
 let tick: ReturnType<typeof setInterval> | null = null
 
+/** 是否已就绪（模型装好，可以拍照/选图） */
+const ready = computed(() => stage.value === 'ready')
+
 /** 页面阶段 */
-const stage = computed(() => stageOf(host, model.ready.value, model.state.value, model.status.value?.phase))
+const stage = computed(() => stageOf(host, model.value?.state ?? 'absent'))
 /** 结果视图 */
 const view = computed(() => (result.value ? buildView(result.value, selected.value) : null))
 /** 易混提示 */
 const hints = computed(() => (result.value ? matchHints(result.value.items) : []))
-/** 下载错误文案，没有错误为空 */
-const downloadError = computed(() => (model.error.value ? downloadErrorText(model.error.value.code) : ''))
-/** 下载百分比 0~100 */
-const percent = computed(() => Math.round(model.progress.value * 100))
-/** 模型总大小文案 */
-const sizeText = computed(() => sizeLabel(model.status.value?.totalBytes ?? 0))
-/** 已装模型占用空间 */
-const diskText = computed(() => megaText(model.status.value?.diskBytes ?? 0))
 /** 顶部大字的颜色变量 */
 const headColor = computed(() => (view.value?.headline.category ? `var(${view.value.headline.category.colorVar})` : ''))
-
-/** 开始下载；计费网络先取消再确认，确认后续传 */
-async function download(): Promise<void> {
-  await model.start()
-  if (!model.meteredHint.value || meteredOk || !model.downloading.value) return
-  await model.cancel()
-  try {
-    await showConfirmDialog({ title: '正在使用移动网络', message: `模型约 ${sizeText.value}，会用掉流量。继续下载吗？已下载的部分会保留。` })
-  } catch {
-    return
-  }
-  meteredOk = true
-  await model.start()
-}
-
-/** 删除模型：二次确认，成功后清空结果 */
-async function removeModel(): Promise<void> {
-  try {
-    await showConfirmDialog({ title: '删除识别模型', message: `将释放约 ${diskText.value} 空间，之后想用要重新下载。` })
-  } catch {
-    return
-  }
-  await model.remove()
-  result.value = null
-  selected.value = -1
-}
 
 /** 开始忙碌计时 */
 function startTick(): void {
@@ -125,7 +93,6 @@ async function classify(img: PickedImage): Promise<void> {
     selected.value = defaultSelection(r)
   } catch (e) {
     const f = classifyFailure(e)
-    if (f.kind === 'notReady') await model.refresh()
     showToast(f.text)
   } finally {
     stopTick()
@@ -133,15 +100,50 @@ async function classify(img: PickedImage): Promise<void> {
   }
 }
 
-/** 选图并立刻识别 */
-async function choose(): Promise<void> {
+/** 当前图是否是拍照产物（原生拍前会清旧文件，所以这类图随之失效） */
+function isCamImage(img: PickedImage | null): boolean {
+  return !!img?.path?.startsWith(CAM_PATH_PREFIX)
+}
+
+/** 丢掉当前图与结果（结果只在内存，不留历史） */
+function dropCurrent(): void {
+  image.value?.release()
+  image.value = null
+  result.value = null
+  selected.value = -1
+}
+
+/** 采用新选到的图：释放旧图、识别；来自相册时顺手清掉旧的拍照文件（拍照产物由原生拍前清理，不能在这清） */
+async function accept(got: PickedImage): Promise<void> {
+  image.value?.release()
+  image.value = got
+  if (!isCamImage(got)) void clearCamera()
+  await classify(got)
+}
+
+/** 拍照并立刻识别；取消时若旧图是拍的（原生拍前已清掉文件）就一并丢掉 */
+async function takePhoto(): Promise<void> {
+  if (busy.value) return
+  const hadCam = isCamImage(image.value)
+  try {
+    const r = await captureCamera({ modes: ['photo'] })
+    if (isCancelled(r) || isAlbum(r) || r.kind !== 'image') {
+      if (hadCam) dropCurrent()
+      return
+    }
+    await accept(cameraItemToPicked(r))
+  } catch (e) {
+    if (hadCam) dropCurrent()
+    showToast((e as { message?: string }).message ?? '拍照失败')
+  }
+}
+
+/** 从自带相册页单选一张并立刻识别 */
+async function fromAlbum(): Promise<void> {
   if (busy.value) return
   try {
-    const got = await pickImages({ onFailed: () => showToast('这张图读不出来，换一张试试') })
-    if (!got.length) return
-    image.value?.release()
-    image.value = got[0]
-    await classify(got[0])
+    const got = (await pickImages({ multiple: false }))[0]
+    if (got) await accept(got)
   } catch (e) {
     showToast((e as { message?: string }).message ?? '选图失败')
   }
@@ -152,29 +154,27 @@ function adopt(i: number): void {
   selected.value = i
 }
 
-// 文件齐全但没校验过（比如手动放进去的）：静默校验一次再用
-watch(
-  () => model.state.value,
-  (s) => {
-    if (s === 'unverified' && !verifyTried) {
-      verifyTried = true
-      void model.verify()
-    }
-  },
-)
-
-onMounted(() => {
-  if (host) void model.refresh()
-})
+/** 供宿主页的底部动作栏调用 */
+defineExpose({ takePhoto, fromAlbum, ready, busy })
 
 onBeforeUnmount(() => {
   stopTick()
   image.value?.release()
+  void clearCamera()
 })
 </script>
 
 <template>
   <div class="tool-page">
+    <!-- 预览：任何阶段都在顶部，1:1 铺满容器宽度 -->
+    <div class="tool-card">
+      <div class="preview">
+        <img v-if="image" class="preview__img" :src="image.url" alt="待识别图片" />
+        <van-icon v-else name="photo-o" class="preview__empty" />
+      </div>
+      <p v-if="busy" class="tool-hint preview__busy">{{ busyText(elapsed) }}</p>
+    </div>
+
     <!-- 非宿主 -->
     <div v-if="stage === 'noHost'" class="tool-card gate">
       <div class="gate__icon">📱</div>
@@ -182,55 +182,15 @@ onBeforeUnmount(() => {
       <p class="tool-hint">识别模型跑在手机上，桌面浏览器用不了。</p>
     </div>
 
-    <!-- 探测中 -->
-    <div v-else-if="stage === 'checking'" class="tool-card gate">
-      <van-loading size="24" />
-    </div>
-
-    <!-- 需要下载 -->
-    <div v-else-if="stage === 'needDownload'" class="tool-card gate">
+    <!-- 模型未就绪：下载归模型选择器 / AI 中心，这里只提示 -->
+    <div v-else-if="stage === 'notReady'" class="tool-card gate">
       <div class="gate__icon">🗑️</div>
-      <p class="gate__title">先下载识别模型</p>
-      <p class="tool-hint">只需下载一次，之后离线可用；模型不随安装包发布。</p>
-      <p v-if="downloadError" class="gate__error" role="alert">{{ downloadError }}</p>
-      <van-button type="primary" block round size="large" :loading="model.busy.value" @click="download">
-        {{ (model.status.value?.downloadedBytes ?? 0) > 0 ? '继续下载' : '下载识别模型' }}（{{ sizeText }}）
-      </van-button>
-    </div>
-
-    <!-- 下载中 -->
-    <div v-else-if="stage === 'downloading'" class="tool-card gate">
-      <p class="gate__title">正在下载识别模型…</p>
-      <van-progress :percentage="percent" stroke-width="8" />
-      <p class="tool-hint gate__stat">
-        <span>{{ model.status.value ? progressText(model.status.value) : '' }}</span>
-        <span>{{ speedText(model.status.value?.speedBps) }}</span>
-      </p>
-      <van-button plain block round size="large" :loading="model.busy.value" @click="model.cancel">取消（已下载的部分会保留）</van-button>
-    </div>
-
-    <!-- 校验中 -->
-    <div v-else-if="stage === 'verifying'" class="tool-card gate">
-      <van-loading size="24" />
-      <p class="gate__title">正在检查模型文件…</p>
-      <p v-if="downloadError" class="gate__error" role="alert">{{ downloadError }}</p>
+      <p class="gate__title">识别模型还没准备好</p>
+      <p class="tool-hint">请先下载模型，进度可在 AI 中心查看。</p>
     </div>
 
     <!-- 已就绪：选图与结果 -->
     <template v-else>
-      <div class="tool-card">
-        <div class="pick">
-          <img v-if="image" class="pick__thumb" :src="image.url" alt="待识别图片" />
-          <div v-else class="pick__empty">📷</div>
-          <div class="pick__side">
-            <p class="pick__text">{{ busy ? busyText(elapsed) : image ? '换一张再识别' : '选一张垃圾的照片' }}</p>
-            <van-button type="primary" round size="large" :loading="busy" :disabled="busy" @click="choose">
-              {{ image ? '换一张' : '从相册选图' }}
-            </van-button>
-          </div>
-        </div>
-      </div>
-
       <template v-if="view">
         <div
           class="hero"
@@ -268,13 +228,6 @@ onBeforeUnmount(() => {
       </template>
 
       <p v-if="shouldWarnHeat(count)" class="tool-hint warm">{{ HEAT_TEXT }}</p>
-      <p class="tool-hint foot">{{ DISCLAIMER }}</p>
-
-      <!-- 模型管理 -->
-      <div class="tool-card manage">
-        <span class="tool-hint">识别模型已安装，占用 {{ diskText }}</span>
-        <van-button size="small" plain round :loading="model.busy.value" @click="removeModel">删除模型释放空间</van-button>
-      </div>
     </template>
   </div>
 </template>
@@ -296,38 +249,23 @@ onBeforeUnmount(() => {
     font-size: 16px;
     font-weight: 600;
   }
-
-  &__error {
-    margin: 0;
-    font-size: 13px;
-    color: var(--c-error);
-  }
-
-  &__stat {
-    display: flex;
-    justify-content: space-between;
-    width: 100%;
-  }
-
-  :deep(.van-progress) {
-    width: 100%;
-  }
 }
 
-.pick {
-  display: flex;
-  gap: $space-3;
-  align-items: center;
+/* 预览区：宽度铺满容器，高度跟宽度 1:1 */
+.preview {
+  aspect-ratio: 1 / 1;
+  width: 100%;
+  margin-bottom: $space-3;
+  overflow: hidden;
+  border-radius: 10px;
 
-  &__thumb,
+  &__img,
   &__empty {
-    flex: none;
-    width: 96px;
-    height: 96px;
-    border-radius: 10px;
+    width: 100%;
+    height: 100%;
   }
 
-  &__thumb {
+  &__img {
     object-fit: cover;
   }
 
@@ -335,22 +273,14 @@ onBeforeUnmount(() => {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 36px;
+    font-size: 64px;
+    color: var(--c-text-muted);
     background: var(--c-surface-active);
   }
 
-  &__side {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    gap: $space-2;
-    min-width: 0;
-  }
-
-  &__text {
-    margin: 0;
-    font-size: 13px;
-    color: var(--c-text-muted);
+  &__busy {
+    margin: 0 0 $space-3;
+    text-align: center;
   }
 }
 
@@ -468,15 +398,7 @@ onBeforeUnmount(() => {
   border-radius: 8px;
 }
 
-.warm,
-.foot {
+.warm {
   text-align: center;
-}
-
-.manage {
-  display: flex;
-  gap: $space-3;
-  align-items: center;
-  justify-content: space-between;
 }
 </style>

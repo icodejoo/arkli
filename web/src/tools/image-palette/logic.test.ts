@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getPixel, medianCut, PALETTE_MAX, PALETTE_MIN, pointToPixel, readableTextColor, toHex, toRgbText } from './logic'
+import { getPixel, loadZoom, loupeSourceRect, MOVE_SLOP, movedBeyondSlop, loupeWindow, LOUPE_SIZE, medianCut, ZOOM_DEFAULT, ZOOM_MAX, ZOOM_MIN, PALETTE_MAX, PALETTE_MIN, pointToPixel, readableTextColor, toHex, toRgbText } from './logic'
 
 /** 用若干 [r,g,b,a,重复次数] 生成 RGBA 数据 */
 function build(parts: Array<[number, number, number, number, number]>): Uint8ClampedArray {
@@ -77,5 +77,54 @@ describe('medianCut', () => {
     const out = medianCut(build([[0, 0, 0, 255, 5], [255, 255, 255, 255, 50], [128, 0, 0, 255, 20]]), 6)
     expect(out.reduce((s, c) => s + c.ratio, 0)).toBeCloseTo(1)
     for (let i = 1; i < out.length; i++) expect(out[i - 1].count).toBeGreaterThanOrEqual(out[i].count)
+  })
+})
+
+describe('loupeSourceRect', () => {
+  it('以指向像素为中心取奇数窗口', () => {
+    expect(loupeSourceRect(100, 50, 11)).toEqual({ sx: 95, sy: 45, size: 11 })
+    expect(loupeSourceRect(5, 5, 5)).toEqual({ sx: 3, sy: 3, size: 5 })
+  })
+  it('靠近边界时允许负的起点（由 canvas 裁剪）', () => {
+    expect(loupeSourceRect(0, 2, 11).sx).toBe(-5)
+  })
+})
+
+describe('loupeWindow', () => {
+  it('倍数越大窗口越小，且总是奇数', () => {
+    expect(loupeWindow(10)).toBe(11)
+    expect(loupeWindow(2)).toBe(55)
+    expect(loupeWindow(ZOOM_MIN)).toBeGreaterThan(loupeWindow(ZOOM_MAX))
+    for (let z = ZOOM_MIN; z <= ZOOM_MAX; z++) expect(loupeWindow(z) % 2).toBe(1)
+  })
+  it('超出范围被夹住，窗口至少 3，非数字按默认值', () => {
+    expect(loupeWindow(1)).toBe(loupeWindow(ZOOM_MIN))
+    expect(loupeWindow(999)).toBe(loupeWindow(ZOOM_MAX))
+    expect(loupeWindow(ZOOM_MAX)).toBeGreaterThanOrEqual(3)
+    expect(loupeWindow(NaN)).toBe(loupeWindow(ZOOM_DEFAULT))
+    expect(LOUPE_SIZE / loupeWindow(ZOOM_DEFAULT)).toBeGreaterThan(4)
+  })
+})
+
+describe('loadZoom', () => {
+  it('读存储：整数夹范围，没有或非法回默认值', () => {
+    expect(loadZoom('6')).toBe(6)
+    expect(loadZoom('6.6')).toBe(7)
+    expect(loadZoom('1')).toBe(ZOOM_MIN)
+    expect(loadZoom('500')).toBe(ZOOM_MAX)
+    expect(loadZoom(null)).toBe(ZOOM_DEFAULT)
+    expect(loadZoom('abc')).toBe(ZOOM_DEFAULT)
+  })
+})
+
+describe('movedBeyondSlop', () => {
+  it('漂移不超过允许范围不算滑动，超过算', () => {
+    expect(movedBeyondSlop(3, 4)).toBe(false)
+    expect(movedBeyondSlop(MOVE_SLOP, 0)).toBe(false)
+    expect(movedBeyondSlop(MOVE_SLOP, 1)).toBe(true)
+    expect(movedBeyondSlop(0, -50)).toBe(true)
+  })
+  it('可自定义范围', () => {
+    expect(movedBeyondSlop(6, 0, 5)).toBe(true)
   })
 })

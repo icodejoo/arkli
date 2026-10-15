@@ -69,6 +69,31 @@ class ClipServiceTest {
     }
 
     @Test
+    fun warmup_loadsVocabAndModel_idempotent_thenClassifyDoesNotReload() {
+        val model = tmp.newFile("m.onnx").apply { writeText("x") }
+        val b = FakeBackend()
+        val svc = ClipService(env(model), b, FakeCodec())
+        val r = runBlocking { svc.warmup() }
+        runBlocking { svc.warmup() }
+        assertEquals(LocalClipProvider.ID, r.provider)
+        assertEquals(listOf("vocab:1", "load:m.onnx"), b.calls)
+        runBlocking { svc.classify(File("x.jpg"), 3) }
+        assertEquals(listOf("vocab:1", "load:m.onnx", "classify:3"), b.calls)
+    }
+
+    @Test
+    fun warmup_notReady_andUnloadReportsWhetherLoaded() {
+        val missing = ClipService(env(File(tmp.root, "nope.onnx")), FakeBackend(), FakeCodec())
+        val e = assertThrows(BridgeException::class.java) { runBlocking { missing.warmup() } }
+        assertEquals(BridgeErrors.NOT_READY, e.code)
+        val model = tmp.newFile("m2.onnx").apply { writeText("x") }
+        val svc = ClipService(env(model), FakeBackend(), FakeCodec())
+        assertFalse(runBlocking { svc.unload() })
+        runBlocking { svc.warmup() }
+        assertTrue(runBlocking { svc.unload() })
+    }
+
+    @Test
     fun notReady_whenModelMissing() {
         val svc = ClipService(env(File(tmp.root, "nope.onnx")), FakeBackend(), FakeCodec())
         assertFalse(svc.isModelReady())

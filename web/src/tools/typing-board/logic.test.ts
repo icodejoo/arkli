@@ -1,67 +1,96 @@
 import { describe, expect, it } from 'vitest'
-import { blinkPeriod, clampNum, cleanText, fitFontSize, FONT_MAX, FONT_MIN, invertColor, PRESETS, TEXT_MAX } from './logic'
+import {
+  blinkPeriod,
+  clampNum,
+  cleanText,
+  DEFAULT_TEXT,
+  invertColor,
+  loadRecent,
+  overflows,
+  pushRecent,
+  RECENT_KEY,
+  RECENT_MAX,
+  saveRecent,
+  scrollDuration,
+  STAGE_PAD,
+  TEXT_MAX,
+  type KvStorage,
+} from './logic'
 
-describe('fitFontSize', () => {
-  it('线性测量取到最大可行值', () => {
-    expect(fitFontSize(400, 300, (fs) => fs * 2)).toBe(150)
+/** 内存存储 */
+function memStore(init: Record<string, string> = {}): KvStorage {
+  const data = { ...init }
+  return { getItem: (k) => data[k] ?? null, setItem: (k, v) => void (data[k] = v) }
+}
+
+describe('overflows', () => {
+  it('超过屏宽减两侧留白才算超出', () => {
+    expect(overflows(360 - STAGE_PAD * 2, 360)).toBe(false)
+    expect(overflows(360 - STAGE_PAD * 2 + 1, 360)).toBe(true)
+    expect(overflows(1000, 360)).toBe(true)
   })
-  it('放不下时返回下限', () => {
-    expect(fitFontSize(400, 10, (fs) => fs * 2)).toBe(FONT_MIN)
-  })
-  it('很宽松时封顶', () => {
-    expect(fitFontSize(400, 99999, (fs) => fs)).toBe(FONT_MAX)
-  })
-  it('文字越多字号越小（宽度影响换行）', () => {
-    const lines = (n: number) => (fs: number, w: number) => Math.ceil((n * fs) / w) * fs * 1.25
-    expect(fitFontSize(360, 640, lines(20))).toBeLessThan(fitFontSize(360, 640, lines(4)))
-  })
-  it('容器无效返回下限', () => {
-    expect(fitFontSize(0, 100, (fs) => fs)).toBe(FONT_MIN)
+  it('宽度无效按没超出', () => {
+    expect(overflows(0, 360)).toBe(false)
+    expect(overflows(100, 0)).toBe(false)
+    expect(overflows(NaN, 360)).toBe(false)
   })
 })
 
-describe('clampNum', () => {
+describe('scrollDuration', () => {
+  it('文字加屏宽除以速度', () => {
+    expect(scrollDuration(400, 600, 200)).toBe(5)
+  })
+  it('非法入参返回 0', () => {
+    expect(scrollDuration(-1, 600, 200)).toBe(0)
+    expect(scrollDuration(400, 0, 200)).toBe(0)
+    expect(scrollDuration(400, 600, 0)).toBe(0)
+  })
+})
+
+describe('clampNum / blinkPeriod', () => {
   it('夹取与非法值', () => {
     expect(clampNum(5, 0, 3)).toBe(3)
     expect(clampNum(-1, 0, 3)).toBe(0)
     expect(clampNum(NaN, 1, 3)).toBe(1)
   })
-})
-
-describe('blinkPeriod', () => {
-  it('频率换周期并夹取', () => {
+  it('频率夹到 0.5~2 再取倒数', () => {
     expect(blinkPeriod(2)).toBe(0.5)
-    expect(blinkPeriod(0.5)).toBe(2)
     expect(blinkPeriod(10)).toBe(0.5)
-    expect(blinkPeriod(0)).toBe(2)
+    expect(blinkPeriod(0.1)).toBe(2)
   })
 })
 
 describe('cleanText', () => {
-  it('换行归一并截断', () => {
-    expect(cleanText('a\r\nb\rc')).toBe('a\nb\nc')
-    expect(cleanText('x'.repeat(TEXT_MAX + 5)).length).toBe(TEXT_MAX)
+  it('空白合并成一个空格并去首尾', () => {
+    expect(cleanText('  hi\n there  ')).toBe('hi there')
+  })
+  it('空文案用默认文案，超长截断', () => {
+    expect(cleanText('  \n ')).toBe(DEFAULT_TEXT)
+    expect(Array.from(cleanText('字'.repeat(TEXT_MAX + 50))).length).toBe(TEXT_MAX)
   })
 })
 
 describe('invertColor', () => {
-  it('取反', () => {
+  it('取反与非法格式', () => {
     expect(invertColor('#000000')).toBe('#ffffff')
     expect(invertColor('#ffeb3b')).toBe('#0014c4')
-  })
-  it('格式不对原样返回', () => {
     expect(invertColor('red')).toBe('red')
   })
 })
 
-describe('PRESETS', () => {
-  it('颜色合法且名称唯一', () => {
-    const names = new Set(PRESETS.map((p) => p.name))
-    expect(names.size).toBe(PRESETS.length)
-    for (const p of PRESETS) {
-      expect(p.fg).toMatch(/^#[0-9a-f]{6}$/i)
-      expect(p.bg).toMatch(/^#[0-9a-f]{6}$/i)
-      expect(p.fg).not.toBe(p.bg)
-    }
+describe('最近文案', () => {
+  it('置顶去重并限制条数', () => {
+    expect(pushRecent(['a', 'b'], 'b')).toEqual(['b', 'a'])
+    expect(pushRecent(['a'], '  ')).toEqual(['a'])
+    const many = Array.from({ length: RECENT_MAX }, (_, i) => `t${i}`)
+    expect(pushRecent(many, 'new')).toHaveLength(RECENT_MAX)
+  })
+  it('存取往返，损坏或不可用时静默', () => {
+    const s = memStore()
+    saveRecent(s, ['x', 'y'])
+    expect(loadRecent(s)).toEqual(['x', 'y'])
+    expect(loadRecent(memStore({ [RECENT_KEY]: '{bad' }))).toEqual([])
+    expect(loadRecent(undefined)).toEqual([])
+    expect(() => saveRecent(undefined, ['x'])).not.toThrow()
   })
 })

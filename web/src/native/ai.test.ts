@@ -204,3 +204,79 @@ describe('aiClassifyImage（本地识物）', () => {
     await expect(m.aiClassifyImage('p', 3, fail('BAD_PARAMS'))).rejects.toMatchObject({ code: 'BAD_PARAMS' })
   })
 })
+
+describe('aiTranslate', () => {
+  const RES = { text: '你好', elapsedMs: 1200, modelId: 'nllb600m-un6-ccm-int4', src: 'en', tgt: 'zh-CN', detectedSrc: ['en'], unrecognized: false }
+  const okT = () => vi.fn(async () => RES) as unknown as import('./ai').CancelableCallFn & ReturnType<typeof vi.fn>
+
+  it('调 native.ai.translate，不设超时并透传 signal；缺省不带 numBeams', async () => {
+    const m = await load(true)
+    const call = okT()
+    const ac = new AbortController()
+    expect(await m.aiTranslate({ text: 'hi', src: 'en', tgt: 'zh-CN' }, ac.signal, call)).toEqual(RES)
+    expect(call).toHaveBeenCalledWith('native.ai.translate', { text: 'hi', src: 'en', tgt: 'zh-CN' }, { timeoutMs: 0, signal: ac.signal })
+  })
+  it('src 为 auto：原样透传，结果带 detectedSrc 与 unrecognized', async () => {
+    const m = await load(true)
+    const res = { ...RES, src: 'auto', detectedSrc: ['fr', 'en'], unrecognized: true }
+    const call = vi.fn(async () => res) as unknown as import('./ai').CancelableCallFn & ReturnType<typeof vi.fn>
+    const r = await m.aiTranslate({ text: 'x', src: 'auto', tgt: 'zh-CN' }, undefined, call)
+    expect(r.detectedSrc).toEqual(['fr', 'en'])
+    expect(r.unrecognized).toBe(true)
+    expect(call).toHaveBeenCalledWith('native.ai.translate', { text: 'x', src: 'auto', tgt: 'zh-CN' }, { timeoutMs: 0, signal: undefined })
+  })
+  it('numBeams 有值时带上', async () => {
+    const m = await load(true)
+    const call = okT()
+    await m.aiTranslate({ text: 'hi', src: 'en', tgt: 'fr', numBeams: 2 }, undefined, call)
+    expect(call).toHaveBeenCalledWith('native.ai.translate', { text: 'hi', src: 'en', tgt: 'fr', numBeams: 2 }, { timeoutMs: 0, signal: undefined })
+  })
+  it('无宿主：抛 NativeUnavailableError 且不调原生', async () => {
+    const m = await load(false)
+    const call = okT()
+    await expect(m.aiTranslate({ text: 'hi', src: 'en', tgt: 'fr' }, undefined, call)).rejects.toMatchObject({ name: 'NativeUnavailableError' })
+    expect(call).not.toHaveBeenCalled()
+  })
+  it('原生错误码原样抛出', async () => {
+    const m = await load(true)
+    const bad = vi.fn(async () => {
+      throw { code: 'NOT_READY', message: 'x' }
+    }) as unknown as import('./ai').CancelableCallFn
+    await expect(m.aiTranslate({ text: 'hi', src: 'en', tgt: 'fr' }, undefined, bad)).rejects.toMatchObject({ code: 'NOT_READY' })
+  })
+})
+
+describe('aiWarmup / aiUnload', () => {
+  const mk = (v: unknown) => vi.fn(async () => v) as unknown as import('./ai').CancelableCallFn & ReturnType<typeof vi.fn>
+
+  it('aiWarmup：带 provider，不设超时并透传 signal', async () => {
+    const m = await load(true)
+    const call = mk({ provider: 'local-nllb', loaded: true, elapsedMs: 5 })
+    const ac = new AbortController()
+    expect((await m.aiWarmup('local-nllb', ac.signal, call)).loaded).toBe(true)
+    expect(call).toHaveBeenCalledWith('native.ai.warmup', { provider: 'local-nllb' }, { timeoutMs: 0, signal: ac.signal })
+  })
+  it('aiWarmup：无宿主抛 NativeUnavailableError，原生错误码原样抛', async () => {
+    const off = await load(false)
+    const call = mk({})
+    await expect(off.aiWarmup('local-nllb', undefined, call)).rejects.toMatchObject({ name: 'NativeUnavailableError' })
+    expect(call).not.toHaveBeenCalled()
+    const on = await load(true)
+    const bad = vi.fn(async () => {
+      throw { code: 'UNKNOWN_METHOD' }
+    }) as unknown as import('./ai').CancelableCallFn
+    await expect(on.aiWarmup('local-nllb', undefined, bad)).rejects.toMatchObject({ code: 'UNKNOWN_METHOD' })
+  })
+  it('aiUnload：有 provider 带上，缺省传空对象', async () => {
+    const m = await load(true)
+    const call = mk({ unloaded: ['local-nllb'] })
+    expect(await m.aiUnload('local-nllb', call)).toEqual({ unloaded: ['local-nllb'] })
+    expect(call).toHaveBeenLastCalledWith('native.ai.unload', { provider: 'local-nllb' })
+    await m.aiUnload(undefined, call)
+    expect(call).toHaveBeenLastCalledWith('native.ai.unload', {})
+  })
+  it('aiUnload：无宿主抛 NativeUnavailableError', async () => {
+    const m = await load(false)
+    await expect(m.aiUnload('local-nllb', mk({}))).rejects.toMatchObject({ name: 'NativeUnavailableError' })
+  })
+})

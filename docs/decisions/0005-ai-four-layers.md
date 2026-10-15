@@ -42,6 +42,7 @@ summary: 所有 AI 能力分四层供用户自由选择；本地模型一律按�
 | 能力 | 层 | 状态 |
 |---|---|---|
 | 垃圾分类识别（SigLIP2 `q4_half` + 英文词表向量） | L1 | 选型与真机验证完成（q4f16 在低端机 SIGILL，改用 q4_half，fp16 留到高端机再测），见 [垃圾分类调研](../research/garbage-classify-clip.md)；**App 接入第 1 步已做（2026-10-14）**：ORT 随包、`native.ai.classify` 与 `local-clip` 提供者真机跑通；**模型下载管理（第 2 步）已做（2026-10-14）**：`native.model.*` 通用下载管理，见 [模型下载管理](../design/model-download.md)（托管 release 与真实 302 链路待发布后验证）；**Web 页（第 3 步）已做（2026-10-14）**：`waste-classify` 工具页，下载引导、top-3 点选采纳、易混提示、真机跑通；状态为 **App 接入完成（待发布模型）** |
+| 语音输入（zipformer 流式，L1） | L1 | 模型 `sherpa-onnx-x-asr-480ms-streaming-zipformer-transducer-zh-en-punct-int8`（中英文，标点在 token 里），经 sherpa-onnx Kotlin/JNI 本地流式识别；契约见 [bridge-protocol 语音转文字方法](../design/bridge-protocol.md)；状态为 **App 接入完成（模型手动放置，下载管理待接）**，麦克风实采待真机口述验证 |
 | 对联生成（GPT-2 int4） | L1 | 模型已导出并发布，见 [对联 GPT-2](../research/couplet-gpt2-onnx.md)；App 接入未做 |
 | 通用文本生成（Qwen 系） | L2 | 真机可行，速度偏慢，见 [端侧 LLM 对比](../research/on-device-llm-comparison.md) |
 | 系统应用交接 | L3 | 已落地（`IntentHandoffProvider`） |

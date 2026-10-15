@@ -51,6 +51,7 @@ private const val NET_URL_PLAIN = "http://api.wikimedia.org/feed/v1/wikipedia/zh
  *
  * 触发示例：`adb shell am broadcast -a com.let188.arkli.debug.CMD --es cmd crash`
  * 命令：modelurl(--es url，不带则清除；覆盖模型下载源并放行 http://127.0.0.1，仅调试) / nettest / crash / hello / ping / sleep(--ei ms) / ticker / cancel(--es id) / state，
+ * 语音类见 [DebugSpeechCommands]：asrwav / asrunload
  * 文件类见 [DebugFileCommands]：filepick(--es mime --ez multiple) / filesave / writetest(--ei mb --es enc) / writeopen / rangetest / securitytest / videotest / listcache / previewtest
  */
 class DebugHooksProvider : ContentProvider() {
@@ -171,7 +172,9 @@ class DebugHooksProvider : ContentProvider() {
                 i.getIntExtra("mb", 6), i.getStringExtra("enc") ?: "latin1",
             ) { method, params -> send(wv, method, params) }
             "imgprep", "imgrun", "exifdump", "imglist", "nav" -> DebugImageCommands.handle(cmd, wv.context, wv, i.getStringExtra("path"))
+            "asrwav", "asrunload" -> DebugSpeechCommands.handle(cmd, wv.context)
             "rpc" -> send(wv, i.getStringExtra("method") ?: "native.ping", i.getStringExtra("params") ?: "{}", i.getStringExtra("id"))
+            "finish" -> (wv.context as? android.app.Activity)?.finish() // 模拟正常退出，验证 onDestroy 卸载 AI 会话
             "evaljs" -> wv.evaluateJavascript(i.getStringExtra("js") ?: "0", null)
             "nettest" -> netTest(wv)
             "modelurl" -> {

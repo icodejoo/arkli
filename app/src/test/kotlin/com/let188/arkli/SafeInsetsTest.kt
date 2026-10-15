@@ -27,4 +27,14 @@ class SafeInsetsTest {
     fun zeroConstantHasAllSidesZero() {
         assertEquals(SafeInsets(0f, 0f, 0f, 0f), SafeInsets.ZERO)
     }
+
+    @Test
+    fun scriptSyncsKeyboardStateToClassAndEvent() {
+        val open = SafeInsets(0f, 0f, 0f, 0f, imeOpen = true).toScript()
+        assertTrue(open.contains("classList.toggle('kb-open',true);"))
+        assertTrue(open.contains("new CustomEvent('arkli-keyboard',{detail:{open:true}})"))
+        val closed = SafeInsets.ZERO.toScript()
+        assertTrue(closed.contains("classList.toggle('kb-open',false);"))
+        assertTrue(closed.contains("{detail:{open:false}}"))
+    }
 }

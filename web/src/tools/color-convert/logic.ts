@@ -356,3 +356,18 @@ export function buildPalette(base: Rgba, scheme: PaletteScheme): Rgba[] {
   if (scheme === 'mono') return MONO_LIGHTNESS.map((l) => toRgba(hsl.h, hsl.s, l))
   return HUE_OFFSETS[scheme].map((d) => toRgba(hsl.h + d, hsl.s, hsl.l))
 }
+
+/**
+ * 从路由参数里取要带入的颜色：接受 3 位或 6 位 HEX，带不带 # 都行。
+ *
+ * @param q 路由 query 里的值（字符串、数组或 undefined）
+ * @returns 规整成 `#` 开头的 HEX；不是合法 HEX 返回 null
+ * @example
+ * colorFromQuery('4B484B') // '#4B484B'
+ */
+export function colorFromQuery(q: unknown): string | null {
+  const v = Array.isArray(q) ? q[0] : q
+  if (typeof v !== 'string') return null
+  const m = /^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec(v.trim())
+  return m ? `#${m[1]}` : null
+}

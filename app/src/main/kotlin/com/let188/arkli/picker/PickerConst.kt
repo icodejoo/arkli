@@ -5,11 +5,20 @@ internal object PickerConst {
     /** 意图参数：最多可选张数 */
     const val EXTRA_MAX = "max"
 
+    /** 意图参数：是否显示悬浮拍照按钮 */
+    const val EXTRA_CAMERA = "camera"
+
+    /** 意图参数：要选的媒体种类（[PickerMedia] 的名字） */
+    const val EXTRA_MEDIA = "media"
+
     /** 结果参数：已选图片 URI 列表 */
     const val EXTRA_URIS = "uris"
 
     /** 结果码：相册权限被拒（自定义，需 ≥ RESULT_FIRST_USER） */
     const val RESULT_DENIED = 1
+
+    /** 结果码：点击拍照按钮切回拍照 */
+    const val RESULT_CAMERA = 2
 
     /** 没传上限时的默认张数 */
     const val DEFAULT_MAX = 20
@@ -19,6 +28,9 @@ internal object PickerConst {
 
     /** 缩略图目标边长（像素） */
     const val THUMB_PX = 320
+
+    /** 全屏浏览的图片目标短边（像素）：够清晰又不把大图整张解码进内存 */
+    const val PREVIEW_PX = 1200
 
     /** 缩略图缓存占应用堆内存的比例分母（1/8） */
     const val CACHE_HEAP_DIVISOR = 8

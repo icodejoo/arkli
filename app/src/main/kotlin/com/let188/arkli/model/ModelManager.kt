@@ -21,6 +21,9 @@ private const val NANOS_PER_MS = 1_000_000L
 /** 毫秒转秒的倍数 */
 private const val MS_PER_SEC = 1_000L
 
+/** 下载进度推送的最小间隔（毫秒），状态切换不受限 */
+private const val PROGRESS_NOTIFY_MS = 300L
+
 /**
  * 某个模型当前的简要情况，供其他模块（如 AI 提供者）判断可用性。
  *
@@ -83,6 +86,28 @@ class ModelManager internal constructor(
         /** 当前阶段 */
         @Volatile
         var phase: String = ModelPolicy.PHASE_DOWNLOAD
+
+        /** 上次推送进度的时间（毫秒，单调时钟），用于节流 */
+        val lastNotifyAt = AtomicLong(0)
+    }
+
+    /** 状态变化监听：进程内只有一个，由当前页面会话的桥安装；null 表示不推送 */
+    @Volatile
+    private var listener: ((ModelSnapshot) -> Unit)? = null
+
+    /**
+     * 设置状态变化监听（替换旧的）。下载进度按 300 毫秒节流，状态切换（开始、完成、失败、取消、删除、校验）即时推送。
+     *
+     * @param l 收到变化后的最新快照；传 null 取消监听。回调里抛的异常会被吞掉，不影响下载
+     */
+    fun setListener(l: ((ModelSnapshot) -> Unit)?) {
+        listener = l
+    }
+
+    /** 把某模型最新快照推给监听者；没有监听者时不取快照 */
+    private fun notifyChange(entry: ModelEntry) {
+        val l = listener ?: return
+        runCatching { l(snapshot(entry)) }
     }
 
     /** 进行中的任务，键为模型 id */
@@ -147,6 +172,7 @@ class ModelManager internal constructor(
         task.job.invokeOnCompletion { tasks.remove(id, task) }
         errors.remove(id)
         task.job.start()
+        notifyChange(entry)
         return EnsureResult(snapshot(entry), true, metered())
     }
 
@@ -156,7 +182,11 @@ class ModelManager internal constructor(
             val override = urlOverride()
             downloader.download(entry, dir(entry), { f -> override ?: f.urls }) { done, phase ->
                 task.progress.set(done)
+                val phaseChanged = task.phase != phase
                 task.phase = phase
+                val now = nowMs()
+                val last = task.lastNotifyAt.get()
+                if ((phaseChanged || now - last >= PROGRESS_NOTIFY_MS) && task.lastNotifyAt.compareAndSet(last, now)) notifyChange(entry)
             }
             writeMarker(entry)
         } catch (e: CancellationException) {
@@ -167,6 +197,7 @@ class ModelManager internal constructor(
             errors[entry.id] = ModelDownloadException(ModelErrorCode.INTERNAL, e.message ?: e.javaClass.simpleName)
         } finally {
             tasks.remove(entry.id, task)
+            notifyChange(entry)
         }
     }
 
@@ -201,6 +232,7 @@ class ModelManager internal constructor(
             dir.delete() // 目录里还有别的东西就保留，不递归
         }
         errors.remove(id)
+        notifyChange(entry)
         return snapshot(entry)
     }
 
@@ -231,6 +263,7 @@ class ModelManager internal constructor(
             errors.remove(id)
             writeMarker(entry)
         }
+        notifyChange(entry)
         return snapshot(entry)
     }
 

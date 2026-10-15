@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 相册（悬浮按钮用）：圆角方框 + 太阳 + 山峰 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- 圆角方框（只描边） -->
+    <path
+        android:pathData="M4.8,1.44H19.2A3.36,3.36 0 0,1 22.56,4.8V19.2A3.36,3.36 0 0,1 19.2,22.56H4.8A3.36,3.36 0 0,1 1.44,19.2V4.8A3.36,3.36 0 0,1 4.8,1.44Z"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.88" />
+    <!-- 太阳 -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M6,8.64a2.16,2.16 0 1,0 4.32,0a2.16,2.16 0 1,0 -4.32,0z" />
+    <!-- 山峰 -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M2.88,20.16L9.6,12.48L13.92,17.28L16.8,13.92L21.12,20.16Z" />
+</vector>

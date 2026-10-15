@@ -67,7 +67,8 @@ internal object ModelRuntime {
 }
 
 /**
- * 模型下载管理的桥方法：`native.model.list/status/ensure/cancel/remove/verify`。
+ * 模型下载管理的桥方法：`native.model.list/status/ensure/cancel/remove/verify`，
+ * 并在状态或下载进度变化时推送 `model.changed` 事件。
  * 下载地址只来自随包清单（页面只能传 id），全部只接受主 frame，契约见 docs/design/bridge-protocol.md「模型下载管理」。
  *
  * 使用示例：`ModelModule.install(bridge, context)`
@@ -91,6 +92,9 @@ object ModelModule {
     /** 方法名：重新校验 */
     const val METHOD_VERIFY = "native.model.verify"
 
+    /** 事件名：某模型状态或下载进度变化，data 同 `native.model.status` 的返回 */
+    const val EVENT_CHANGED = "model.changed"
+
     /**
      * 注册模型方法。
      *
@@ -106,6 +110,8 @@ object ModelModule {
         bridge.register(METHOD_CANCEL, ModelCancelHandler(manager))
         bridge.register(METHOD_REMOVE, ModelRemoveHandler(manager))
         bridge.register(METHOD_VERIFY, ModelVerifyHandler(manager))
+        // 管理器是进程单例、桥是每会话一个：后装的桥接管推送，旧会话的事件本来就会被丢弃
+        manager.setListener { bridge.emit(EVENT_CHANGED, ModelPolicy.snapshotJson(it)) }
         return manager
     }
 }

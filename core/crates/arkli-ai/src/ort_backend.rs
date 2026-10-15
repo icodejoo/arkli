@@ -5,6 +5,7 @@
 
 use std::ffi::CStr;
 use std::path::Path;
+use std::sync::Mutex;
 
 use ort::environment::Environment;
 use ort::session::builder::GraphOptimizationLevel;
@@ -14,6 +15,18 @@ use ort::value::Tensor as OrtTensor;
 use crate::backend::{InferenceBackend, Session, Tensor};
 use crate::error::{AiError, Result};
 use crate::provider::SessionOptions;
+
+/// 进程内共享的 ORT 环境：ort 一个进程只允许建一次环境，识物与翻译共用这一份。
+static SHARED_ENV: Mutex<Option<Environment>> = Mutex::new(None);
+
+/// 取已初始化的共享 ORT 环境（须先成功调用过 [`OrtBackend::load`]）。
+///
+/// 返回：环境句柄的克隆（引用计数）；尚未初始化返回 `None`。
+///
+/// 示例：`let env = shared_environment().ok_or("先加载 ORT")?;`
+pub fn shared_environment() -> Option<Environment> {
+    SHARED_ENV.lock().unwrap_or_else(|p| p.into_inner()).clone()
+}
 
 /// ORT 后端。持有环境句柄。
 pub struct OrtBackend {
@@ -31,11 +44,17 @@ impl OrtBackend {
     ///
     /// - `dylib_path`：`libonnxruntime.so`（或 Windows 上的 `onnxruntime.dll`）路径
     /// - 版本不匹配时返回 [`AiError::Backend`]（运行期 `BadVersion`，不会崩溃）
+    /// - 幂等：进程内已初始化过就直接复用共享环境（忽略 `dylib_path`）
     pub fn load(dylib_path: impl AsRef<Path>) -> Result<Self> {
+        let mut guard = SHARED_ENV.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(env) = guard.as_ref() {
+            return Ok(Self { env: env.clone() });
+        }
         let env = ort::init_from(dylib_path)
             .map_err(be)?
             .build()
             .map_err(be)?;
+        *guard = Some(env.clone());
         Ok(Self { env })
     }
 }

@@ -21,6 +21,9 @@ export const MODEL_METHODS = {
   verify: 'native.model.verify',
 } as const
 
+/** 原生推送事件：某模型状态或下载进度变化，data 同 {@link ModelStatus}（下载进度约 300 毫秒一条） */
+export const MODEL_EVENT = 'model.changed'
+
 /** 校验与删除耗时随文件大小增长，不设超时 */
 const NO_TIMEOUT = { timeoutMs: 0 }
 
@@ -67,20 +70,6 @@ export interface ModelEnsureResult extends ModelStatus {
   meteredHint: boolean
 }
 
-/** 模型管理接口，useModelState 依赖它，测试可用假实现 */
-export interface ModelApi {
-  /** 查单个模型 */
-  status(id: string): Promise<ModelStatus>
-  /** 启动下载或确认就绪 */
-  ensure(id: string): Promise<ModelEnsureResult>
-  /** 取消下载，保留 .part */
-  cancel(id: string): Promise<ModelStatus>
-  /** 删除模型 */
-  remove(id: string): Promise<ModelStatus>
-  /** 重新校验 sha256 */
-  verify(id: string): Promise<ModelStatus>
-}
-
 /** 无宿主时统一抛错 */
 function requireHost(method: string): void {
   if (!isNativeAvailable()) throw new NativeUnavailableError(method)
@@ -107,7 +96,7 @@ export async function modelList(call: CallFn = bridgeCall): Promise<ModelStatus[
 }
 
 /**
- * 查单个模型的状态，下载中用它轮询进度。
+ * 查单个模型的状态（一次性快照；实时进度走 {@link MODEL_EVENT} 推送，由 `useModelsStore` 接收）。
  *
  * @param id 模型 id
  * @param call 原生调用函数，默认走 bridge（仅测试注入）
@@ -178,20 +167,4 @@ export async function modelRemove(id: string, call: CallFn = bridgeCall): Promis
 export async function modelVerify(id: string, call: CallFn = bridgeCall): Promise<ModelStatus> {
   requireHost(MODEL_METHODS.verify)
   return call<ModelStatus>(MODEL_METHODS.verify, { id }, NO_TIMEOUT)
-}
-
-/**
- * 默认的模型管理接口：直接走 bridge。
- *
- * @returns 走 bridge 的 {@link ModelApi}
- * @example const api = defaultModelApi(); await api.ensure('siglip2-q4_half')
- */
-export function defaultModelApi(): ModelApi {
-  return {
-    status: (id) => modelStatus(id),
-    ensure: (id) => modelEnsure(id),
-    cancel: (id) => modelCancel(id),
-    remove: (id) => modelRemove(id),
-    verify: (id) => modelVerify(id),
-  }
 }

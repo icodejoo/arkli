@@ -1,19 +1,14 @@
-// 翻译：网页翻译入口清单（只放入口页，不拼文本进地址）
+// 翻译：语言与常量
+import type { TranslateLang } from '@/native/ai'
 
-/** 网页翻译入口 */
-export interface WebEntry {
-  /** 名称 */
-  name: string
-  /** 入口地址，必须是 https 且不带查询串 */
-  url: string
-}
+/** 翻译文本长度上限（本地模型每句耗时数秒，限制长度避免等太久） */
+export const TEXT_MAX = 2000
 
-/** 翻译文本长度上限 */
-export const TEXT_MAX = 5000
-
-/** 网页翻译入口清单 */
-export const WEB_ENTRIES: readonly WebEntry[] = [
-  { name: 'Google 翻译', url: 'https://translate.google.com/' },
-  { name: 'DeepL', url: 'https://www.deepl.com/translator' },
-  { name: '有道翻译', url: 'https://fanyi.youdao.com/' },
-]
+/** 默认源语言 */
+export const DEFAULT_SRC: TranslateLang = 'en'
+/** 默认目标语言 */
+export const DEFAULT_TGT: TranslateLang = 'zh-CN'
+/** 语言选择在 localStorage 里的键 */
+export const LANGS_STORAGE_KEY = 'arkli:translate:langs'
+/** 本地翻译模型的清单 id（与 registry 的 L1 一致） */
+export const NLLB_MODEL_ID = 'nllb600m-un6-ccm-int4'

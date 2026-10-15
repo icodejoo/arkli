@@ -6,6 +6,9 @@ import com.let188.arkli.image.ImageCodec
 import com.let188.arkli.model.ModelStateSource
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import java.io.File
 
 /**
@@ -71,11 +74,38 @@ class ClipService(
 
     /**
      * 释放已加载的模型会话（词表保留），排在重任务闸门后，不会打断正在进行的识别。
-     * 模型文件被删除前调用；下次识别会按需重新加载。
+     * 模型文件被删除前、页面离开时调用；下次识别会按需重新加载。
+     *
+     * @return 此前确实加载过返回 true
      */
-    suspend fun unload() = AiHeavyGate.run {
+    suspend fun unload(): Boolean = AiHeavyGate.run {
+        val was = loadedKey != null
         backend.unload()
         loadedKey = null
+        was
+    }
+
+    /**
+     * 预热：加载词表与模型会话，不识别，排在重任务闸门后。已加载则立刻返回；
+     * 加载期间被取消时，加载完成后立刻卸掉，不留半加载状态。
+     *
+     * @return 预热结果（provider 为 [LocalClipProvider.ID]）
+     * @throws BridgeException NOT_READY（模型未就绪）、INTERNAL（加载失败）
+     */
+    suspend fun warmup(): WarmupResult = AiHeavyGate.run {
+        val model = env.modelFile()
+        if (!isModelReady()) {
+            throw BridgeException(BridgeErrors.NOT_READY, "识物模型未就绪：${model.path} 不存在，请先下载或放置模型")
+        }
+        val t0 = now()
+        val already = loadedKey != null && loadedKey == "${model.path}|${model.length()}|${model.lastModified()}"
+        ensureReady(model)
+        if (!already && !currentCoroutineContext().isActive) {
+            backend.unload()
+            loadedKey = null
+            throw CancellationException("预热已取消")
+        }
+        WarmupResult(LocalClipProvider.ID, now() - t0)
     }
 
     /** 闸门内的实际流程 */
@@ -148,7 +178,8 @@ class ClipService(
  * @param service 识物服务
  * @param models 模型状态来源，对应清单里的 [ClipService.MODEL_ID]
  */
-class LocalClipProvider(private val service: ClipService, private val models: ModelStateSource? = null) : AiProvider, ImageClassifier {
+class LocalClipProvider(private val service: ClipService, private val models: ModelStateSource? = null) :
+    AiProvider, ImageClassifier, AiSessionControl {
     /** 固定 id */
     override val id: String = ID
 
@@ -175,6 +206,12 @@ class LocalClipProvider(private val service: ClipService, private val models: Mo
 
     /** 转交服务 */
     override suspend fun classify(file: File, topK: Int): ClassifyResult = service.classify(file, topK)
+
+    /** 预热：加载词表与模型会话 */
+    override suspend fun warmup(): WarmupResult = service.warmup()
+
+    /** 卸载模型会话 */
+    override suspend fun unloadSession(): Boolean = service.unload()
 
     companion object {
         /** 提供者 id 常量 */

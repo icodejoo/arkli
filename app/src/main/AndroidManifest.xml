@@ -7,6 +7,7 @@
 
     <!-- 自带多选图片页读相册：API 33+ 用细分的图片权限，32 及以下用旧存储权限 -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
@@ -83,6 +84,12 @@
         <!-- 二维码全屏扫码页，仅应用内部拉起 -->
         <activity
             android:name=".qrcode.QrScanActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode" />
+        <!-- 原生全屏相机拍摄页（拍照/录像/相册），仅应用内部拉起 -->
+        <activity
+            android:name=".camera.CameraCaptureActivity"
             android:exported="false"
             android:screenOrientation="portrait"
             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode" />

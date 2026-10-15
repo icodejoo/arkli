@@ -59,3 +59,33 @@ export function ratioIn(pos: number, start: number, size: number): number {
   if (size <= 0) return 0
   return Math.min(1, Math.max(0, (pos - start) / size))
 }
+
+/**
+ * 放大镜气泡该放手指上方还是下方：上方放得下就放上方，否则放下方。
+ *
+ * @param y 指针在取色区内的纵坐标（取色区顶边为 0）
+ * @param size 气泡直径
+ * @param gap 气泡与手指的间距
+ * @param room 取色区上方还有多少可显示的空间（弹层标题等），默认 0
+ * @returns 放上方为 true，放下方为 false
+ * @example
+ * loupeAbove(10, 64, 16) // false
+ */
+export function loupeAbove(y: number, size: number, gap: number, room = 0): boolean {
+  return y - gap - size >= -room
+}
+
+/**
+ * 在背景色上该用黑字还是白字，保证气泡里的 HEX 看得清。
+ *
+ * @param hex 背景色
+ * @returns 浅色背景返回黑色，深色背景返回白色；认不出按白底处理（返回黑色）
+ * @example
+ * readableOn('#000000') // '#ffffff'
+ */
+export function readableOn(hex: string): '#000000' | '#ffffff' {
+  const r = parseColor(hex)
+  if (!r.ok) return '#000000'
+  const { r: R, g: G, b: B } = r.color
+  return (R * 299 + G * 587 + B * 114) / 1000 > 140 ? '#000000' : '#ffffff'
+}

@@ -14,6 +14,7 @@
 //! - [`pipeline`]：`OcrPipeline::recognize`，支持取消令牌与进度回调
 //! - [`clip`]：CLIP 类图像编码器（缩放、归一化、向量），用于 SigLIP2 识物
 //! - [`classify`]：词表向量与零样本分类（top-k、按分类聚合的 softmax 概率、置信度）
+//! - `translate`（feature `ort-backend`）：本地翻译（NLLB-200 int4 ONNX，分词、束搜索、标点后处理）
 //!
 //! ## 测试
 //! 默认 `cargo test -p arkli-ai` 只用 mock 会话，不需要 ORT 动态库与模型文件。
@@ -38,6 +39,8 @@ pub mod task;
 
 #[cfg(feature = "ort-backend")]
 pub mod ort_backend;
+#[cfg(feature = "ort-backend")]
+pub mod translate;
 
 pub use backend::{InferenceBackend, Session, Tensor};
 pub use error::{AiError, Result};

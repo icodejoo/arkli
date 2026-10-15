@@ -7,18 +7,12 @@ import {
   CONFUSABLE_HINTS,
   classifyFailure,
   defaultSelection,
-  downloadErrorText,
   HEAT_TIP_COUNT,
   matchHints,
   MAX_HINTS,
-  megaText,
-  MODEL_SIZE_FALLBACK,
   percentText,
-  progressText,
   QUEUE_HINT_MS,
   shouldWarnHeat,
-  sizeLabel,
-  speedText,
   stageOf,
   UNCERTAIN_TEXT,
 } from './logic'
@@ -129,33 +123,10 @@ describe('matchHints', () => {
 })
 
 describe('stageOf', () => {
-  it('各状态映射', () => {
-    expect(stageOf(false, true, 'installed')).toBe('noHost')
-    expect(stageOf(true, false, 'absent')).toBe('checking')
-    expect(stageOf(true, true, 'installed')).toBe('ready')
-    expect(stageOf(true, true, 'unverified')).toBe('verifying')
-    expect(stageOf(true, true, 'downloading', 'download')).toBe('downloading')
-    expect(stageOf(true, true, 'downloading', 'verify')).toBe('verifying')
-    expect(stageOf(true, true, 'absent')).toBe('needDownload')
-    expect(stageOf(true, true, 'corrupt')).toBe('needDownload')
-  })
-})
-
-describe('下载文案', () => {
-  it('错误码转人话', () => {
-    expect(downloadErrorText('NO_SPACE')).toContain('存储空间不足')
-    expect(downloadErrorText('HASH_MISMATCH')).toContain('校验失败')
-    expect(downloadErrorText('NETWORK')).toContain('网络不通')
-    expect(downloadErrorText('WHATEVER')).toContain('已下载的部分会保留')
-  })
-  it('速度、进度、体积', () => {
-    expect(speedText(1500000)).toBe('1.5 MB/s')
-    expect(speedText(0)).toBe('')
-    expect(speedText(undefined)).toBe('')
-    expect(progressText({ downloadedBytes: 1000000, totalBytes: 2000000 })).toBe('1.0 MB / 2.0 MB')
-    expect(sizeLabel(54662805)).toBe('54.7 MB')
-    expect(megaText(-5)).toBe('0.0 MB')
-    expect(sizeLabel(0)).toBe(MODEL_SIZE_FALLBACK)
+  it('只有已安装才就绪，其余都是未就绪', () => {
+    expect(stageOf(false, 'installed')).toBe('noHost')
+    expect(stageOf(true, 'installed')).toBe('ready')
+    for (const s of ['absent', 'corrupt', 'unverified', 'downloading'] as const) expect(stageOf(true, s)).toBe('notReady')
   })
 })
 

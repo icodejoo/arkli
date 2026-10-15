@@ -1,11 +1,9 @@
-// 垃圾分类识别的页面逻辑：分类展示、结果整理、易混提示、下载状态与错误文案（全部纯函数）
+// 垃圾分类识别的页面逻辑：分类展示、结果整理、易混提示、模型就绪阶段与错误文案（全部纯函数）
 import type { ImageClassifyItem, ImageClassifyResult } from '@/native/ai'
-import type { ModelStateName, ModelStatus } from '@/native/model'
+import type { ModelStateName } from '@/native/model'
 
 /** 识别用的模型 id（对应原生清单） */
 export const MODEL_ID = 'siglip2-q4_half'
-/** 模型体积文案兜底（原生没给 totalBytes 时用） */
-export const MODEL_SIZE_FALLBACK = '54.7 MB'
 /** 每次请求的候选条数 */
 export const TOP_K = 3
 /** 连续识别超过这个次数提示歇一会儿 */
@@ -18,9 +16,6 @@ export const MAX_HINTS = 2
 const MIN_BAR_PERCENT = 4
 /** 提示表至少命中几个 id 才算「易混」 */
 const MIN_HINT_MATCH = 2
-
-/** 每兆字节数（十进制，与发布页和系统存储显示的 MB 一致） */
-const BYTES_PER_MB = 1_000_000
 
 /** 页面底部固定的免责小字 */
 export const DISCLAIMER = '分类依据上海标准，仍在核对中，仅供参考，以当地规定为准。'
@@ -77,17 +72,6 @@ export function categoryMeta(code: string): CategoryMeta {
 export function percentText(p: number): string {
   const v = Math.min(1, Math.max(0, isFinite(p) ? p : 0))
   return `${Math.round(v * 100)}%`
-}
-
-/**
- * 字节数转十进制 MB 文案，和「54.7MB」的对外说法保持一致。
- *
- * @param bytes 字节数，负数按 0
- * @returns 如 `54.7 MB`
- * @example megaText(54662805) // '54.7 MB'
- */
-export function megaText(bytes: number): string {
-  return `${(Math.max(0, bytes) / BYTES_PER_MB).toFixed(1)} MB`
 }
 
 /** 一张候选物品卡 */
@@ -228,95 +212,33 @@ export function matchHints(items: Array<Pick<ImageClassifyItem, 'id'>>, table: C
   return out
 }
 
-/** 页面阶段 */
-export type Stage = 'noHost' | 'checking' | 'needDownload' | 'downloading' | 'verifying' | 'ready'
+/** 页面阶段：模型的下载与管理归 AI 中心，本页只区分能不能用 */
+export type Stage = 'noHost' | 'notReady' | 'ready'
 
 /**
- * 把宿主与模型状态映射成页面阶段。unverified 视为校验中（页面会静默调一次 verify）。
+ * 把宿主与模型状态映射成页面阶段；只有已安装才算就绪，其余一律「未就绪」。
+ * 状态由 store 实时推送，没有「探测中」这一档。
  *
  * @param host 是否在 App 容器内
- * @param probed 是否已探测过模型状态
  * @param state 模型状态名
- * @param phase 下载阶段，下载中才有
  * @returns 页面阶段
- * @example stageOf(true, true, 'installed') // 'ready'
+ * @example stageOf(true, 'installed') // 'ready'
  */
-export function stageOf(host: boolean, probed: boolean, state: ModelStateName, phase?: 'download' | 'verify'): Stage {
+export function stageOf(host: boolean, state: ModelStateName): Stage {
   if (!host) return 'noHost'
-  if (!probed) return 'checking'
-  if (state === 'installed') return 'ready'
-  if (state === 'unverified') return 'verifying'
-  if (state === 'downloading') return phase === 'verify' ? 'verifying' : 'downloading'
-  return 'needDownload'
-}
-
-/**
- * 下载错误码转人话。
- *
- * @param code 原生错误码
- * @returns 给用户看的文案
- * @example downloadErrorText('NO_SPACE') // '存储空间不足，请先清理后再下载。'
- */
-export function downloadErrorText(code: string): string {
-  switch (code) {
-    case 'NO_SPACE':
-      return '存储空间不足，请先清理后再下载。'
-    case 'HASH_MISMATCH':
-    case 'SIZE_MISMATCH':
-      return '下载的文件校验失败，请重试。'
-    case 'SOURCE_REJECTED':
-      return '下载源暂时不可用，稍后重试，已下载的部分会保留。'
-    case 'NETWORK':
-    case 'TIMEOUT':
-      return '网络不通，稍后重试，已下载的部分会保留。'
-    default:
-      return '下载没成功，稍后再试，已下载的部分会保留。'
-  }
-}
-
-/**
- * 字节速度文案。
- *
- * @param bps 字节/秒，未知或非正数返回空串
- * @returns 如 `1.5 MB/s`
- * @example speedText(1500000) // '1.5 MB/s'
- */
-export function speedText(bps: number | undefined): string {
-  return bps && bps > 0 ? `${megaText(bps)}/s` : ''
-}
-
-/**
- * 下载进度文案：「已下载 / 总大小」。
- *
- * @param s 模型状态
- * @returns 如 `12.3 MB / 54.7 MB`
- * @example progressText(status)
- */
-export function progressText(s: Pick<ModelStatus, 'downloadedBytes' | 'totalBytes'>): string {
-  return `${megaText(s.downloadedBytes)} / ${megaText(s.totalBytes)}`
-}
-
-/**
- * 下载按钮上的体积文案：优先用原生给的总字节数。
- *
- * @param totalBytes 总字节数，未知传 0
- * @returns 如 `54.7 MB`，未知回退 {@link MODEL_SIZE_FALLBACK}
- * @example sizeLabel(0) // '54.7MB'
- */
-export function sizeLabel(totalBytes: number): string {
-  return totalBytes > 0 ? megaText(totalBytes) : MODEL_SIZE_FALLBACK
+  return state === 'installed' ? 'ready' : 'notReady'
 }
 
 /** 识别失败的归类 */
 export interface ClassifyFailure {
-  /** notReady 回到下载引导；toast 只提示 */
+  /** notReady 回到未就绪提示；toast 只提示 */
   kind: 'notReady' | 'toast'
   /** 提示文案 */
   text: string
 }
 
 /**
- * 识别失败归类：NOT_READY 回下载引导；INTERNAL 一般是图片读不出来；其余给通用话。
+ * 识别失败归类：NOT_READY 回未就绪提示；INTERNAL 一般是图片读不出来；其余给通用话。
  *
  * @param e 捕获的错误（AiNotReadyError 或带 code 的原生错误）
  * @returns 归类与文案
@@ -324,7 +246,7 @@ export interface ClassifyFailure {
  */
 export function classifyFailure(e: unknown): ClassifyFailure {
   const o = e as { name?: string; code?: string } | null
-  if (o?.name === 'AiNotReadyError' || o?.code === 'NOT_READY') return { kind: 'notReady', text: '识别模型还没准备好，请先下载。' }
+  if (o?.name === 'AiNotReadyError' || o?.code === 'NOT_READY') return { kind: 'notReady', text: '识别模型还没准备好，请先下载模型。' }
   if (o?.code === 'BAD_PARAMS') return { kind: 'toast', text: '这张图没法识别，换一张试试' }
   if (o?.code === 'INTERNAL') return { kind: 'toast', text: BAD_IMAGE_TEXT }
   return { kind: 'toast', text: '识别没成功，稍后再试' }

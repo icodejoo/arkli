@@ -169,7 +169,7 @@ async function withProgress<T>(run: () => Promise<T>, extra: LongExtra, on: OnFn
 }
 
 /**
- * 弹出系统选择器选一个视频。不拷贝文件，只拿到句柄与基本信息。
+ * 弹出自带的相册页选一个视频。不拷贝文件，只拿到句柄与基本信息。
  *
  * @param call 原生调用函数，默认走 bridge（仅测试注入）
  * @returns 选中的视频；用户取消返回 null

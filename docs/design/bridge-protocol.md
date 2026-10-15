@@ -112,17 +112,18 @@ summary: 小工具页与原生/Rust 之间的消息格式（v2）、会话与取
 以下方法都只接受主 frame（`CallContext.isMainFrame`），子 frame 调用返回 `PERMISSION_DENIED`。页面里的路径统一为 `cache/...` 相对路径（见"大数据"），原生一律规范化后限制在缓存目录内。
 
 ### `native.file.pick`
-打开系统选择器。
+图片、视频的相册选择一律走自带选择页 `ImagePickerActivity`（图片 / 视频 / 图文混选，单选点一项即换，视频格显示时长；需 `READ_MEDIA_IMAGES` / `READ_MEDIA_VIDEO`，被拒回退系统选择器）；指定单个 mime 与普通文件仍走系统选择器。
 
 | 项 | 说明 |
 |---|---|
-| params | `{ mime?: string = "image/*", multiple?: boolean = false, max?: number = 20, keepSource?: boolean = false }`。`keepSource` 为 true 时图片项多返回 `sourceHandle`（见下方 `native.file.overwrite`）。`mime` 取值：`image/*`、`video/*`、`image/*,video/*`、具体媒体类型（如 `image/png`）走 Photo Picker；其他（如 `text/plain`、`*/*`）走系统文档选择器。`max` 上限 50 |
+| params | `{ mime?: string = "image/*", multiple?: boolean = false, max?: number = 20, keepSource?: boolean = false, camera?: boolean = false }`。`camera` 为 true（仅图片）时单选多选一律走自带选图页，页内右下固定一个拍照圆钮，点它丢弃已选并返回 `camera: true`；权限被拒回退系统选择器时没有该按钮。`keepSource` 为 true 时图片项多返回 `sourceHandle`（见下方 `native.file.overwrite`）。`mime` 取值：`image/*`、`video/*`、`image/*,video/*`、具体媒体类型（如 `image/png`）走 Photo Picker；其他（如 `text/plain`、`*/*`）走系统文档选择器。`max` 上限 50 |
 | 返回 | `{ items: Item[], failed: { name, message }[] }` |
 | 图片 Item | `{ kind: "image", path, url, name, mime, size, width?, height?, orientation }`。文件原样拷进 `cache/pick/`（保留 EXIF），≤ 128MB，超过进 `failed`。`width/height` 是按 EXIF 方向摆正后的显示尺寸，`orientation` 为 EXIF 方向值 1~8；页面用 `createImageBitmap(..., { imageOrientation: 'from-image' })` 摆正 |
 | `sourceHandle` | 仅 `keepSource: true` 的图片 Item 才有：`"uri:<随机 id>"`，不透明句柄，真实 URI 只留在原生侧的会话句柄表里（与视频句柄同一张表），随会话失效；只能交给 `native.file.overwrite` |
 | HEIC/HEIF | API 28+ 用平台 `ImageDecoder` 转成 JPEG（质量 92，输出已摆正且不带 EXIF，`orientation` 恒为 1，`name` 扩展名换成 `.jpg`）；超过 2500 万像素按采样率缩小防 OOM。API 24~27 无法转换，该文件进 `failed` 并提示换格式 |
 | 视频 Item | `{ kind: "video", handle: "uri:<随机 id>", name, mime, size, width?, height?, durationMs? }`。不拷贝、不读入内存，真实 content URI 只存在原生侧的会话句柄表里，页面拿不到；句柄随会话失效，只能交给原生方法使用 |
 | 其他文件 Item | `{ kind: "file", path, url, name, mime, size }`，≤ 64MB 拷进缓存，更大的进 `failed` |
+| 点拍照按钮 | 仅 `camera: true` 时可能出现：返回 `{ items: [], failed: [], camera: true }`，调用方应回到拍照；其他情况不带 `camera` 字段 |
 | 用户取消 | 用户直接关掉选择器：成功返回 `{ items: [], failed: [] }`，**不是**错误。`CANCELLED` 只用于 `native.task.cancel` 或会话关闭 |
 | 错误 | `BAD_PARAMS`（mime 格式不对）、`NOT_READY`（已有选择器在显示）、`PERMISSION_DENIED`（非主 frame） |
 
@@ -300,6 +301,7 @@ await call('native.file.save', { items: [{ path, name: 'out.bin' }] })
 | `native.haptic.vibrate` | `{ pattern: number[], repeat?: number }` 或 `{ cancel: true }`。pattern 为 `[停, 震, 停, 震…]` 毫秒数，个数 1~100，元素为 0~10000 的整数，总长 ≤ 30 秒且大于 0；`repeat` 为循环起点下标，缺省 / -1 不循环 | `{ vibrated: boolean }`，设备没有马达为 false；`cancel` 恒返回 false。API 31+ 走 `VibratorManager`，26+ 用 `createWaveform`，24~25 用旧 `vibrate(long[], int)` | `BAD_PARAMS` |
 | `native.screen.keepAwake` | `{ on: boolean }` | `{ on }`。设窗口 `FLAG_KEEP_SCREEN_ON`，只影响本应用窗口 | `BAD_PARAMS` |
 | `native.screen.brightness` | `{ value: number }`，0~1，`-1` 跟随系统 | `{ value }`（实际生效值）。0 会夹到 0.01，免得部分机型直接熄屏；只影响本应用窗口 | `BAD_PARAMS` |
+| `native.screen.orientation` | `{ mode: 'landscape' \| 'portrait' }` | `{ mode }`。`landscape` 为传感器横屏（`SCREEN_ORIENTATION_SENSOR_LANDSCAPE`，两个横向都跟随重力，翻过手机自动正过来），`portrait` 还原竖屏；清单里的 `configChanges` 已含 `orientation`，页面不重建，只会触发一次 `resize`。页面用完必须还原。目前只有打字板全屏展示使用 | `BAD_PARAMS` |
 | `native.screen.immersive` | `{ on: boolean }` | `{ on }`。用 `WindowInsetsControllerCompat` 隐藏 / 显示系统栏，隐藏后上滑边缘临时唤出 | `BAD_PARAMS` |
 | `native.device.info` | 无 | 静态信息：`brand` `model` `device` `manufacturer` `androidVersion` `sdkInt` `securityPatch` `abis[]` `harmonyOs`（反射 `com.huawei.system.BuildEx.getOsBrand()`，失败为 false/null）`osBrand` `totalMemBytes` `display{…}` `sensors[{name,type,typeName}]`（≤100 条）`locale` `timeZone` `features{nfc,bluetooth,bluetoothLe,wifi,telephony,fingerprint,camera,cameraFront,cameraFlash,gps,microphone,gyroscope,accelerometer,compass,barometer,lightSensor,proximity,usbHost,infrared}`（`hasSystemFeature`）。取不到的字段为 null，不抛 | 仅主 frame 限制 |
 | `native.device.status` | 无 | 动态状态：`batteryPercent` `charging` `chargeStatus`（`charging`/`discharging`/`not_charging`/`full`/`unknown`）`chargeStatusText` `plugType`（`ac`/`usb`/`wireless`/`dock`/`none`）`plugText` `batteryTempC` `batteryVoltageMv`（sticky 广播取）`availMemBytes` `lowMemory` `storageTotalBytes` `storageFreeBytes`（`StatFs` 内部存储）`networkType`（`wifi`/`cellular`/`ethernet`/`bluetooth`/`vpn`/`other`/`none`）`networkText` `powerSave`。取不到为 null，不抛。网络只分到传输类型，不区分 4G/5G（需要电话状态权限，没要） | 同上 |
@@ -411,9 +413,12 @@ await call('native.file.save', { items: [{ path, name: 'out.bin' }] })
 
 | 方法 | params | 成功时的 data | 错误 |
 |---|---|---|---|
-| `native.ai.providers` | `{}` | `{ providers: [{ id, displayName, available, reason?, tasks[] }], capabilities: string[] }`。`providers` 含不可用的（带 `reason`），按注册顺序；本地模型类提供者（现在只有 `local-clip`）额外带 `modelId`（对应 `native.model.*` 的清单 id）、`downloaded`（已安装且 sha256 校验通过）、`sizeBytes`（磁盘占用，含未完成的 `.part`）、`downloading`（正在下载或校验），其余提供者没有这四项，旧页面忽略即可；`capabilities` 是**可用**提供者 `tasks` 的并集，按固定顺序排列。`reason` 取 `no_handler`（系统里没有能接手文本的应用）/ `unsupported_device` / `not_installed` / `not_configured`，页面遇到不认识的值按“不可用”处理。`tasks` 取 `summarize` / `proofread` / `rewrite` / `describeImage` / `prompt` / `translate` / `classifyImage` | 仅主 frame 限制 |
+| `native.ai.providers` | `{}` | `{ providers: [{ id, displayName, available, reason?, tasks[] }], capabilities: string[] }`。`providers` 含不可用的（带 `reason`），按注册顺序；本地模型类提供者（现在有 `local-clip`、`local-nllb`）额外带 `modelId`（对应 `native.model.*` 的清单 id）、`downloaded`（已安装且 sha256 校验通过）、`sizeBytes`（磁盘占用，含未完成的 `.part`）、`downloading`（正在下载或校验），其余提供者没有这四项，旧页面忽略即可；`capabilities` 是**可用**提供者 `tasks` 的并集，按固定顺序排列。`reason` 取 `no_handler`（系统里没有能接手文本的应用）/ `unsupported_device` / `not_installed` / `not_configured`，页面遇到不认识的值按“不可用”处理。`tasks` 取 `summarize` / `proofread` / `rewrite` / `describeImage` / `prompt` / `translate` / `classifyImage` | 仅主 frame 限制 |
 | `native.ai.run` | `{ provider: string, task: string, input: string }`。`provider` 1~64 字符；`task` 取上面六个之一；`input` 去空白后非空、≤ 50000 字符。`describeImage` 与 `classifyImage` 要图片输入，本方法只收文本，一律 `BAD_PARAMS`（识图走 `native.ai.classify`） | 交接类：`{ handoff: true, handled: boolean }`，`handled=false` 表示没有应用接手，拿不回结果；直接结果类（将来）：`{ handoff: false, handled: true, text: string }` | `BAD_PARAMS`（字段缺失或类型不对、task 未知、provider 未注册、provider 不支持该 task、input 为空或超长）；`NOT_READY`（提供者当前不可用，message 带 `reason`） |
 | `native.ai.classify` | `{ provider?: string, path: string, topK?: number }`。`path` 是缓存相对路径（如 `cache/pick/a.jpg`，防穿越，沿用 `native.image.*` 的写法）；`provider` 缺省取第一个支持 `classifyImage` 的提供者（现在只有 `local-clip`）；`topK` 1~10，默认 3 | `{ items: [{ id, nameZh, nameEn, category, score }], categories: [{ category, name, prob }], confidence, uncertain, elapsedMs, inferMs, modelId }`。`items` 是 top-k 物品，`score` 为与图像的余弦相似度（4 位小数）；`categories` 是全部分类的聚合概率（`softmax(100×余弦)` 按分类求和，降序，和为 1）；`confidence` 为最大分类概率，**低于 0.8 时 `uncertain=true`，页面应提示“拿不准”**；`category` 取 `R` 可回收物 / `H` 有害垃圾 / `W` 湿垃圾 / `D` 干垃圾（**词表分类是草稿，待对照官方指引核对**）；`elapsedMs` 含解码缩放与模型首次加载，`inferMs` 为 Rust 侧缩放 + 推理 + 分类；`modelId` 现为 `siglip2-q4_half` | `BAD_PARAMS`（`path` 缺失、不是有效缓存图片或穿越，`topK` 越界，`provider` 未知或不支持）；`NOT_READY`（模型文件未就绪，message 带 `not_installed` 与模型路径；Rust 侧报“未加载”也映射到这里）；`INTERNAL`（图片无法解码、ORT 库加载失败、推理失败）；`PERMISSION_DENIED`（非主 frame） |
+| `native.ai.translate` | `{ text: string, src: string, tgt: string, numBeams?: number }`。`text` 去空白后非空、≤ 2000 字符；`src`/`tgt` 取 `zh-CN` / `en` / `fr` / `es` / `ru` / `ar`（区分大小写，必须不同）；**`src` 还可以是 `'auto'`（小写，按句自动识别源语言），`tgt` 不可以**，auto 与任何目标都不冲突；`numBeams` 为 1~4 的整数，缺省取模型缺省（2） | `{ text, elapsedMs, modelId, src, tgt, detectedSrc: string[], unrecognized: boolean }`。`src` 原样回显请求值（可能是 `auto`）。**`detectedSrc`**：按出现顺序去重的、被识别出的应用语言码，没识别出为空数组；`src` 不是 auto 时恒为 `[src]`。**`unrecognized`**：auto 下有句子的语言无法识别而被**原样放进 `text`**（不翻译，保留标点与空白）时为 true；`src` 不是 auto 时恒为 false。auto 的做法：引擎先分句，对每句用 Rust 的 `whatlang`（纯 Rust、MIT、无模型文件）识别，候选限定在当前模型支持的语言内；句子去掉网址/邮箱后字母不足 2 个、置信度不足（下限 0.04，`is_reliable` 为真则放行）、或不先限定语言时明显（置信度≥0.1）是模型不支持的语言（德/意/葡等），都算无法识别。识别出的语言与目标相同的句子原样保留，记入 `detectedSrc`，不算无法识别；全部句子都无法识别时 `text` 就是原文、`detectedSrc=[]`、`unrecognized=true`，不报错。中文一律识别为 `zh-CN`（本包只有简体 token，繁体无法区分）。已知局限：很短的句子（单词级）和很短的非支持语言句（如 `Ich liebe dich.`）可能识别错，按最像的支持语言翻译。`elapsedMs` 是总耗时（会话里首次使用时含模型加载），`modelId` 现为 `nllb600m-un6-ccm-int4`。提供者取第一个声明 `translate` 且支持语言对的（现在只有 `local-nllb`，`intent-handoff` 不带语言对，不参与）；模型首次使用才加载，模型文件变化（长度或修改时间）自动重载；走 `AiHeavyGate`（与识物共用，同一时刻只跑一个 AI 重任务，后来者排队），在 IO 线程执行；只接受主 frame | `BAD_PARAMS`（`text` 缺失、为空或过长，`tgt` 不在六种内（含 `auto`），`src` 不在六种内且不是 `auto`，`src` 等于 `tgt`，`numBeams` 越界或不是整数）；`NOT_READY`（模型未安装或未校验通过，message 带 `reason`）；`INTERNAL`（模型加载或推理失败）；`CANCELLED` |
+| `native.ai.warmup` | `{ provider: string }`，现支持 `local-nllb`（加载翻译会话）与 `local-clip`（加载词表与识物会话） | `{ provider, loaded: true, elapsedMs }`。只加载模型会话，不推理；已加载则幂等，立刻返回（`elapsedMs` 约 0）；走 `AiHeavyGate` 排队、IO 线程；可取消，加载期间被取消会在加载完后立刻卸掉，不留半加载状态；只接受主 frame。实测 `local-nllb` 约 2.7 s、`local-clip` 约 0.56 s | `BAD_PARAMS`（`provider` 缺失或不是字符串、不认识、不支持预热如 `intent-handoff`）；`NOT_READY`（模型未安装，message 带 `not_installed`）；`INTERNAL`（加载失败）；`CANCELLED` |
+| `native.ai.unload` | `{ provider?: string }`，缺省或 `null` = 卸载全部已加载的会话（翻译 + 识物） | `{ unloaded: string[] }`，只列实际卸掉的提供者 id，本来没加载的不在内；幂等；走 `AiHeavyGate`，有推理在跑时排在它后面，不会打断；卸载后会让分配器把空闲堆页还给系统（Rust 侧 `mallopt(M_PURGE)`），RSS 才会真的回落；下次翻译或识物会自动重新加载；只接受主 frame | `BAD_PARAMS`（`provider` 不是字符串、不认识、没有可卸载的会话）；`CANCELLED` |
 
 当前提供者：
 
@@ -421,17 +426,22 @@ await call('native.file.save', { items: [{ path, name: 'out.bin' }] })
 |---|---|
 | `intent-handoff` | 系统应用交接。支持全部文本类任务（除 `describeImage`）。可用性：`queryIntentActivities(ACTION_PROCESS_TEXT, text/plain)` 非空。执行：`ACTION_PROCESS_TEXT`（`EXTRA_PROCESS_TEXT_READONLY=true`）经 `ActivityHost.startIntent` 拉起；`task` 只用于页面文案，**不会传给对方应用**，因为系统接口只能带文本 |
 | `local-clip` | 本地识物（L1，SigLIP2 `q4_half`，决策 [0005](../decisions/0005-ai-four-layers.md)）。只声明 `classifyImage`，入口是 `native.ai.classify`，`native.ai.run` 不适用。可用性：模型已由 `native.model.*` 安装并**校验通过**（`installed`，见下节），否则 `available=false, reason=not_installed`；注意 adb 手动放进去的文件是 `unverified`，要先调一次 `native.model.verify` 才算可用。流程：原生 `AndroidImageCodec` 解码 + EXIF 摆正 + 降采样（最长边约 896）→ 取 RGB 传给 Rust（UniFFI `clip_classify`）→ Rust 按 PIL 的抗锯齿 bilinear 缩到 224×224、`(v/255-0.5)/0.5`、NCHW 推理、L2 归一化 → 与随包词表（`assets/ai/garbage_vocab.json` + `.f16`，182 条英文裸词向量）做余弦。会话在进程内复用（首次识别时才加载，约 0.5 秒）；模型文件长度或修改时间变了会自动重载。**同一时刻只跑一个 AI 重任务**（`AiHeavyGate`，后来者排队），耗时在 IO 线程，不占主线程 |
+| `local-nllb` | 本地翻译（L1，NLLB-200 distilled 600M 裁剪词表 + int4，6 种联合国语言 `zh-CN`/`en`/`fr`/`es`/`ru`/`ar`，任意两种互译，决策 [0005](../decisions/0005-ai-four-layers.md)）。只声明 `translate`，入口是 `native.ai.translate`，`native.ai.run` 不适用（`BAD_PARAMS`）。可用性：模型 `nllb600m-un6-ccm-int4` 已由 `native.model.*` 安装并校验通过（`installed`），否则 `available=false, reason=not_installed`；`native.ai.providers` 里额外带 `modelId`、`downloaded`、`sizeBytes`、`downloading`。推理在 Rust（`arkli-ai::translate`，移植自 Cisox snow-translator，GPL-3.0-only，作者本人）：encoder + 带 KV cache 的 merged decoder、束搜索、中日文全角标点后处理，与识物共用同一份 sherpa 自带的 ORT。模型 6 个文件共 404,501,627 字节（含两个 `.onnx_data` 外部权重，必须与 `.onnx` 同目录，ORT 内存映射加载）；删除模型前经 `addReleaseHook` 调 `translate_unload`（排在重任务闸门后） |
+- **AI 会话回收（原生侧）**：页面进入时用 `native.ai.warmup` 预热、离开时用 `native.ai.unload` 卸载由前端接线；原生侧另有兜底（`AiRecycle`，tag `ArkliAi`）：① `MainActivity.onDestroy` 且 `isFinishing`（真正退出，不含旋转重建）时、以及**按返回键退到底回桌面时**（`exitToHome()`：先 `AiRecycle.releaseAll("back-exit")` 再 `moveTaskToBack`，不 finish，用户 2026-10-15 决定）异步卸载翻译与识物会话；② `onTrimMemory` 为 `TRIM_MEMORY_RUNNING_CRITICAL`（15）或 `TRIM_MEMORY_COMPLETE`（80）时同样卸载，`UI_HIDDEN`/`BACKGROUND`/`MODERATE` 不卸；③ 退到后台、页面会话销毁（WebView 重建）都**不**卸载。卸载在进程级协程里排在 `AiHeavyGate` 后，不阻塞主线程、不打断正在跑的推理。注意：返回键到底仍走 `moveTaskToBack`、不 finish，所以 `onDestroy` 不会调；Home 键、最近任务切走（onStop 且未 finishing）**仍不卸载**；再从桌面图标回来，下次翻译会自动重新加载（首次多约 2.7 秒）；华为“最近任务”划掉是系统直接杀进程，不走 onDestroy（内存随进程一并回收）。
+- **回收实测（STG-AL00，`/proc/<pid>/status` 与 `smaps_rollup`，口径见 status.md）**：冷启动基线 VmRSS 193MB；两模型都加载 604MB；卸载后（含 `M_PURGE`）217MB，比基线多约 24MB。不做 `M_PURGE` 时卸载后只回落到 495MB（比基线高约 300MB，全是匿名页，分配器没还）。调试：`adb shell "am broadcast -a com.let188.arkli.debug.CMD --es cmd finish"`（仅 debug）模拟正常退出，logcat 看 `ArkliAi : 回收 AI 会话（activity-finish）`。
 
 约定与取舍：
 - **清单**：API 30+ 的包可见性限制下，探测 `ACTION_PROCESS_TEXT` 响应者需要清单 `<queries>` 声明该 Intent（`text/plain`），已加。
 - 校验、可用性汇总、能力合并、结果序列化是纯函数（`AiPolicy`），登记处是 `ProviderRegistry`，都有 JVM 单测。
 - **ORT 运行时**：随包的 `libonnxruntime.so`（sherpa-onnx 1.13.8 的 ORT 1.28.2，arm64，22.25MB）由 Gradle 任务 `fetchOrtRuntime` 构建时下载并校验 sha256，见 `app/build.gradle.kts`；Rust 的 `ort`（load-dynamic）以**裸名** `libonnxruntime.so` dlopen，真机上从 APK 内直接映射（`/proc/<pid>/maps` 里能看到 APK 内该 so 的偏移）。不要再加 `onnxruntime-android` AAR。
 - **debug 真机验证**：现在走 `native.model.ensure` 下载（见下节与 [模型下载管理](model-download.md)）；仍想手动放文件时，debug 构建下用 adb 放到约定目录，再 `native.model.verify`：`adb push q4_half.onnx /data/local/tmp/` 再 `adb shell run-as com.let188.arkli mkdir -p files/models/siglip2-q4_half`，然后 `adb shell "run-as com.let188.arkli cp /data/local/tmp/q4_half.onnx files/models/siglip2-q4_half/q4_half.onnx"`（Git Bash 下给 adb 的 `/data/...` 路径要设 `MSYS_NO_PATHCONV=1`）。图片放到应用缓存 `cache/arkli/pick/dbg/` 后，用已有的调试广播调用：`adb shell am broadcast -a com.let188.arkli.debug.CMD --es cmd rpc --es method native.ai.classify --es params '{"path":"cache/pick/dbg/a.jpg"}'`，结果在 logcat 的 `DBGMSG` 行。release 包没有这些调试钩子。
+- **本地翻译真机验证（debug）**：模型 6 个文件放到 `files/models/nllb600m-un6-ccm-int4/`（`adb push` 到 `/data/local/tmp/nllb/` 再 `run-as com.let188.arkli cp`，Git Bash 设 `MSYS_NO_PATHCONV=1`），`native.model.verify` 变 `installed`，再用调试广播：`adb shell "am broadcast -a com.let188.arkli.debug.CMD --es cmd rpc --es id t1 --es method native.ai.translate --es params '{\"text\":\"Hello world.\",\"src\":\"en\",\"tgt\":\"fr\"}'\"`（**整条命令要作为一个字符串交给 adb shell**，params 里有空格时否则会被设备端 shell 拆开，广播变成 `dat=src:en` 而没有任何回应），结果在 logcat 的 `DBGMSG` 行（`\"id\":\"t1\"`），模型加载耗时在 `ArkliTranslate` tag。
+- **本地翻译模型授权（CC-BY-NC-4.0，待在下载界面落地）**：NLLB 权重许可为署名-非商业 4.0，必须在 AI 中心下载本模型的界面显示下列授权说明（内容取自模型包 `NOTICE.txt`）：①仅限非商业使用，不得用于生产部署（原模型卡声明其面向研究用途，本模型包沿用同样限制）；②来源：Meta FAIR NLLB 团队的 NLLB-200-distilled-600M（<https://huggingface.co/facebook/nllb-200-distilled-600M>，论文 <https://arxiv.org/abs/2207.04672>），许可 CC BY-NC 4.0；③修改说明：词表裁剪到 61795 项并重映射 id（按 CCMatrix 词频保留，另含合并中间项与单字）、导出 ONNX（encoder 与带 KV cache 的 merged decoder）、int4 量化（MatMulNBits 对称 RTN，块大小 32）、权重存为外部数据文件、新增 `model.json`，未做任何再训练或微调，修改后权重的输出可能与原模型不同；④免责：与 Meta / NLLB 团队无隶属、背书或赞助关系，按“现状”提供，译文可能出错或有偏见。许可证全文 `LICENSE-CC-BY-NC-4.0.txt`（19,347 字节）与 `NOTICE.txt` 不进设备（models.json 的 files 只列设备必需的 6 个文件），界面里按上面内容展示并链到原模型页。同时：这是**用户已知的商用风险**，App 若走商业发布需换模型或另获授权。
 - 预留位置（未实现，代码里没有 ML Kit 类）：`MlKitGenAiProvider`（谷歌 ML Kit GenAI / AICore，依赖白名单机型，要提 minSdk）、其他本地 ONNX 任务（OCR、对联）、在线 OpenAI。接入时只需新增 `AiProvider` 实现并注册，桥方法与页面不改。
 
 ## 模型下载管理方法
 
-前端封装在 `web/src/native/model.ts`（`modelList` / `modelStatus` / `modelEnsure` / `modelCancel` / `modelRemove` / `modelVerify`）与 `useModelState(id)`。代码在 `com.let188.arkli.model`，设计、安全与验证见 [模型下载管理](model-download.md)。全部只接受主 frame（`PERMISSION_DENIED`）。**页面只传模型 `id`，不能传 URL**；下载地址只来自随包清单 `assets/ai/models.json`；返回值不含任何磁盘路径。下载在原生自己的协程里跑，不随页面会话关闭而取消，页面重载后 `status` 接着看；因为会话级的事件推送在页面关掉后会丢，所以用“`ensure` 立即返回 + 轮询 `status`”，没有 `pack.progress` 事件。
+前端封装在 `web/src/native/model.ts`（`modelList` / `modelStatus` / `modelEnsure` / `modelCancel` / `modelRemove` / `modelVerify`）与 `web/src/stores/models.ts` 的 `useModelsStore`（唯一状态源）。代码在 `com.let188.arkli.model`，设计、安全与验证见 [模型下载管理](model-download.md)。全部只接受主 frame（`PERMISSION_DENIED`）。**页面只传模型 `id`，不能传 URL**；下载地址只来自随包清单 `assets/ai/models.json`；返回值不含任何磁盘路径。下载在原生自己的协程里跑，不随页面会话关闭而取消，页面重载后 `status` 接着看；因为会话级的事件推送在页面关掉后会丢，所以页面启动时用 `native.model.list` 取一次快照，之后靠 `model.changed` 事件实时更新（`ensure` 仍立即返回）。
 
 通用的 `data`（下面称**模型状态**）：`{ id, displayName, version, state, totalBytes, downloadedBytes, diskBytes, phase?, speedBps?, error? }`
 
@@ -447,6 +457,7 @@ await call('native.file.save', { items: [{ path, name: 'out.bin' }] })
 | `native.model.ensure` | `{ id }` | 模型状态 + `started`（本次是否真的启动了任务）+ `meteredHint`（当前是否计费网络，页面自行决定要不要提醒，原生不拦截）。幂等：`installed` 或已在下载直接返回；`unverified` 只做校验；其余启动下载，有 `.part` 就续传。**立即返回**，失败原因之后从 `status` 的 `error` 读 | `BAD_PARAMS` |
 | `native.model.cancel` | `{ id }` | 模型状态（幂等）。保留 `.part`，下次 `ensure` 续传 | `BAD_PARAMS` |
 | `native.model.remove` | `{ id }` | 模型状态（`absent`、占用 0）。先取消下载，再释放已加载的推理会话（识物是 `clip_unload`，排在重任务闸门后），最后删清单列出的文件、`.part` 与校验标记，不递归 | `BAD_PARAMS`；`INTERNAL`（有文件删不掉） |
+| 事件 `model.changed` | 原生推送 | 与 `native.model.status` 同形的模型状态；下载进度约 300 毫秒一条，开始、完成、失败、取消、删除、校验即时推送。管理器进程单例、桥每会话一个，后建的会话接管推送 | — |
 | `native.model.verify` | `{ id }` | 模型状态。重算 sha256（真机 STG-AL00 上 54MB 整次调用约 1.5 秒，含 0.5 秒的轮询粒度），通过则写校验标记变 `installed`；**不通过则删除该文件**并记 `HASH_MISMATCH`；文件不齐全则不动 | `BAD_PARAMS`；`NOT_READY`（正在下载） |
 
 下载器行为（细节与取舍见 [模型下载管理](model-download.md)）：只用 `HttpURLConnection`（经 `HttpTransport`）；每一跳（含 302）都要求 https、主机精确命中 `NetPolicy.DOWNLOAD_HOSTS`（`github.com`、`objects.githubusercontent.com`、`release-assets.githubusercontent.com`，与页面出站白名单和 CSP 分开）；最多 5 跳；`Range` 断点续传，服务器忽略 Range 就从头来；多个下载源按序回退；每源连续 3 次无进展才换源，退避 1/2/4/8 秒；下载前要求可用空间 ≥ 待下载字节 × 1.2；完成后 sha256 校验再原子改名；同一模型同一时刻只有一个任务。清单里的 URL 目前是占位，托管 release 尚未发布。
@@ -495,6 +506,52 @@ await call('native.file.save', { items: [{ path, name: 'out.bin' }] })
 
 **未在真机验证的点**：各机型对 16kHz 的支持与实际采样率；部分系统在后台或通话中给静音数据；自动增益（AGC）与降噪对读数的影响；与他应用同时占用麦克风时的行为。
 
+## 语音转文字方法
+
+前端封装在 `web/src/native/speech.ts`，输入框组件 `web/src/shared/VoiceInput.vue`，代码在 `com.let188.arkli.speech`。全部只接受主 frame。
+
+本地流式识别：sherpa-onnx `OnlineRecognizer`（zipformer2 transducer，中英文，标点在 token 里，80 维 fbank，16kHz）。模型在 `filesDir/models/asr-zipformer-zh-en-int8/`（`encoder.int8.onnx`、`decoder.onnx`、`joiner.int8.onnx`、`tokens.txt`），**目前由手动放置，暂未接 `native.model.*` 下载清单**；文件缺失或小于预期大小一律视为未就绪。**音频只在内存里流转，不落盘、不上传。**
+
+| 方法 | params | 成功时的 data | 错误 |
+|---|---|---|---|
+| `native.speech.status` | `{}` | `{ available, engine: 'local-zipformer', modelReady, reason? }`；`available` = 模型文件齐全且 sherpa 库能加载；不加载模型，很快 | 无 |
+| `native.speech.start` | `{ lang?: 'zh-en' }` | `{ started: true, sampleRate: 16000, taskId }`，麦克风真正开始录音后才返回（首次要加载约 170MB 模型，约 4~5 秒）。之后推事件 `speech.partial { text }`（当前这句的中间结果，会反复修正）与 `speech.final { text }`（一句话定稿：检测到停顿 endpoint，或停止时的最后一句） | `BAD_PARAMS`；没有 `RECORD_AUDIO` 时经 `ActivityHost.requestPermission` 申请，被拒 `PERMISSION_DENIED`；模型缺失 / 加载失败 / 已在听写 / 麦克风被占用或初始化失败 `NOT_READY`（message 说明原因） |
+| `native.speech.stop` | `{}` | `{ text }`：整段定稿文本。冲刷剩余音频（补 0.66 秒静音）后才返回，最多等 8 秒；没在听写则返回上次的文本 | 无 |
+
+- 同一会话同一时刻只允许一路；重复 `start` 返回 `NOT_READY`。
+- 采集在 `Dispatchers.IO`：每 100ms 读一块喂识别流。**stop、`native.task.cancel { id: taskId }`、会话关闭（页面重载 / 销毁 / 崩溃）都会停止并释放 `AudioRecord` 与识别流**（取消与会话关闭不冲刷、不再推事件）。
+- 识别器懒加载、进程内复用，空闲 60 秒自动释放；加载排在 `AiHeavyGate` 之后（与识物不同时加载），会话期间不占闸门。
+- 中间结果要追加到「听写前已有文本」之后，不能覆盖；文本合并规则见 `TranscriptMerger`（原生）与 `voice-input.ts`（前端）：交界两侧都是 ASCII 字母数字时补空格，其余直连。
+
+使用示例（`VoiceInput` 与 `van-field` 的 v-model、placeholder、type、maxlength 等属性一致；语音不可用时不显示麦克风）：
+
+```vue
+<script setup lang="ts">
+import { ref } from 'vue'
+import VoiceInput from '@/shared/VoiceInput.vue'
+const text = ref('')
+</script>
+<template>
+  <voice-input v-model="text" type="textarea" rows="3" placeholder="点右侧麦克风说话" maxlength="500" />
+</template>
+```
+
+也可以直接用封装：
+
+```ts
+import { getSpeechStatus, startSpeech, stopSpeech, onSpeechPartial, onSpeechFinal } from '@/native/speech'
+if ((await getSpeechStatus()).available) {
+  const offP = onSpeechPartial((t) => (live.value = t))
+  const offF = onSpeechFinal((t) => lines.push(t))
+  await startSpeech()
+  // ……用户说完
+  const { text } = await stopSpeech()
+  offP(); offF()
+}
+```
+
+**未在真机验证的点**：麦克风口述的实际识别质量（debug 命令 `asrwav` 已用 4 条 test wav 走同一解码路径验证，RTF 约 0.25）；嘈杂环境、蓝牙耳机作为输入源；与通话、其他录音应用同时占麦克风时的行为；`native.model.*` 下载接入后的就绪判定。
+
 ## 二维码识别方法
 
 前端封装在 `web/src/native/qrcode.ts`，代码在 `com.let188.arkli.qrcode`。全部只接受主 frame。解码用 zxing-cpp，formats 留空识别全部码种；一帧里有多个码时全部返回。
@@ -507,6 +564,22 @@ await call('native.file.save', { items: [{ path, name: 'out.bin' }] })
 实时取景把 `tryHarder/tryRotate/tryInvert` 关掉保帧率；相册识图全部打开，大图先降采样到约 4096 边长。扫码页自己申请相机权限，清单新增 `CAMERA`，相机与自动对焦声明为非必需硬件。
 
 **未在真机验证的点**：低端机帧率与发热、反色码、小码、强反光、扫码页返回键与 WebView 路由的配合、HEIC 等选图结果的识别。
+
+## 通用相机方法
+
+前端封装在 `web/src/native/camera.ts`，代码在 `com.let188.arkli.camera`。全部只接受主 frame。拍照用 CameraX `ImageCapture`，录像用 `VideoCapture`（依赖 `camera-video`，版本沿用 `camerax`）。
+
+| 方法 | params | 成功时的 data | 错误 |
+|---|---|---|---|
+| `native.camera.capture` | `{ modes?: ('photo'\|'video'\|'album')[], facing?: 'back'\|'front', maxDurationSec?: number, lensSwitch?: boolean }`。`modes` 至少一项、不重复，默认 `['photo']`，多于一个拍照/录像时界面可切换；含 `album` 时显示相册入口；`facing` 默认 `back`；`maxDurationSec` 默认 60、上限 300，到点自动停止；`lensSwitch` 默认 true | 拍到：`{ kind: 'image'\|'video', path, name, mime, size, width, height, durationMs? }`；用户取消：`{ cancelled: true }`；点相册：`{ album: true }`（网页再调 `native.file.pick`） | `modes` 为空、含未知值或重复、其他参数类型不对 `BAD_PARAMS`；相机权限被拒 `PERMISSION_DENIED`；无相机或初始化失败 `INTERNAL`；已有相机页在显示 `NOT_READY` |
+| `native.camera.clear` | `{}` | `{ cleared: true, count }`，`count` 是删除的文件数 | - |
+
+- **隐私硬约束**：产物只写 `cacheDir/arkli/pick/cam/cam_<随机>.jpg|.mp4`，页面路径 `cache/pick/cam/...`，绝不写入 MediaStore 或任何持久目录。每次 `capture` 开始前先清空该目录；`clear` 清空该目录；App 启动清理也清空它。
+- 照片的 `width` / `height` 已按 EXIF 方向摆正（JPEG 里保留 EXIF 方向标记，后续解码同样会摆正）；视频宽高已按旋转角调整，`durationMs` 为时长。
+- 录像需要 `RECORD_AUDIO`：相机页打开时申请，被拒则静音录制，不报错。
+- 垃圾分类页只传 `modes: ['photo','album']`；离开页面、选到新图后调用 `native.camera.clear`。
+
+**未在真机验证的点**：各机型前后摄切换、录像到点自动停止、前置摄像头 EXIF 镜像、录音权限拒绝后的静音录制。
 
 ## 获取壁纸方法
 

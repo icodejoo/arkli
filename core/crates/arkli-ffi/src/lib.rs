@@ -4,6 +4,8 @@
 uniffi::setup_scaffolding!();
 
 pub mod clip;
+pub mod mem;
+pub mod translate;
 
 /// 返回核心库版本号。
 ///

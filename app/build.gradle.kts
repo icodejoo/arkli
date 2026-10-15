@@ -77,11 +77,12 @@ dependencies {
     // UniFFI 绑定依赖 JNA，用 AAR 形式（内含各 ABI 的 libjnidispatch，由 abiFilters 裁成 arm64）
     implementation("${libs.jna.get()}@aar")
     implementation(libs.kotlinx.coroutines.android)
-    // 二维码扫码：CameraX 取景 + zxing-cpp 解码
+    // 二维码扫码与原生相机：CameraX 取景 + 拍照 + 录像 + zxing-cpp 解码
     implementation(libs.camerax.core)
     implementation(libs.camerax.camera2)
     implementation(libs.camerax.lifecycle)
     implementation(libs.camerax.view)
+    implementation(libs.camerax.video)
     implementation(libs.zxing.cpp)
 
     testImplementation(libs.junit)
@@ -91,9 +92,12 @@ dependencies {
 }
 
 // ---------------------------------------------------------------------------
-// ONNX Runtime 动态库（识物等本地模型用）
-// 取自 sherpa-onnx v1.13.8 的 AAR 里的 jni/arm64-v8a/libonnxruntime.so（ORT 1.28.2，约 22MB）。
-// 只取这一个 so，不带 sherpa 的 JNI；Rust 的 ort（load-dynamic）按裸名 dlopen 它。
+// ONNX Runtime 动态库 + sherpa-onnx 的 Kotlin/JNI 接口（识物、语音转文字等本地模型用）
+// 全部取自同一个 sherpa-onnx v1.13.8 AAR（只取 arm64-v8a）：
+//  - jni/arm64-v8a/libonnxruntime.so（ORT 1.28.2，约 22MB）：Rust 的 ort（load-dynamic）按裸名 dlopen 它，
+//    sherpa 的 JNI 也动态链接它，两边共用这一份；
+//  - jni/arm64-v8a/libsherpa-onnx-jni.so：sherpa 的 JNI（只依赖 libonnxruntime.so，不依赖 c-api so）；
+//  - classes.jar：com.k2fsa.sherpa.onnx 的 Kotlin API，作为本地 jar 依赖编译。
 // 不能再依赖 onnxruntime-android AAR：同名 so 会冲突，符号版本标签也对不上。
 // 构建时下载并校验 sha256，缓存在 <仓库>/.gradle/arkli-ort/（已被 .gitignore 忽略，clean 不会清掉）。
 // 已有 AAR 时设环境变量 ARKLI_SHERPA_AAR 指向它即可免下载（大文件可先用 aria2c 下载）。
@@ -105,17 +109,31 @@ val ortAarUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8
 /** AAR 的 sha256（50,129,134 字节） */
 val ortAarSha256 = "633c24321e06b1fe79feafa03ea16cbc0f8a286641e2da3559bac91bdb13bd96"
 
-/** AAR 内 so 的路径 */
-val ortSoEntry = "jni/arm64-v8a/libonnxruntime.so"
+/**
+ * 从 AAR 提取的一个文件。
+ *
+ * @property entry AAR 内路径
+ * @property cacheName 缓存目录里的文件名
+ * @property sha256 期望的 sha256
+ * @property outName 作为 jniLibs 输出时的文件名；null 表示不进 jniLibs（如 jar）
+ */
+data class AarPart(val entry: String, val cacheName: String, val sha256: String, val outName: String?)
 
-/** so 的 sha256（22,249,560 字节，ORT 1.28.2） */
-val ortSoSha256 = "33847ad43bffe204699fd4a27f7f3603452a8cdaf2f9a44983a0bc31ffcf2da1"
+/** 需要提取的三个文件 */
+val sherpaParts = listOf(
+    AarPart("jni/arm64-v8a/libonnxruntime.so", "libonnxruntime-1.28.2-arm64-v8a.so", "33847ad43bffe204699fd4a27f7f3603452a8cdaf2f9a44983a0bc31ffcf2da1", "libonnxruntime.so"),
+    AarPart("jni/arm64-v8a/libsherpa-onnx-jni.so", "libsherpa-onnx-jni-1.13.8-arm64-v8a.so", "3c6492ea91ea68fd3b72b9495efdde6dd913f6b58c387e3b07389cf335f4d26f", "libsherpa-onnx-jni.so"),
+    AarPart("classes.jar", "sherpa-onnx-1.13.8-classes.jar", "8af5aa647494ec9cb6596959d6d20864377cf4a9dedf1c1b178d936bfb7cea95", null),
+)
 
-/** 缓存目录：AAR 与解出的 so */
+/** 缓存目录：AAR 与解出的文件 */
 val ortCacheDir = rootProject.layout.projectDirectory.dir(".gradle/arkli-ort").asFile
 
 /** 输出目录，作为额外的 jniLibs 源目录 */
 val ortOutDir = layout.buildDirectory.dir("generated/ort/jniLibs")
+
+/** sherpa Kotlin API 的 jar（缓存里的那份，由 fetchOrtRuntime 产出） */
+val sherpaJar = File(ortCacheDir, sherpaParts.first { it.entry == "classes.jar" }.cacheName)
 
 /** 计算文件 sha256（小写十六进制） */
 fun sha256Of(f: File): String {
@@ -155,13 +173,14 @@ fun downloadTo(url: String, dst: File) {
 
 val fetchOrtRuntime = tasks.register("fetchOrtRuntime") {
     group = "arkli"
-    description = "取得并校验 libonnxruntime.so（sherpa-onnx 1.13.8 / ORT 1.28.2，arm64-v8a）"
+    description = "取得并校验 libonnxruntime.so / libsherpa-onnx-jni.so / sherpa classes.jar（sherpa-onnx 1.13.8，arm64-v8a）"
     inputs.property("aarSha256", ortAarSha256)
-    inputs.property("soSha256", ortSoSha256)
+    inputs.property("partSha256", sherpaParts.joinToString(",") { it.sha256 })
     outputs.dir(ortOutDir)
+    outputs.file(sherpaJar)
     doLast {
-        val cachedSo = File(ortCacheDir, "libonnxruntime-1.28.2-arm64-v8a.so")
-        if (!(cachedSo.isFile && sha256Of(cachedSo) == ortSoSha256)) {
+        val cached = sherpaParts.associateWith { File(ortCacheDir, it.cacheName) }
+        if (!cached.all { (p, f) -> f.isFile && sha256Of(f) == p.sha256 }) {
             val aar = System.getenv("ARKLI_SHERPA_AAR")?.let { File(it) } ?: File(ortCacheDir, "sherpa-onnx-1.13.8.aar")
             if (!(aar.isFile && sha256Of(aar) == ortAarSha256)) {
                 check(System.getenv("ARKLI_SHERPA_AAR") == null) { "ARKLI_SHERPA_AAR 指向的文件不存在或 sha256 不符：${aar.path}" }
@@ -174,21 +193,31 @@ val fetchOrtRuntime = tasks.register("fetchOrtRuntime") {
                 }
             }
             ZipFile(aar).use { zip ->
-                val entry = zip.getEntry(ortSoEntry) ?: throw GradleException("AAR 里没有 $ortSoEntry")
-                cachedSo.parentFile.mkdirs()
-                zip.getInputStream(entry).use { ins -> cachedSo.outputStream().use { ins.copyTo(it) } }
-            }
-            val got = sha256Of(cachedSo)
-            if (got != ortSoSha256) {
-                cachedSo.delete()
-                throw GradleException("libonnxruntime.so sha256 不符：期望 $ortSoSha256，实际 $got")
+                cached.forEach { (p, f) ->
+                    val entry = zip.getEntry(p.entry) ?: throw GradleException("AAR 里没有 ${p.entry}")
+                    f.parentFile.mkdirs()
+                    zip.getInputStream(entry).use { ins -> f.outputStream().use { ins.copyTo(it) } }
+                    val got = sha256Of(f)
+                    if (got != p.sha256) {
+                        f.delete()
+                        throw GradleException("${p.entry} sha256 不符：期望 ${p.sha256}，实际 $got")
+                    }
+                }
             }
         }
-        val dst = File(ortOutDir.get().asFile, "arm64-v8a/libonnxruntime.so")
-        dst.parentFile.mkdirs()
-        cachedSo.copyTo(dst, overwrite = true)
+        cached.forEach { (p, f) ->
+            val outName = p.outName ?: return@forEach
+            val dst = File(ortOutDir.get().asFile, "arm64-v8a/$outName")
+            dst.parentFile.mkdirs()
+            f.copyTo(dst, overwrite = true)
+        }
     }
 }
 
 android.sourceSets.getByName("main").jniLibs.srcDir(ortOutDir)
 tasks.named("preBuild") { dependsOn(fetchOrtRuntime) }
+
+// sherpa-onnx 的 Kotlin API（语音转文字等）：本地 jar，随 fetchOrtRuntime 产出
+dependencies {
+    implementation(files(sherpaJar).builtBy(fetchOrtRuntime))
+}

@@ -99,3 +99,51 @@ internal class AiClassifyHandler(
         return AiClassifyPolicy.resultJson(result)
     }
 }
+
+/**
+ * `native.ai.translate`：`{ text, src(可为 auto), tgt, numBeams? }` -> `{ text, elapsedMs, modelId, src, tgt, detectedSrc, unrecognized }`。
+ * 模型加载与推理在后台线程，同一时刻只跑一个 AI 重任务（[AiHeavyGate]，后来者排队）。
+ *
+ * @param registry 提供者登记处
+ */
+internal class AiTranslateHandler(private val registry: ProviderRegistry) : BridgeHandler {
+    /** 校验 -> 选提供者 -> 翻译 */
+    override suspend fun handle(ctx: CallContext, params: JSONObject): Any? {
+        requireMainFrame(ctx)
+        val req = AiTranslatePolicy.parse(params)
+        val translator = AiTranslatePolicy.requireTranslator(registry.all())
+        val result = withContext(Dispatchers.IO) { translator.translate(req) }
+        return AiTranslatePolicy.resultJson(result)
+    }
+}
+
+/**
+ * `native.ai.warmup`：`{ provider }` -> `{ provider, loaded: true, elapsedMs }`。
+ * 只加载模型会话、不推理；已加载幂等。在后台线程排队执行（[AiHeavyGate]），可取消。
+ *
+ * @param registry 提供者登记处
+ */
+internal class AiWarmupHandler(private val registry: ProviderRegistry) : BridgeHandler {
+    /** 校验 -> 选提供者 -> 预热 */
+    override suspend fun handle(ctx: CallContext, params: JSONObject): Any? {
+        requireMainFrame(ctx)
+        val id = AiLifecyclePolicy.parseWarmup(params)
+        val (_, control) = AiLifecyclePolicy.requireWarmable(registry.all(), id)
+        return AiLifecyclePolicy.warmupJson(withContext(Dispatchers.IO) { control.warmup() })
+    }
+}
+
+/**
+ * `native.ai.unload`：`{ provider? }` -> `{ unloaded: string[] }`。
+ * 缺省卸载全部已加载的会话；幂等；有推理在跑时排在它后面（[AiHeavyGate]）。
+ *
+ * @param registry 提供者登记处
+ */
+internal class AiUnloadHandler(private val registry: ProviderRegistry) : BridgeHandler {
+    /** 校验 -> 选会话 -> 卸载 */
+    override suspend fun handle(ctx: CallContext, params: JSONObject): Any? {
+        requireMainFrame(ctx)
+        val sessions = AiLifecyclePolicy.selectSessions(registry.all(), AiLifecyclePolicy.parseUnload(params))
+        return AiLifecyclePolicy.unloadJson(withContext(Dispatchers.IO) { AiLifecyclePolicy.unloadAll(sessions) })
+    }
+}

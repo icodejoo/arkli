@@ -155,7 +155,7 @@ describe('vibrate', () => {
 
 describe('screen', () => {
   it('有宿主：三个方法发对应参数', async () => {
-    const { keepAwake, setBrightness, setImmersive } = await load(true)
+    const { keepAwake, setBrightness, setImmersive, setOrientation } = await load(true)
     const call = fakeCall({})
     await keepAwake(true, call)
     expect(call).toHaveBeenLastCalledWith('native.screen.keepAwake', { on: true })
@@ -163,13 +163,16 @@ describe('screen', () => {
     expect(call).toHaveBeenLastCalledWith('native.screen.brightness', { value: -1 })
     await setImmersive(false, call)
     expect(call).toHaveBeenLastCalledWith('native.screen.immersive', { on: false })
+    await setOrientation('landscape', call)
+    expect(call).toHaveBeenLastCalledWith('native.screen.orientation', { mode: 'landscape' })
   })
   it('无宿主：抛 NativeUnavailableError', async () => {
-    const { keepAwake, setBrightness, setImmersive, NativeUnavailableError } = await load(false)
+    const { keepAwake, setBrightness, setImmersive, setOrientation, NativeUnavailableError } = await load(false)
     const call = fakeCall({})
     await expect(keepAwake(true, call)).rejects.toBeInstanceOf(NativeUnavailableError)
     await expect(setBrightness(0.5, call)).rejects.toBeInstanceOf(NativeUnavailableError)
     await expect(setImmersive(true, call)).rejects.toBeInstanceOf(NativeUnavailableError)
+    await expect(setOrientation('landscape', call)).rejects.toBeInstanceOf(NativeUnavailableError)
     expect(call).not.toHaveBeenCalled()
   })
 })

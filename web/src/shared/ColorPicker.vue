@@ -2,7 +2,14 @@
 // 取色字段：一个色块按钮，点开底部弹层，里面是预设色、饱和度/明度方块、色相条和 HEX 输入。
 // 用来替换原生 <input type="color">：Android WebView 里它只弹 8 色小框，选色很难受。
 import { computed, ref, watch } from 'vue'
-import { COLOR_PRESETS, HUE_MAX, PERCENT_MAX, hexToHsv, hsvToHex, ratioIn, toHex6 } from './color-picker'
+import { COLOR_PRESETS, HUE_MAX, PERCENT_MAX, hexToHsv, hsvToHex, loupeAbove, ratioIn, readableOn, toHex6 } from './color-picker'
+
+/** 放大镜气泡直径（像素） */
+const LOUPE_SIZE = 64
+/** 气泡与手指的间距（像素） */
+const LOUPE_GAP = 20
+/** 取色区上方可借用的空间（弹层标题），气泡可以探出这么多 */
+const LOUPE_ROOM = 36
 
 /**
  * 属性
@@ -22,10 +29,14 @@ const open = ref(false)
 const hsv = ref(hexToHsv(props.modelValue))
 /** HEX 输入框的文本 */
 const hexText = ref(props.modelValue)
+/** 放大镜气泡：拖动时跟着手指，显示当前颜色与 HEX，免得被手指挡住；null 表示没在拖动 */
+const loupe = ref<{ target: 'sv' | 'hue'; x: number; y: number; above: boolean } | null>(null)
 /** 方块与色相条的 DOM，用来换算指针位置 */
 const svRef = ref<HTMLElement | null>(null)
 const hueRef = ref<HTMLElement | null>(null)
 
+/** 气泡里 HEX 的字色，保证看得清 */
+const loupeText = computed(() => readableOn(current.value))
 /** 当前颜色的 HEX */
 const current = computed(() => hsvToHex(hsv.value))
 /** 方块底色：当前色相的纯色 */
@@ -59,12 +70,28 @@ function show(): void {
 }
 
 /**
- * 开始拖动：捕获指针，立即取一次值，之后移动时持续取值。
+ * 更新放大镜气泡的位置：x 夹在取色区内，色相条上固定在条的中线。
+ *
+ * @param ev 指针事件
+ * @param target 当前拖动的是方块还是色相条
+ */
+function placeLoupe(ev: PointerEvent, target: 'sv' | 'hue'): void {
+  const el = target === 'sv' ? svRef.value : hueRef.value
+  if (!el) return
+  const r = el.getBoundingClientRect()
+  const x = Math.min(r.width, Math.max(0, ev.clientX - r.left))
+  const y = target === 'sv' ? Math.min(r.height, Math.max(0, ev.clientY - r.top)) : r.height / 2
+  loupe.value = { target, x, y, above: loupeAbove(y, LOUPE_SIZE, LOUPE_GAP, LOUPE_ROOM) }
+}
+
+/**
+ * 开始拖动：捕获指针，立即取一次值，之后移动时持续取值，同时显示放大镜气泡。
  *
  * @param e 指针按下事件
  * @param apply 把指针事件换成颜色变化的回调
+ * @param target 拖动的是方块还是色相条
  */
-function startDrag(e: PointerEvent, apply: (ev: PointerEvent) => void): void {
+function startDrag(e: PointerEvent, apply: (ev: PointerEvent) => void, target: 'sv' | 'hue'): void {
   const el = e.currentTarget as HTMLElement
   try {
     el.setPointerCapture(e.pointerId)
@@ -72,8 +99,13 @@ function startDrag(e: PointerEvent, apply: (ev: PointerEvent) => void): void {
     // 指针号无效（如合成事件）时不捕获
   }
   apply(e)
-  const move = (ev: PointerEvent) => apply(ev)
+  placeLoupe(e, target)
+  const move = (ev: PointerEvent) => {
+    apply(ev)
+    placeLoupe(ev, target)
+  }
   const stop = () => {
+    loupe.value = null
     el.removeEventListener('pointermove', move)
     el.removeEventListener('pointerup', stop)
     el.removeEventListener('pointercancel', stop)
@@ -134,12 +166,14 @@ function applyHexText(): void {
         :style="{ backgroundColor: hueColor }"
         role="slider"
         aria-label="饱和度与明度"
-        @pointerdown="startDrag($event, applySv)"
+        @pointerdown="startDrag($event, applySv, 'sv')"
       >
-        <i class="color-picker__dot" :style="{ ...svDot, background: current }" />
+        <i class="color-picker__dot" :class="{ 'is-drag': loupe?.target === 'sv' }" :style="{ ...svDot, background: current }" />
+        <div v-if="loupe?.target === 'sv'" class="color-picker__loupe" :class="{ 'is-below': !loupe.above }" :style="{ left: `${loupe.x}px`, top: `${loupe.y}px`, background: current, color: loupeText }">{{ current }}</div>
       </div>
-      <div ref="hueRef" class="color-picker__hue" role="slider" aria-label="色相" @pointerdown="startDrag($event, applyHue)">
-        <i class="color-picker__dot" :style="{ ...hueDot, background: hueColor }" />
+      <div ref="hueRef" class="color-picker__hue" role="slider" aria-label="色相" @pointerdown="startDrag($event, applyHue, 'hue')">
+        <i class="color-picker__dot" :class="{ 'is-drag': loupe?.target === 'hue' }" :style="{ ...hueDot, background: hueColor }" />
+        <div v-if="loupe?.target === 'hue'" class="color-picker__loupe" :class="{ 'is-below': !loupe.above }" :style="{ left: `${loupe.x}px`, top: `${loupe.y}px`, background: current, color: loupeText }">{{ current }}</div>
       </div>
       <div class="color-picker__row">
         <span class="color-picker__preview" :style="{ background: current }" />
@@ -228,6 +262,34 @@ function applyHexText(): void {
 
 .color-picker__hue .color-picker__dot {
   top: 50%;
+}
+
+/* 拖动时选中点放大一点，更像放大镜的焦点 */
+.color-picker__dot.is-drag {
+  transform: scale(1.4);
+}
+
+/* 放大镜气泡：圆形、白边、投影，跟着手指显示当前颜色与 HEX；默认在手指上方，上方放不下翻到下方 */
+.color-picker__loupe {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  margin: -84px 0 0 -32px; /* 圆心在手指上方：-(直径 + 间距) */
+  border: 3px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  font-family: monospace;
+  font-size: 11px;
+  font-weight: 600;
+  pointer-events: none;
+
+  &.is-below {
+    margin-top: 20px; /* 翻到手指下方 */
+  }
 }
 
 .color-picker__row {

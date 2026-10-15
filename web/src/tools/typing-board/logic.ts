@@ -1,17 +1,33 @@
-// 打字板：全屏大字静止显示，字号自适应、配色预设
+// 打字板（含原手持弹幕）：全屏大字展示，文字没超出屏幕就静止，超出就横向滚动；配色预设、闪烁、最近文案（与 Vue 解耦）
 
 /** 文字长度上限 */
 export const TEXT_MAX = 200
+/** 默认文案（输入为空时用） */
+export const DEFAULT_TEXT = '你好'
 /** 字号下限（像素） */
-export const FONT_MIN = 16
+export const FONT_MIN = 24
 /** 字号上限（像素） */
-export const FONT_MAX = 600
+export const FONT_MAX = 400
+/** 默认字号 */
+export const FONT_DEFAULT = 160
+/** 滚动速度下限（像素/秒） */
+export const SPEED_MIN = 40
+/** 滚动速度上限（像素/秒） */
+export const SPEED_MAX = 800
+/** 默认滚动速度 */
+export const SPEED_DEFAULT = 240
 /** 闪烁频率下限（Hz） */
 export const BLINK_HZ_MIN = 0.5
 /** 闪烁频率上限（Hz） */
 export const BLINK_HZ_MAX = 2
 /** 粗细可选值 */
 export const WEIGHTS = [400, 700, 900] as const
+/** 展示层四周留白（像素）：文字宽度超过「屏宽 - 两侧留白」才算超出 */
+export const STAGE_PAD = 16
+/** 最近文案保留条数 */
+export const RECENT_MAX = 6
+/** 最近文案的存储键（沿用原手持弹幕的键，历史记录不丢） */
+export const RECENT_KEY = 'arkli:danmaku:recent'
 /** 对齐方式 */
 export type Align = 'left' | 'center' | 'right'
 
@@ -36,33 +52,10 @@ export const PRESETS: readonly Preset[] = [
   { name: '黑白', fg: '#ffffff', bg: '#000000', text: '你好' },
 ]
 
-/**
- * 测量函数：给定字号与容器宽度，返回文字排版后的总高度（像素）。
- * 浏览器里用隐藏节点量；单测里注入假实现。
- */
-export type MeasureFn = (fontSize: number, width: number) => number
-
-/**
- * 二分求能放进容器的最大字号。
- *
- * @param width 容器宽度
- * @param height 容器高度
- * @param measure 测量函数，返回该字号下文字总高度
- * @param min 字号下限，缺省 FONT_MIN
- * @param max 字号上限，缺省 FONT_MAX
- * @returns 整数字号，落在 [min, max]；连下限都放不下时返回下限
- * @example fitFontSize(400, 300, (fs, w) => fs * 2) // 150
- */
-export function fitFontSize(width: number, height: number, measure: MeasureFn, min = FONT_MIN, max = FONT_MAX): number {
-  if (width <= 0 || height <= 0) return min
-  let lo = min
-  let hi = max
-  while (lo < hi) {
-    const mid = Math.ceil((lo + hi) / 2)
-    if (measure(mid, width) <= height) lo = mid
-    else hi = mid - 1
-  }
-  return lo
+/** 键值存储的最小接口 */
+export interface KvStorage {
+  getItem(key: string): string | null
+  setItem(key: string, value: string): void
 }
 
 /**
@@ -91,14 +84,15 @@ export function blinkPeriod(hz: number): number {
 }
 
 /**
- * 整理输入文字：统一换行符并截断到上限。
+ * 整理要显示的文案：空白（含换行）合并成一个空格、去首尾空白、截断超长部分；空文案用默认文案。
  *
- * @param s 原始文字
- * @returns 整理后的文字
- * @example cleanText('a\r\nb') // 'a\nb'
+ * @param raw 用户输入
+ * @returns 可显示的非空单行文案
+ * @example cleanText('  hi\nthere ') // 'hi there'
  */
-export function cleanText(s: string): string {
-  return s.replace(/\r\n?/g, '\n').slice(0, TEXT_MAX)
+export function cleanText(raw: string): string {
+  const t = Array.from(raw.replace(/\s+/g, ' ').trim()).slice(0, TEXT_MAX).join('')
+  return t || DEFAULT_TEXT
 }
 
 /**
@@ -113,4 +107,77 @@ export function invertColor(hex: string): string {
   if (!m) return hex
   const v = 0xffffff - parseInt(m[1], 16)
   return '#' + v.toString(16).padStart(6, '0')
+}
+
+/**
+ * 文字是否超出屏幕：单行宽度大于「屏宽 - 两侧留白」就要滚动。
+ *
+ * @param textWidth 单行文字宽度（像素）
+ * @param viewWidth 屏幕宽度（像素）
+ * @param pad 单侧留白，默认 {@link STAGE_PAD}
+ * @returns 超出为 true；宽度无效按没超出处理
+ * @example overflows(400, 360) // true
+ */
+export function overflows(textWidth: number, viewWidth: number, pad = STAGE_PAD): boolean {
+  if (!(textWidth > 0) || !(viewWidth > 0)) return false
+  return textWidth > viewWidth - pad * 2
+}
+
+/**
+ * 算一圈滚动要多少秒：文字从屏幕右侧外滚到左侧外。
+ *
+ * @param textWidth 文字宽度（像素）
+ * @param viewWidth 屏幕宽度（像素）
+ * @param speed 速度（像素/秒）
+ * @returns 秒数；入参非法时返回 0
+ * @example scrollDuration(400, 600, 200) // 5
+ */
+export function scrollDuration(textWidth: number, viewWidth: number, speed: number): number {
+  if (!(textWidth >= 0) || !(viewWidth > 0) || !(speed > 0)) return 0
+  return (textWidth + viewWidth) / speed
+}
+
+/**
+ * 把新文案放到最近列表最前，去重并限制条数。
+ *
+ * @param list 现有列表
+ * @param text 新文案
+ * @param max 最多保留条数
+ * @returns 新列表（不修改入参）
+ */
+export function pushRecent(list: readonly string[], text: string, max = RECENT_MAX): string[] {
+  const t = text.trim()
+  if (!t) return [...list]
+  return [t, ...list.filter((x) => x !== t)].slice(0, max)
+}
+
+/**
+ * 读最近文案。
+ *
+ * @param storage 存储对象
+ * @returns 字符串数组；没有、损坏或存储不可用时为空数组
+ */
+export function loadRecent(storage: KvStorage | undefined): string[] {
+  try {
+    const raw = storage?.getItem(RECENT_KEY)
+    if (!raw) return []
+    const v: unknown = JSON.parse(raw)
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').slice(0, RECENT_MAX) : []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * 存最近文案；失败时静默。
+ *
+ * @param storage 存储对象
+ * @param list 要保存的列表
+ */
+export function saveRecent(storage: KvStorage | undefined, list: readonly string[]): void {
+  try {
+    storage?.setItem(RECENT_KEY, JSON.stringify(list.slice(0, RECENT_MAX)))
+  } catch {
+    // 存储满了或被禁用，忽略
+  }
 }

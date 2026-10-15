@@ -5,6 +5,9 @@ import android.content.Intent
 import android.net.Uri
 import android.util.Log
 import com.let188.arkli.ASSET_HOST
+import com.let188.arkli.camera.CameraCaptureOutcome
+import com.let188.arkli.camera.CameraCaptureRequest
+import com.let188.arkli.camera.CameraPolicy
 import com.let188.arkli.qrcode.QrScanOutcome
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
@@ -13,6 +16,14 @@ import java.util.concurrent.atomic.AtomicLong
 
 /** 日志 tag */
 internal const val FILE_LOG_TAG = "ArkliFiles"
+
+/**
+ * 选择器结果。
+ *
+ * @property uris 选中的 URI，点了拍照时为空
+ * @property camera 用户是否点了选图页的拍照按钮
+ */
+data class PickResult(val uris: List<Uri>, val camera: Boolean = false)
 
 /**
  * 需要借助 Activity 才能完成的交互：系统选择器与运行时权限申请。
@@ -28,6 +39,19 @@ interface ActivityHost {
      * @return 选中的 URI 列表，可能为空
      */
     suspend fun pickMedia(mime: String, multiple: Boolean, max: Int): List<Uri>
+
+    /**
+     * 同 [pickMedia]，但可要求选图页带悬浮拍照按钮，并把“用户点了拍照”带回。
+     * 默认实现忽略 [camera]，直接转 [pickMedia]。
+     *
+     * @param mime mime 过滤
+     * @param multiple 是否多选
+     * @param max 多选上限
+     * @param camera 是否显示拍照按钮（仅图片场景生效）
+     * @return 选中的 URI 与是否点了拍照
+     */
+    suspend fun pickMediaOrCamera(mime: String, multiple: Boolean, max: Int, camera: Boolean): PickResult =
+        PickResult(pickMedia(mime, multiple, max), false)
 
     /**
      * 打开系统文件夹选择器（SAF 目录树授权）。用户直接关掉返回 null。
@@ -70,6 +94,13 @@ interface ActivityHost {
     fun setScreen(keepAwake: Boolean?, brightness: Float?, immersive: Boolean?)
 
     /**
+     * 切换本应用的屏幕方向。默认实现什么都不做，由 Activity 覆盖。
+     *
+     * @param landscape true 为传感器横屏（两个横向都跟随重力），false 还原竖屏
+     */
+    fun setOrientation(landscape: Boolean) = Unit
+
+    /**
      * 请求系统授权修改一张 MediaStore 图片（API 30+ 的 `createWriteRequest` 确认框）。
      * 默认实现返回 false（不支持），由 Activity 覆盖。
      *
@@ -84,6 +115,14 @@ interface ActivityHost {
      * @return 识别到的全部码、用户取消或相机权限被拒
      */
     suspend fun scanQr(): QrScanOutcome = QrScanOutcome.Cancelled
+
+    /**
+     * 打开原生全屏相机拍摄页（拍照/录像/相册），拍摄或取消后返回。默认实现视为用户取消（不支持），由 Activity 覆盖。
+     *
+     * @param req 相机入参选项（模式、朝向、最大时长、镜头切换等）
+     * @return 拍摄结果、取消、选相册、权限拒绝或错误
+     */
+    suspend fun captureCamera(req: CameraCaptureRequest): CameraCaptureOutcome = CameraCaptureOutcome.Cancelled
 }
 
 /**
@@ -139,7 +178,9 @@ class FileEnv(context: Context, val host: ActivityHost) {
                 val n = janitor.run(startup)
                 // 进程重启后没有页面会话，out/ 里的拼图成品都是孤儿
                 val stitched = if (startup) OutFiles.purgeStitch(outDir) else 0
-                Log.i(FILE_LOG_TAG, "缓存清理 startup=$startup 删文件=$n 清空闲句柄=$idle 清拼图遗留=$stitched")
+                // 相机缓存只作为选图临时过渡，启动清理也一并清空
+                val camCleaned = if (startup) CameraPolicy.clearDirectory(CameraPolicy.camDir(roots.cacheRoot)) else 0
+                Log.i(FILE_LOG_TAG, "缓存清理 startup=$startup 删文件=$n 清空闲句柄=$idle 清拼图遗留=$stitched 清相机缓存=$camCleaned")
             }.onFailure { Log.w(FILE_LOG_TAG, "缓存清理失败", it) }
         }
     }

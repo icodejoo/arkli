@@ -8,10 +8,17 @@ description = "Arkli AI 运行时：推理后端抽象、provider 探测、PP-OC
 # 默认不带 ORT：宿主机单测全部走 mock 后端，不需要 onnxruntime 动态库
 default = []
 # 真实 ORT 后端，运行时通过 load-dynamic 加载 sherpa 自带的 libonnxruntime.so
-ort-backend = ["dep:ort"]
+ort-backend = ["dep:ort", "dep:tokenizers", "dep:serde", "dep:serde_json", "dep:whatlang"]
 
 [dependencies]
 # 钉死版本：这是 RC 版，API 可能随版本变动。
 # 升级 ort 或 sherpa（即内置 ORT）前，必须重跑 OCR 端到端回归，见 docs/research/spike-ort-sherpa.md。
 # 关闭默认特性、只开 load-dynamic，与 spike B 的配置一致；不开任何 EP 特性（该 ORT 无 XNNPACK）。
 ort = { version = "=2.0.0-rc.14", default-features = false, features = ["std", "load-dynamic"], optional = true }
+# 本地翻译（translate 模块）：tokenizers 已获用户批准（只开 fancy-regex，不带 onig/进度条/HTTP）；
+# serde/serde_json 用于 model.json 与 tokenizer.json 修补，均已是 tokenizers 的传递依赖。
+tokenizers = { version = "0.23.2", default-features = false, features = ["fancy-regex"], optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+# 翻译源语言自动检测：whatlang 已获用户批准（纯 Rust、MIT、无模型文件；默认特性为空，不带 serde/enum-map/arbitrary）。
+whatlang = { version = "0.18.0", default-features = false, optional = true }

@@ -2,6 +2,7 @@
 // 根组件：路由出口（工具页 iOS 风格推入/弹出，底栏 tab 之间淡入淡出）+ 底部 tab 栏，并让 Vant 暗色类跟随系统深浅色
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useKeyboardOpen } from '@/shared/useKeyboardOpen'
 import { holdScroll, isCachedRoute, isTabPath, pageTransition, releaseScroll, type PageTransition } from '@/router/transition'
 
 /** Vant 暗色主题的 class 名 */
@@ -24,8 +25,10 @@ const TABS = [
 const router = useRouter()
 /** 当前路由 */
 const route = useRoute()
-/** 底栏只在四个根 tab 页显示，工具页不显示 */
-const showTabbar = computed(() => isTabPath(route.path))
+/** 软键盘是否弹出：弹出时 WebView 被顶起，底栏要藏起来 */
+const keyboardOpen = useKeyboardOpen()
+/** 底栏只在四个根 tab 页显示，工具页不显示；键盘弹出时也隐藏 */
+const showTabbar = computed(() => isTabPath(route.path) && !keyboardOpen.value)
 /** 当前这次切换用的转场：进入更深一层推入，回到更浅一层弹出；在导航开始前定好，Transition 读到的就是它 */
 const kind = ref<PageTransition>('push')
 /** 这次切换的来源、目标路由名，用来判断哪个页面被缓存 */

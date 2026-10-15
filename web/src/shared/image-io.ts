@@ -160,24 +160,37 @@ function pickViaInput(multiple: boolean): Promise<File[]> {
   })
 }
 
+/** 选图入参 */
+export interface PickImagesOptions {
+  /** 是否多选 */
+  multiple?: boolean
+  /** 最多张数（原生上限 50） */
+  max?: number
+  /** 是否保留原图句柄（仅原生，用于覆盖原图） */
+  keepSource?: boolean
+  /** 是否在原生选图页显示拍照按钮（仅原生；点了会返回 camera: true） */
+  camera?: boolean
+  /** 部分文件失败的回调 */
+  onFailed?: (failed: Array<{ name: string; message: string }>) => void
+}
+
 /**
- * 选图：有宿主走 native.file.pick，否则退回 input[type=file]。
- * 用户取消返回空数组；原生 failed 的文件会在 onFailed 里回调。
+ * 选图并带回「用户点了拍照按钮」标记：有宿主走 native.file.pick，否则退回 input[type=file]。
  *
- * @param opts multiple 是否多选；max 最多张数（原生上限 50）；keepSource 是否保留原图句柄（仅原生，用于覆盖原图）；onFailed 部分文件失败的回调
+ * @param opts 见 {@link PickImagesOptions}
  * @param call 原生调用函数，默认走 bridge（仅测试注入）
- * @returns 选中的图片，宽高已探测
- * @example const imgs = await pickImages({ multiple: true, max: 9 })
+ * @returns images 选中的图片（取消或点拍照时为空）；camera 是否点了拍照按钮
+ * @example const { images, camera } = await pickImagesOrCamera({ camera: true })
  */
-export async function pickImages(
-  opts: { multiple?: boolean; max?: number; keepSource?: boolean; onFailed?: (failed: Array<{ name: string; message: string }>) => void } = {},
+export async function pickImagesOrCamera(
+  opts: PickImagesOptions = {},
   call: CallFn = bridgeCall,
-): Promise<PickedImage[]> {
+): Promise<{ images: PickedImage[]; camera: boolean }> {
   const { multiple = false, max = 20 } = opts
   if (isNativeAvailable()) {
-    const res = await call<{ items: NativePickItem[]; failed: Array<{ name: string; message: string }> }>(
+    const res = await call<{ items: NativePickItem[]; failed: Array<{ name: string; message: string }>; camera?: boolean }>(
       'native.file.pick',
-      { mime: IMAGE_ACCEPT, multiple, max, ...(opts.keepSource ? { keepSource: true } : {}) },
+      { mime: IMAGE_ACCEPT, multiple, max, ...(opts.keepSource ? { keepSource: true } : {}), ...(opts.camera ? { camera: true } : {}) },
       { timeoutMs: 0 },
     )
     if (res.failed?.length) opts.onFailed?.(res.failed)
@@ -187,16 +200,30 @@ export async function pickImages(
       const size = it.width && it.height ? { width: it.width, height: it.height } : await probeSize(url)
       list.push({ name: it.name, mime: it.mime, size: it.size, ...size, url, path: it.path, sourceHandle: it.sourceHandle, release: () => undefined })
     }
-    return list
+    return { images: list, camera: res.camera === true }
   }
   const files = (await pickViaInput(multiple)).slice(0, max)
-  return Promise.all(
+  const images = await Promise.all(
     files.map(async (f) => {
       const url = URL.createObjectURL(f)
       const size = await probeSize(url)
       return { name: f.name, mime: f.type || extToMime(f.name), size: f.size, ...size, url, release: () => URL.revokeObjectURL(url) }
     }),
   )
+  return { images, camera: false }
+}
+
+/**
+ * 选图：有宿主走 native.file.pick，否则退回 input[type=file]。
+ * 用户取消返回空数组；原生 failed 的文件会在 onFailed 里回调。
+ *
+ * @param opts 见 {@link PickImagesOptions}
+ * @param call 原生调用函数，默认走 bridge（仅测试注入）
+ * @returns 选中的图片，宽高已探测
+ * @example const imgs = await pickImages({ multiple: true, max: 9 })
+ */
+export async function pickImages(opts: PickImagesOptions = {}, call: CallFn = bridgeCall): Promise<PickedImage[]> {
+  return (await pickImagesOrCamera(opts, call)).images
 }
 
 /**

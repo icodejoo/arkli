@@ -11,6 +11,22 @@ export const PALETTE_MIN = 3
 export const PALETTE_MAX = 12
 /** 默认主色数量 */
 export const PALETTE_DEFAULT = 6
+/** 放大倍数下限 */
+export const ZOOM_MIN = 2
+/** 放大倍数上限 */
+export const ZOOM_MAX = 10
+/** 放大倍数默认值 */
+export const ZOOM_DEFAULT = 5
+/** 长按多久（毫秒）才唤起放大镜；更短的按下视为普通触摸，页面照常滚动 */
+export const LONG_PRESS_MS = 350
+/** 长按判定前允许的手指漂移（像素），超过就认为是在滑动页面 */
+export const MOVE_SLOP = 10
+/** 放大倍数的存储键 */
+export const ZOOM_KEY = 'arkli:image-palette:zoom'
+/** 放大镜气泡直径（CSS 像素） */
+export const LOUPE_SIZE = 110
+/** 放大镜与手指的间距（CSS 像素） */
+export const LOUPE_GAP = 24
 /** 半透明像素不参与统计的 alpha 阈值 */
 const ALPHA_MIN = 128
 /** 每像素通道数（RGBA） */
@@ -207,4 +223,63 @@ export function medianCut(data: ArrayLike<number>, count: number): PaletteColor[
       return { r: Math.round(r / n), g: Math.round(g / n), b: Math.round(b / n), count: n, ratio: n / total }
     })
     .sort((a, b) => b.count - a.count)
+}
+
+/**
+ * 放大倍数换算成取样窗口边长：气泡直径除以倍数，取整并保证是奇数（正中间要有一个像素），至少 3。
+ *
+ * @param zoom 放大倍数，会被夹到 {@link ZOOM_MIN}~{@link ZOOM_MAX}，非数字按默认值
+ * @returns 取样窗口边长（原图像素）
+ * @example
+ * loupeWindow(10) // 11
+ * loupeWindow(2) // 55
+ */
+export function loupeWindow(zoom: number): number {
+  const z = Number.isFinite(zoom) ? Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom)) : ZOOM_DEFAULT
+  const n = Math.max(3, Math.round(LOUPE_SIZE / z))
+  return n % 2 === 0 ? n + 1 : n
+}
+
+/**
+ * 读存下来的放大倍数。
+ *
+ * @param raw localStorage 里取到的原始值，没有为 null
+ * @returns 夹在范围内的整数倍数；没有或非法返回默认值
+ * @example
+ * loadZoom('12') // 12
+ */
+export function loadZoom(raw: string | null): number {
+  const n = Number(raw)
+  if (raw === null || !Number.isFinite(n)) return ZOOM_DEFAULT
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(n)))
+}
+
+/**
+ * 放大镜在原图上的取样矩形：以指向的像素为中心的正方形窗口。
+ * 窗口可能超出图片边界，canvas 的 drawImage 会自动裁掉超出部分。
+ *
+ * @param cx 指向像素的 x（原图坐标）
+ * @param cy 指向像素的 y（原图坐标）
+ * @param win 窗口边长（原图像素，奇数），一般来自 {@link loupeWindow}
+ * @returns 窗口左上角与边长
+ * @example
+ * loupeSourceRect(100, 50, 11) // { sx: 95, sy: 45, size: 11 }
+ */
+export function loupeSourceRect(cx: number, cy: number, win: number): { sx: number; sy: number; size: number } {
+  const half = Math.floor(win / 2)
+  return { sx: cx - half, sy: cy - half, size: win }
+}
+
+/**
+ * 手指从按下点漂移是否已超过长按允许的范围。
+ *
+ * @param dx 横向位移（像素）
+ * @param dy 纵向位移（像素）
+ * @param slop 允许的漂移，默认 {@link MOVE_SLOP}
+ * @returns 超过为 true（说明用户在滑动，不是长按）
+ * @example
+ * movedBeyondSlop(3, 4) // false
+ */
+export function movedBeyondSlop(dx: number, dy: number, slop = MOVE_SLOP): boolean {
+  return Math.hypot(dx, dy) > slop
 }

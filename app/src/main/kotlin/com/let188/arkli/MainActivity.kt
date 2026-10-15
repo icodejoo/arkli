@@ -4,6 +4,7 @@ import android.app.Activity
 import android.graphics.Color
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -35,6 +36,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.viewinterop.AndroidView
+import com.let188.arkli.ai.AiLifecyclePolicy
+import com.let188.arkli.ai.AiRecycle
 import com.let188.arkli.bridge.ArkliBridge
 import com.let188.arkli.files.ActivityHost
 import com.let188.arkli.files.FileEnv
@@ -47,8 +50,15 @@ import com.let188.arkli.splash.SplashActivity
 import com.let188.arkli.splash.SplashGate
 import com.let188.arkli.picker.PickOutcome
 import com.let188.arkli.picker.PickerContract
+import com.let188.arkli.picker.PickerMedia
+import com.let188.arkli.picker.PickerParams
+import com.let188.arkli.picker.PickerPolicy
+import com.let188.arkli.files.PickResult
 import com.let188.arkli.preview.ImagePreviewActivity
 import com.let188.arkli.preview.PreviewConst
+import com.let188.arkli.camera.CameraCaptureContract
+import com.let188.arkli.camera.CameraCaptureOutcome
+import com.let188.arkli.camera.CameraCaptureRequest
 import com.let188.arkli.qrcode.QrScanContract
 import com.let188.arkli.qrcode.QrScanOutcome
 import kotlinx.coroutines.Dispatchers
@@ -86,9 +96,21 @@ class MainActivity : ComponentActivity(), ActivityHost {
         when (outcome) {
             is PickOutcome.Picked -> finishPick(outcome.uris)
             PickOutcome.Cancelled -> finishPick(emptyList())
-            PickOutcome.Denied -> pickMany.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            PickOutcome.Camera -> {
+                cameraHit = true
+                finishPick(emptyList())
+            }
+            PickOutcome.Denied -> pickMany.launch(PickVisualMediaRequest(deniedFallback))
         }
     }
+
+    /** 自带选择页权限被拒时，回退到系统选择器用的媒体类型（随最近一次拉起更新） */
+    @Volatile
+    private var deniedFallback: ActivityResultContracts.PickVisualMedia.VisualMediaType = ActivityResultContracts.PickVisualMedia.ImageOnly
+
+    /** 自带选图页最近一次是否因点拍照按钮而结束 */
+    @Volatile
+    private var cameraHit = false
 
     /** 单选任意文件（SAF） */
     private val docOne = registerForActivityResult(ActivityResultContracts.OpenDocument()) { finishPick(listOfNotNull(it)) }
@@ -115,6 +137,12 @@ class MainActivity : ComponentActivity(), ActivityHost {
 
     /** 全屏扫码页（CameraX + zxing-cpp） */
     private val scanReq = registerForActivityResult(QrScanContract()) { scanSlot.complete(it) }
+
+    /** 正在等待结果的相机页，同一时刻只允许一个 */
+    private val cameraSlot = PendingSlot<CameraCaptureOutcome>("已有相机页在显示")
+
+    /** 全屏相机页（拍照/录像/相册入口） */
+    private val cameraReq = registerForActivityResult(CameraCaptureContract()) { cameraSlot.complete(it) }
 
     /** 运行时权限申请 */
     private val permReq = registerForActivityResult(ActivityResultContracts.RequestPermission()) { permSlot.complete(it) }
@@ -160,16 +188,16 @@ class MainActivity : ComponentActivity(), ActivityHost {
         files.cleanup(startup = true)
         setContent {
             // 返回键：能后退就后退，退到底就把应用放到后台回桌面；
-            // 不 finish()，这样再点图标是秒回原来的页面，不会冷启动重建 WebView
+            // 不 finish()，这样再点图标是秒回原来的页面，不会冷启动重建 WebView；退桌面前异步卸载 AI 回收内存
             BackHandler(enabled = true) {
                 val wv = page?.webView
                 if (wv == null) {
-                    moveTaskToBack(true)
+                    exitToHome()
                 } else {
                     // 先问页面有没有浮层要关（前端 backStack），没有再后退路由
                     wv.evaluateJavascript(BACK_PROBE) { consumed ->
                         if (consumed != "true") {
-                            if (wv.canGoBack()) wv.goBack() else moveTaskToBack(true)
+                            if (wv.canGoBack()) wv.goBack() else exitToHome()
                         }
                     }
                 }
@@ -183,6 +211,7 @@ class MainActivity : ComponentActivity(), ActivityHost {
                 bottom = if (imeBottom > 0) 0f else bars.getBottom(density) / density.density,
                 left = bars.getLeft(density, LayoutDirection.Ltr) / density.density,
                 right = bars.getRight(density, LayoutDirection.Ltr) / density.density,
+                imeOpen = imeBottom > 0,
             )
             LaunchedEffect(insets) {
                 safeInsets = insets
@@ -210,7 +239,14 @@ class MainActivity : ComponentActivity(), ActivityHost {
      * 协程被取消后选择器仍在屏幕上，槽位保留到结果到达（结果被丢弃），免得旧结果送给下一个请求。
      */
     override suspend fun pickMedia(mime: String, multiple: Boolean, max: Int): List<Uri> =
-        pickSlot.await(releaseOnCancel = false) { withContext(Dispatchers.Main) { launchPicker(mime, multiple, max) } }
+        pickSlot.await(releaseOnCancel = false) { withContext(Dispatchers.Main) { launchPicker(mime, multiple, max, false) } }
+
+    /** 带拍照按钮的选图，见 [ActivityHost.pickMediaOrCamera]；点了拍照时 uris 为空、camera 为 true */
+    override suspend fun pickMediaOrCamera(mime: String, multiple: Boolean, max: Int, camera: Boolean): PickResult {
+        cameraHit = false
+        val uris = pickSlot.await(releaseOnCancel = false) { withContext(Dispatchers.Main) { launchPicker(mime, multiple, max, camera) } }
+        return PickResult(uris, cameraHit)
+    }
 
     /** 打开文件夹选择器，见 [ActivityHost.pickDirectory]；与媒体选择器一样，取消协程后槽位保留到结果到达 */
     override suspend fun pickDirectory(): Uri? =
@@ -234,6 +270,10 @@ class MainActivity : ComponentActivity(), ActivityHost {
     /** 打开扫码页，见 [ActivityHost.scanQr]；扫码页盖在上面，取消协程后槽位保留到结果到达 */
     override suspend fun scanQr(): QrScanOutcome =
         scanSlot.await(releaseOnCancel = false) { withContext(Dispatchers.Main) { scanReq.launch(Unit) } }
+
+    /** 打开相机页，见 [ActivityHost.captureCamera]；结果到达前槽位保留 */
+    override suspend fun captureCamera(req: CameraCaptureRequest): CameraCaptureOutcome =
+        cameraSlot.await(releaseOnCancel = false) { withContext(Dispatchers.Main) { cameraReq.launch(req) } }
 
     /** 打开原生全屏图片预览，见 [ActivityHost.previewImages]；拉起要在主线程 */
     override fun previewImages(files: List<File>, index: Int) {
@@ -278,11 +318,25 @@ class MainActivity : ComponentActivity(), ActivityHost {
         }
     }
 
+    /** 切换屏幕方向，见 [ActivityHost.setOrientation]；清单里的 configChanges 已含 orientation，页面不会重建 */
+    override fun setOrientation(landscape: Boolean) {
+        runOnUiThread {
+            requestedOrientation =
+                if (landscape) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+    }
+
     /** 按 mime 种类拉起对应的选择器，必须在主线程 */
-    private fun launchPicker(mime: String, multiple: Boolean, max: Int) {
-        // 图片多选走自带页：系统选择器在部分机型点一下就返回，体验不一致
-        if (multiple && PickKind.of(mime) == PickKind.IMAGE) {
-            pickManyImages.launch(max)
+    private fun launchPicker(mime: String, multiple: Boolean, max: Int, camera: Boolean) {
+        // 图片、视频的相册选择一律走自带页（系统选择器在部分机型点一下就返回，也无法加按钮）
+        val custom = PickerPolicy.mediaOf(PickKind.of(mime))
+        if (custom != null) {
+            deniedFallback = when (custom) {
+                PickerMedia.IMAGE -> ActivityResultContracts.PickVisualMedia.ImageOnly
+                PickerMedia.VIDEO -> ActivityResultContracts.PickVisualMedia.VideoOnly
+                PickerMedia.IMAGE_VIDEO -> ActivityResultContracts.PickVisualMedia.ImageAndVideo
+            }
+            pickManyImages.launch(PickerParams(PickerPolicy.resolveMaxCount(multiple, max), camera, custom))
             return
         }
         val media: ActivityResultContracts.PickVisualMedia.VisualMediaType? = when (PickKind.of(mime)) {
@@ -315,6 +369,15 @@ class MainActivity : ComponentActivity(), ActivityHost {
         super.onPause()
     }
 
+    /**
+     * 返回键退到底：先异步卸载 AI 会话（排在 AiHeavyGate 后，不阻塞主线程、不打断推理），再把应用放到后台回桌面。
+     * Home 键与最近任务切走不走这里，不卸载；再次打开后翻译会自动重新加载。
+     */
+    private fun exitToHome() {
+        AiRecycle.releaseAll("back-exit")
+        moveTaskToBack(true)
+    }
+
     /** 回到前台：通知页面 */
     override fun onResume() {
         super.onResume()
@@ -327,12 +390,20 @@ class MainActivity : ComponentActivity(), ActivityHost {
         files.cleanup(startup = false)
     }
 
+    /** 系统内存告急（前台极度紧张或后台最易被杀）时卸载 AI 会话，下次用到会自动重新加载 */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (AiLifecyclePolicy.shouldReleaseOnTrim(level)) AiRecycle.releaseAll("trim-$level")
+    }
+
     /** 销毁时释放页面 */
     override fun onDestroy() {
         // 配置变更（旋转等）只是重建，页面还要用成品；真正销毁时尽力清掉拼图遗留
         if (!isChangingConfigurations) files.purgeStitchOutputs()
         page?.destroy()
         page = null
+        // 真正退出（不是旋转重建）：异步卸载翻译与识物会话回收内存；后台、旋转都不卸载
+        if (isFinishing) AiRecycle.releaseAll("activity-finish")
         super.onDestroy()
     }
 

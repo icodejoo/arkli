@@ -165,7 +165,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="tool-page">
-    <van-notice-bar v-if="!hosted" wrap-able :scrollable="false" left-icon="info-o">{{ TIP_NO_HOST }}</van-notice-bar>
+    <van-notice-bar v-if="!hosted" wrapable :scrollable="false" left-icon="info-o">{{ TIP_NO_HOST }}</van-notice-bar>
 
     <div class="tool-card">
       <van-search v-model="query" placeholder="搜索应用名或包名" shape="round" :disabled="!hosted" />

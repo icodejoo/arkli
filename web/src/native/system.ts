@@ -39,6 +39,7 @@ export const SYSTEM_METHODS = {
   keepAwake: 'native.screen.keepAwake',
   brightness: 'native.screen.brightness',
   immersive: 'native.screen.immersive',
+  orientation: 'native.screen.orientation',
   deviceInfo: 'native.device.info',
   deviceStatus: 'native.device.status',
   deviceDisplay: 'native.device.display',
@@ -367,6 +368,21 @@ export async function setBrightness(value: number, call: CallFn = bridgeCall): P
 export async function setImmersive(on: boolean, call: CallFn = bridgeCall): Promise<void> {
   requireNative(SYSTEM_METHODS.immersive)
   await call(SYSTEM_METHODS.immersive, { on })
+}
+
+/** 屏幕方向模式：横屏（传感器，两个横向都跟随重力）/ 竖屏 */
+export type ScreenOrientation = 'landscape' | 'portrait'
+
+/**
+ * 切换屏幕方向。无宿主时抛 {@link NativeUnavailableError}；用完务必还原成竖屏。
+ *
+ * @param mode `landscape` 传感器横屏；`portrait` 还原竖屏
+ * @param call 原生调用函数，默认走 bridge（仅测试注入）
+ * @example await setOrientation('landscape'); try { ... } finally { await setOrientation('portrait') }
+ */
+export async function setOrientation(mode: ScreenOrientation, call: CallFn = bridgeCall): Promise<void> {
+  requireNative(SYSTEM_METHODS.orientation)
+  await call(SYSTEM_METHODS.orientation, { mode })
 }
 
 /**

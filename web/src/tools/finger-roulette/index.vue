@@ -189,7 +189,7 @@ onBeforeUnmount(cancelTimer)
         {{ ringText(f.id) }}
       </span>
     </div>
-    <p class="tool-hint">部分手机三指下滑是截屏手势，会抢走触摸；遇到的话在系统设置里关掉。</p>
+    <p class="tool-hint">部分手机三指下滑是截屏手势、双指长按是识屏手势（如华为），会抢走触摸；遇到的话在系统设置里关掉。</p>
   </div>
 </template>
 

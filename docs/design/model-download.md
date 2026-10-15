@@ -7,7 +7,7 @@ summary: native.model.* 的清单格式、下载器安全设计（白名单、�
 ## TL;DR
 - 本地模型（决策 [0005](../decisions/0005-ai-four-layers.md)）一律**按需下载**，由原生 `ModelManager` 统一管：清单随包、下载在后台、断点续传、sha256 校验、用户可删除并看到占用空间。
 - **页面只能传模型 id，不能传 URL**。下载地址只来自随包的 `assets/ai/models.json`，防止被页面或注入内容指向任意地址（SSRF、恶意模型）。
-- 桥方法契约见 [Bridge 协议](bridge-protocol.md) 的「模型下载管理方法」；代码在 `com.let188.arkli.model`，前端在 `web/src/native/model.ts` 与 `useModelState.ts`。
+- 桥方法契约见 [Bridge 协议](bridge-protocol.md) 的「模型下载管理方法」；代码在 `com.let188.arkli.model`，前端在 `web/src/native/model.ts` 与 `web/src/stores/models.ts`。
 - **托管位置**：清单里的 URL（`https://github.com/icodejoo/arkli/releases/download/siglip2-q4half-v1/q4_half.onnx`）对应的 release 已于 2026-10-15 发布（公开仓库，Apache-2.0，附许可证文本与 `SHA256SUMS`）。真实链路已实测：302 直接落到 `release-assets.githubusercontent.com`（所以 `DOWNLOAD_HOSTS` 里这个域名要保留），下载后字节数 54,662,805 与 sha256 `6b4ea1ec…217a` 和清单一致。App 内的下载（含 302 与白名单校验）还没在真机上用真实地址走过，之前只用本机 Range 服务验证过下载器。
 
 ## 清单（`app/src/main/assets/ai/models.json`）
@@ -63,7 +63,7 @@ summary: native.model.* 的清单格式、下载器安全设计（白名单、�
 - **取消**（`cancel`、协程取消）不删 `.part`；失败（网络、校验）也保留或按规则清理，原因记在 `error`，下次 `ensure` 清除。`remove` 才清理全部。
 - **续传判定**（`ModelPolicy.decideRange`）：200 视为服务器不支持 Range，截断 `.part` 从头来；206 要求 `Content-Range` 起点等于请求偏移、终点是文件末尾、总长（若给了）等于清单；416 且偏移等于总长视为已完整，否则丢弃 `.part` 重来。
 - **重试**：同一源上连续 3 次无进展的失败才换源（有进展则计数重置），累计重试硬上限 12 次；退避 1、2、4、8 秒封顶。4xx（除 408/429）、白名单拒绝、长度不符不重试，直接换源。超时 20 秒。
-- **进度**：下载在管理器自己的协程作用域里，**不随页面会话关闭而取消**；页面重载后 `status` 接着看。事件推送是会话级的（`ctx.emit` 页面关了就丢），所以用“`ensure` 立即返回 + 轮询 `status`”，页面端 `useModelState` 默认 500 毫秒轮询，下载结束自动停。
+- **进度**：下载在管理器自己的协程作用域里，**不随页面会话关闭而取消**；页面重载后 `status` 接着看。事件推送是会话级的（`ctx.emit` 页面关了就丢），所以页面启动时用 `native.model.list` 取一次快照，之后靠 `model.changed` 事件实时更新：管理器有一个进程级监听者，由最新会话的桥安装；进度按 300 毫秒节流，状态切换即时推送。前端由 `useModelsStore` 统一接收。
 - **删除时释放会话**：`ModelManager.addReleaseHook`，识物登记了 `ClipService.unload()`（排在 `AiHeavyGate` 后，不打断正在进行的识别），再删文件。
 
 ## 已验证（真机 STG-AL00，debug 包 + 本机 Range 服务 + `adb reverse`）

@@ -121,6 +121,13 @@ class SystemPolicyTest {
     // ---- ScreenParams ----
 
     @Test
+    fun orientationMapping() {
+        assertTrue(ScreenParams.landscape("landscape"))
+        assertFalse(ScreenParams.landscape("portrait"))
+        assertThrows(IllegalArgumentException::class.java) { ScreenParams.landscape("diagonal") }
+    }
+
+    @Test
     fun brightnessMapping() {
         assertEquals(0.5f, ScreenParams.brightness(0.5), 0f)
         assertEquals(1f, ScreenParams.brightness(1.0), 0f)

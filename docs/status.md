@@ -13,6 +13,7 @@ summary: 接手入口：做到哪、已拍板什么、验证到什么程度、�
 - **识物第 1 步：ORT 接入 + `native.ai.classify`（2026-10-14）**：App 里首次有了 ORT。Rust `arkli-ai` 新增 `clip`（PIL 同款抗锯齿 bilinear 缩放 → 归一化 → SigLIP2 `q4_half` 推理 → L2 向量）与 `classify`（182 条英文词表、`softmax(100×余弦)` 按分类聚合、置信度 <0.8 判“拿不准”），经 `arkli-ffi` 的 UniFFI 暴露；Kotlin 新增 `LocalClipProvider`（`local-clip`）、`ClipService`、`AiHeavyGate`（重任务互斥）、桥方法 `native.ai.classify`；web 加 `aiClassifyImage()`（旧 `aiClassify` 与 `image-classify` 页已在第 3 步删除）。**真机 STG-AL00 验证**：裸名 `libonnxruntime.so` 在 APK 进程内从 APK 直接映射并推理成功；8 张图 top-3 物品 id 与 PC 完全一致，余弦差 ≤0.0015，单张约 1.0 s；首次加载约 +0.7 s，进程峰值 RSS +约 107MB。词表随包（`assets/ai/`，生成脚本 `tools/ai-vocab/`），**分类仍是草稿，待对照官方指引核对**。模型文件本步不下载（debug 用 adb 放进 `filesDir/models/siglip2-q4_half/`），第 2 步做下载管理。详见 [桥协议](design/bridge-protocol.md) 的 AI 提供者方法。
 - **识物第 2 步：通用模型下载管理 `native.model.*`（2026-10-14）**：随包清单 `assets/ai/models.json`（信任锚，页面只传 id 不传 URL）+ 原生 `ModelManager`/`ModelDownloader`（只用 `HttpURLConnection`，Range 续传、多源回退、逐跳校验重定向、空间 1.2 倍检查、sha256 校验后原子改名、取消保留 `.part`、重试退避、同一模型单任务），桥方法 `list/status/ensure/cancel/remove/verify`（轮询 `status`，无事件推送），前端 `model.ts` 与 `useModelState`；`native.ai.providers` 的 `local-clip` 增 `modelId/downloaded/sizeBytes/downloading`，可用性改为“已安装且校验通过”，`remove` 会先 `clip_unload`。`NetPolicy` 新增独立的 `DOWNLOAD_HOSTS`（`github.com`、`objects.githubusercontent.com`、`release-assets.githubusercontent.com`），不进页面 CSP。**测试**：Kotlin 全量 518 个通过（新增 59 个：下载器 25、管理器 17、清单与策略 17），web 138 个文件 1962 个通过，`vue-tsc` 通过。**真机 STG-AL00（debug 包 + 本机 Range 服务 + `adb reverse`）**：中途掉线与取消后均按 `Range` 续传到完整、sha256 与清单一致，服务器忽略 Range 时从头来，篡改 1 字节被 `HASH_MISMATCH` 拒绝，下载后 `native.ai.classify` 跑通，`remove` 后回到未安装并可再次下载；release 包无 debug 钩子、无明文放行。**未验证**：GitHub release 的真实 302 链路（**托管 release 尚未发布，清单里的 URL 是占位**）、移动网络、后台被杀后的续传、空间不足的真机路径（仅单测）。**未做**：多连接分片、前台服务、清单签名。设计见 [模型下载管理](design/model-download.md)。
 - **识物第 3 步：Web 工具页 `waste-classify`（2026-10-14）**：替换旧 `image-classify`（旧 `aiClassify`、页面、`native.ai.status` 的前端消费都已删，原生 `native.ai.status` 保留）。流程：未安装→下载引导（计费网络先确认、进度/速度/取消续传、错误码转人话）→选图→识别→顶部大字分类 + top-3 点选采纳（拿不准不给强结论）→易混提示→删除模型。**App 接入完成（待发布模型）**。真机 STG-AL00 走通：删除→下载（本机 Range 服务）→选图→识别→点候选→删除确认；仅相册选图，没有 `native.camera.capture`。词表分类仍是草稿，页面底部固定“仅供参考”小字。
+- **模型选择器（2026-10-15）**：带 ai 标签的工具标题栏右上角统一出现模型选择器（`shared/ModelPicker.vue`），四种状态（普通/着色/置灰/loading）、未下载点击即下载并弹可跳转 `/ai` 的提示；`useModelChoice(toolId)` 记忆每工具选择；L2/L4 占位「未接入」，L3 探测不到就隐藏。**只做选择与展示，不改推理引擎**；真机未验证。设计见 [模型选择器](design/model-picker.md)。
 - 仍缺：视频压缩/提取音频/转 GIF 的 Media3 替换（平台 API 版已有）；OCR/超分/识别/抠图/融合/上色（页面已做，本地模型方法只有 `native.ai.status` 桩，模型未接入；另有 AI 提供者抽象 `native.ai.providers` / `native.ai.run` 与系统应用交接，见 [0004](decisions/0004-ai-provider-abstraction.md)，真机验证待做）；查字的部首笔画、藏头诗等（缺合规数据）。
 - 当前 release APK **1,737,792 字节**（空壳基线 1,220,629）。测试：Kotlin 156、web 38 文件 413 例、`arkli-ai` 49 个单测加 9 个 doctest，全绿。
 - **下一步**：系统能力（权限、分享、剪贴板、震动等）→ 联网余下部分 → 视频音频（Media3，要先确认依赖）→ AI 运行时真机复验。见"待办"。
@@ -40,7 +41,7 @@ summary: 接手入口：做到哪、已拍板什么、验证到什么程度、�
 | bridge 通道 | `WebMessageListener`（已落地，取代 `@JavascriptInterface`） |
 | INTERNET | 已加；出站只放行 `api.wikimedia.org`（精确主机名），页面直连、CSP `connect-src` 同步；其余一律拦截 |
 | AI 基座 | sherpa-onnx；视觉类复用其 ORT；`ort` 钉死 `=2.0.0-rc.14` + `load-dynamic`；NPU 暂不做 |
-| 已批准的新依赖 | CameraX 1.5.3（`camera-core/camera2/lifecycle/view`，2026-10-14 已批准）、`io.github.zxing-cpp:android` 3.1.1（2026-10-14 已批准）、`vant`、`unplugin-vue-components`、`@vant/auto-import-resolver`、`vitest`、`tyme4ts` 1.5.3、`@noble/hashes` 2.4.0、`pinyin-pro` 3.29.5、`kotlinx-coroutines`、JUnit、`org.json`（测试）、`ort`；二维码生成用 nayuki 单文件（MIT，`web/src/vendor/`） |
+| 已批准的新依赖 | CameraX 1.5.3（`camera-core/camera2/lifecycle/view`，2026-10-14 已批准）、`io.github.zxing-cpp:android` 3.1.1（2026-10-14 已批准）、`vant`、`unplugin-vue-components`、`@vant/auto-import-resolver`、`vitest`、`tyme4ts` 1.5.3、`@noble/hashes` 2.4.0、`pinyin-pro` 3.29.5、`kotlinx-coroutines`、JUnit、`org.json`（测试）、`ort`、`whatlang` 0.18.0（2026-10-15 已批准，翻译 auto 语言识别）；二维码生成用 nayuki 单文件（MIT，`web/src/vendor/`） |
 | 其余 | tools-overview.md "B. 不反对就按默认执行"整张表，按默认走 |
 
 ## 已完成与证据
@@ -58,6 +59,7 @@ summary: 接手入口：做到哪、已拍板什么、验证到什么程度、�
 
 ### Rust
 - `core/crates/arkli-ai`：PP-OCR 管线的纯逻辑（预处理、DB 后处理、CTC、取消与进度）、provider 探测、推理后端 trait；`ort` 仅在 `ort-backend` 特性后。`arkli-core` 仍零依赖。**识物（`clip` 编码器 + `classify` 分类，纯函数）已经经 `arkli-ffi` 的 UniFFI 接入并进 APK，真机裸名 dlopen 已在 APK 进程内复验；OCR 管线本身仍没接 UniFFI，OCR 端到端耗时没复验。**
+- **本地翻译 NLLB 接入（2026-10-15）**：Rust `arkli-ai::translate`（feature `ort-backend`，移植自 Cisox snow-translator，只留 m2m100 路径：清单、分词含 null charsmap 修补、分句、束搜索、全角标点后处理）+ UniFFI `translate_load/translate_run/translate_unload` + Kotlin `local-nllb` 提供者与桥方法 `native.ai.translate`（`TranslateService`/`AiTranslatePolicy`，走 `AiHeavyGate`，删除模型前 `addReleaseHook` 释放）+ `models.json` 新条目 `nllb600m-un6-ccm-int4`（6 个文件 404,501,627 字节，sha256 已在宿主机与设备上各校验一次）。新依赖只加了 `tokenizers 0.23.2`（`default-features=false, features=["fancy-regex"]`，用户已批准）与 `serde`/`serde_json`（均为其传递依赖，optional，随 `ort-backend`）；`ort` 仍是 `=2.0.0-rc.14`，没引 ndarray，没用补丁分支。`OrtBackend::load` 改成进程内共享环境、幂等（rc.14 一个进程只许建一次环境，识物与翻译共用）。**证据**：宿主机（onnxruntime 1.28.2）`cargo test -p arkli-ai --features ort-backend`：126 通过，真实模型 ignored 测试 zh-CN→en / en→zh-CN / en→fr 通过，与 Cisox `nllb_parity.json` 夹具对拍 9/9 译文逐字一致（ja 两对不在本包语言内，跳过）；`./gradlew :app:testDebugUnitTest` 575 通过。**真机（STG-AL00，Android 12）**：sherpa 自带 ORT 1.28.2 能加载 MatMulNBits int4 模型；模型加载 2.8 秒，首句总耗时 4.8 秒（含加载），后续短句 1.4~2.0 秒，两句长文本 beams=4 约 5.0 秒；进程 RSS 基线约 237MB，翻译后 577MB（峰值 616MB），卸载后 513MB。`libarkli_ffi.so`（arm64 release）510,912 → 3,315,600 字节，gzip -9 237,143 → 1,239,468（+2.8MB 原始 / +1.0MB 压缩，主要是 tokenizers 与 regex 的 Unicode 表）。
 
 ### Web（25 个工具，id 见 `web/src/tools/registry.ts`）
 - 文本与计算：金额转大写、进制转换、单位换算、时间计算器、日期计算器、亲戚关系计算器、阳历/阴历互转、中文转拼音。
@@ -92,6 +94,14 @@ OCR 工具页（依赖 4）。二维码扫码原型已做，待真机验证。
 - **全部任务完成后，找一台有点积（`asimddp`）和 fp16（`fphp`）的手机复测** Rust ort、llama.cpp、MNN，再决定是否改 0002（见 [端侧 LLM 对比](research/on-device-llm-comparison.md)）。
 - 对联 GPT-2 int4 在 Android 真机上跑通并实测速度、对联工具页接入（下载、解码、上联 ≤14 字、拦截英文数字括号、等长约束）；垃圾分类识物工具页接入（第 1 步“ORT 接入 + `native.ai.classify`”与第 2 步模型下载管理已做；剩第 3 步 Web 页；SigLIP2 `q4_half`，54.7MB 按需下载，词表向量只用英文；q4f16 在 STG-AL00 上 SIGILL，**fp16 留到高端机再实测**；真机测试文件保留）；L4 在线 OpenAI 先出方案（密钥存储、`native.net` 加 POST 与流式）；AI 页“模型配置”占位入口接管理功能。
 - 设备上 `/data/local/tmp/qwenspike/`（约 641MB）是探测残留，用户尚未说清理。
+- （已解决，见下一条）翻译：真机上模型卸载后 RSS 仍比基线高约 275MB（ORT arena 与映射页未完全归还），需要时可评估 `trim_after_request` 或进程级回收；`libarkli_ffi.so` 体积 +2.8MB 是否值得继续瘦身（如换更小的分词实现）待定；`core/scripts/build-android.ps1` 读 `core	arget\debug` 里的 dll 生成 Kotlin 绑定，本机设了 `CARGO_TARGET_DIR` 时读到的是旧 dll，绑定会缺新函数，需改脚本按 `cargo metadata` 取 target 目录（这次是手动用 `C:\cargo-target\cisox\debugrkli_ffi.dll` 重生成的）。
+
+### 5c. 翻译源语言 auto 与返回键回收（2026-10-15）
+- **auto 源语言**：`native.ai.translate` 的 `src` 可传 `'auto'`（`tgt` 不可以），结果多 `detectedSrc: string[]`、`unrecognized: boolean`，语义见 [bridge-protocol](design/bridge-protocol.md) 的 `native.ai.translate`。实现：Rust `arkli-ai::translate::detect`（`whatlang` 按句识别，限定模型支持的语言；映射表 whatlang→应用码带单测，`Cmn`→`zh-CN`）；引擎对不可识别句子原样输出；UniFFI `TranslateResult` 加 `detected`/`unrecognized`；Kotlin `AiTranslatePolicy` 放行 auto。
+- **新依赖 `whatlang 0.18.0`**（用户已批准）：`default-features=false`，optional，挂在 `ort-backend` 下，纯 Rust、MIT、无模型文件。`libarkli_ffi.so`（arm64 release）3,315,704 → 3,568,072 字节（+252,368），gzip -9 1,238,504 → 1,309,147（+70,643）。
+- **证据**：`cargo test -p arkli-ai -p arkli-ffi --features arkli-ai/ort-backend` 137 + 8 通过（6 个 ignored 为真模型）；真模型 ignored 测试 `真实模型自动识别源语言` 通过；`./gradlew :app:testDebugUnitTest` 通过。真机（STG-AL00）四类输入：法语 `Bonjour le monde. Comment ça va ?` → `detectedSrc=["fr"]`；中文 `你好，世界。` → `["zh-CN"]`；中英混排 `Hello world. 你好世界。`→fr 得 `["en","zh-CN"]`；`😀😀😀`、网址 → 原样、`[]`、`unrecognized=true`；`src==tgt`、`tgt=auto`、不支持语言仍 `BAD_PARAMS`。
+- **识别的已知局限（待用户知悉）**：whatlang 对短句置信度整体偏低，阈值靠实测定（`MIN_CONFIDENCE=0.04`、`FOREIGN_CONFIDENCE=0.1`，依据写在 `detect.rs` 常量注释）；单词级输入（如 `Hello`、`Hola`）常判不出而原样输出，很短的非支持语言句（如 `Ich liebe dich.`、`Guten Tag…`）可能被当成最像的支持语言翻译。繁体与简体无法区分。
+- **返回键回收实测**（STG-AL00，`/proc/<pid>/status` VmRSS）：冷启动基线 182,908 kB；warmup 后 525,624 kB；返回键退到桌面后 30 秒 208,252 kB（基线 +25MB，同一进程）；再从桌面图标回来翻译正常（自动重新加载，总耗时 3.5 s）；Home 键退后台 30 秒后 558,148 kB（未卸载，证明 Home 不回收）。第二次返回键退出 20 秒后 198,016 kB。`ArkliAi` 日志在 logcat 里没抓到（缓冲仅 256KiB，被 Chromium 控制台刷掉），以内存数据为证。
 
 ### 6. 工具与前端小项
 - 手持弹幕、时间屏幕固定竖屏后体验受限，**是否页面内旋转 90° 模拟横屏待用户定**。
@@ -100,16 +110,24 @@ OCR 工具页（依赖 4）。二维码扫码原型已做，待真机验证。
 - `formatError` 对 `{code:'', message}` 或无 `code` 的对象会输出 `[object Object]`（已知小 bug，未修）；`markUsed` 不校验 id。
 - Vant 图标字体的 `at.alicdn.com` 回退被 CSP 拒绝，console 有一条无害噪音；字体内嵌约 34KB（gzip）。
 - 各工具里有重复的局部样式，可抽共用组件。
+- **AI 预热与回收（本轮，原生侧）**：新增 `native.ai.warmup` / `native.ai.unload`（契约见 [桥协议](design/bridge-protocol.md)「AI 提供者方法」），退出与内存告急时 `AiRecycle` 兜底卸载。内存残留的根因是 bionic scudo 不把 ORT 释放的堆页还给系统，卸载末尾加 `mallopt(M_PURGE)`（`arkli-ffi/src/mem.rs`，只安卓生效）后残留由约 +300MB 降到约 +24MB。测量口径：STG-AL00、Android 12，`run-as` 读 `/proc/<pid>/status` 的 VmRSS/RssAnon/RssFile 与 `smaps_rollup` 的 Pss，卸载后等 30 秒再量（5 秒与 30 秒无差别）。
+  - 数据（VmRSS MB / RssAnon MB / PSS MB）：冷启动基线 193 / 98 / 130；warmup 后 530 / 416 / 466；翻译 3 句后 562 / 387 / 506；卸载（无 purge）495 / 381 / 436；卸载（有 purge）223 / 106 / 158，差值 +30 / +8 / +28；两模型（翻译+识物）都加载 604，finish 触发回收后 217（基线 193，+24）；回收后再次启动 226。无 purge 的残留 100% 是匿名页（RssFile 回到 112MB 与基线 93MB 只差 ORT 库与 tokenizers 的代码页，约 20MB，可回收）。
+  - 耗时：冷加载首句 4.5 s（含加载 2.7 s），预热后首句 1.9 s，之后 1.9~2.6 s；purge 前后翻译耗时无变化（1.9/2.0/2.6 s）。`local-clip` 预热 0.56 s。
+  - 验收阈值建议：卸载后 VmRSS ≤ 基线 +30MB、PSS ≤ 基线 +30MB（实测 +24~30MB，贴着线，剩余部分是文件映射的 .so 代码页与 Java 堆增长，不是模型）。没有做的缓解：`cpu_arena=false`、`trim_after_request`、`madvise`——purge 已达标，不再引入；独立进程（`:ai`）因此不需要，评估见汇报。
+  - **已决定并落地（2026-10-15）**：按返回键退到桌面也释放：`MainActivity.exitToHome()` 在 `moveTaskToBack` 前调 `AiRecycle.releaseAll("back-exit")`（代价是下次回来首次翻译重新加载约 2.7 s）；Home 键、最近任务切走仍不卸载。实测见下方“翻译源语言 auto”条。`onTrimMemory` 只在 Activity 上监听，Activity 被系统销毁后（进程仍缓存）收不到，要补收则需自定义 `Application`；另外 `speech`（语音识别）会话不在本轮回收范围。
 
 ## 待用户拍板 / 未知
 - **开源协议**还没选（仓库无 LICENSE）：GPL 类依赖（如 libimagequant）会牵连整个 App，选协议要早于引入这类依赖。
 - 模型与数据包托管位置（识物 `q4_half.onnx` 已于 2026-10-15 发布到 GitHub release `siglip2-q4half-v1`（公开仓库），真实下载链路已实测：302 直接落到 `release-assets.githubusercontent.com`，下载后 sha256 与清单一致；后续考虑补镜像，单连接在菲律宾偏慢）；拼豆色号表数据来源；国内商店对按需下载 so 的规则（没查到原文）。
-- AI 运行时（ORT + sherpa JNI，arm64 约 27MB 未压缩）是否随包：**ORT 已随包**（只带 `libonnxruntime.so` 22.25MB，不带 sherpa JNI；release APK 4,917,752 → 27,643,404 字节，gzip -9 3,309,480 → 11,605,440），是否改为按需下载 ORT 等复议；sherpa JNI 等接 sherpa 能力时再定。**新增构建步骤待确认**：Gradle 任务 `fetchOrtRuntime` 构建时从 GitHub 下载 50MB 的 sherpa AAR 并校验 sha256，缓存在 `.gradle/arkli-ort/`。
+- AI 运行时（ORT + sherpa JNI，arm64 约 27MB 未压缩）是否随包：**ORT 已随包**（只带 `libonnxruntime.so` 22.25MB，不带 sherpa JNI；release APK 4,917,752 → 27,643,404 字节，gzip -9 3,309,480 → 11,605,440），是否改为按需下载 ORT 等复议；sherpa JNI 等接 sherpa 能力时再定（**2026-10-15 语音转文字已接入 sherpa JNI**：`fetchOrtRuntime` 同时从同一 AAR 取 `libsherpa-onnx-jni.so`（4.77MB，gzip -9 约 1.96MB）与 Kotlin API `classes.jar`（239KB，gzip -9 约 222KB），仅 arm64-v8a，与 Rust 共用同一份 `libonnxruntime.so`，已随包，待用户确认）。**新增构建步骤待确认**：Gradle 任务 `fetchOrtRuntime` 构建时从 GitHub 下载 50MB 的 sherpa AAR 并校验 sha256，缓存在 `.gradle/arkli-ort/`。
 - 高通、华为运行库再分发许可（NPU 暂搁置）。
 - **对联 GPT-2 的 release（`couplet-gpt2-v1`，公开仓库）许可证无法确认可再分发**：用户决定不向作者确认、风险自负；作者若不允许要删除 release（见 [对联 GPT-2](research/couplet-gpt2-onnx.md)）。
 - 端侧 LLM 的 tokenizer：引入 `tokenizers` crate（新依赖）还是自写 BPE 解析，未定。
 - `ArkliPage` 里 `bridge` 字段先于 `binarySupported` 初始化，`native.hello` 的 `features.binary` 可能一直是 false（只会永远走 base64 兜底，不出错但慢）：修不修待定。
 - 宜忌释义 123 条非"待核对"条目是通俗改写，没有逐条对权威黄历核过，正式上线前建议找懂行的人过一遍。
+- **翻译模型托管待定**：`nllb600m-un6-ccm-int4` 解压后的 6 个单文件还没上传到 release，`models.json` 里的 URL 是占位 `https://github.com/icodejoo/Cisox/releases/download/models/<文件名>`，上传后要核对 URL、字节数与 sha256（`encoder.onnx_data` 158,297,088 字节、`decoder.onnx_data` 229,598,080 字节，单文件需小于 GitHub release 2GB 上限）。
+- **翻译模型授权说明待在下载界面落地**：权重是 CC-BY-NC-4.0（仅限非商业、不用于生产部署），需在 AI 中心下载界面展示署名、来源与修改说明，文案见 [bridge-protocol 的“本地翻译模型授权”](design/bridge-protocol.md)；App 若商用发布需换模型或另获授权。
+- **翻译模型的质量局限（已知，未处理）**：词表裁剪后个别生僻字会被静默丢掉，如 “lazy”→“惰的”（缺“懒”）、“sunny”→“阳光明的”（缺“媚”），宿主机与真机一致，是模型本身的问题；短句偶有离谱结果（`Good morning.` en→es 得 `- ¿Qué pasa?`）。是否在界面提示、或换更大词表/更高精度的包，待用户定。
 
 ## 技术债与风险
 - **发版前必须处理 spike 代码**：`app/src/main/kotlin/com/let188/arkli/spike/`、`assets/spike/`、`res/xml/spike_network_security_config.xml`（未被引用的遗留文件），以及清单里 `exported=true` 的 `.spike.SpikeActivity`。移除或挪进 `debug` 源集。

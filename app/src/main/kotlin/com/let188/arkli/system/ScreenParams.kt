@@ -1,7 +1,7 @@
 package com.let188.arkli.system
 
 /**
- * `native.screen.brightness` 的参数换算，纯函数，可单测。
+ * `native.screen.*` 的参数换算，纯函数，可单测。
  *
  * 使用示例：`ScreenParams.brightness(0.5)` -> `0.5f`
  */
@@ -11,6 +11,24 @@ internal object ScreenParams {
 
     /** 最低亮度：0 在部分机型上会直接熄屏，夹到 1% */
     const val MIN_BRIGHTNESS = 0.01f
+
+    /** 方向模式：传感器横屏（两个横向都跟随重力） */
+    const val ORIENTATION_LANDSCAPE = "landscape"
+
+    /** 方向模式：还原竖屏 */
+    const val ORIENTATION_PORTRAIT = "portrait"
+
+    /**
+     * 校验方向模式。
+     *
+     * @param mode `landscape` 或 `portrait`
+     * @return 是否横屏
+     * @throws IllegalArgumentException 不是这两个值
+     */
+    fun landscape(mode: String): Boolean {
+        require(mode == ORIENTATION_LANDSCAPE || mode == ORIENTATION_PORTRAIT) { "mode 只能是 landscape 或 portrait" }
+        return mode == ORIENTATION_LANDSCAPE
+    }
 
     /**
      * 校验并换算亮度。

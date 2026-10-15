@@ -182,7 +182,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="tool-page">
-    <van-notice-bar v-if="guide" wrap-able :scrollable="false" left-icon="warning-o">{{ guide }}</van-notice-bar>
+    <van-notice-bar v-if="guide" wrapable :scrollable="false" left-icon="warning-o">{{ guide }}</van-notice-bar>
 
     <div class="tool-card">
       <van-field v-model="text" type="textarea" rows="5" autosize placeholder="输入要朗读的文字" :maxlength="PAGE_MAX_TEXT" show-word-limit />

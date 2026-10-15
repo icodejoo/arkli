@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { AA_LARGE, AA_NORMAL, AAA_LARGE, AAA_NORMAL, buildPalette, contrastRatio, formatColor, hslToRgb, hsvToRgb, parseColor, readableOn, rgbToHsl, rgbToHsv, relativeLuminance, SCHEME_LABEL, wcagLevels, type PaletteScheme, type Rgba } from './logic'
+import { AA_LARGE, AA_NORMAL, AAA_LARGE, AAA_NORMAL, buildPalette, colorFromQuery, contrastRatio, formatColor, hslToRgb, hsvToRgb, parseColor, readableOn, rgbToHsl, rgbToHsv, relativeLuminance, SCHEME_LABEL, wcagLevels, type PaletteScheme, type Rgba } from './logic'
 
 /** 解析并取颜色，失败则抛出 */
 function ok(s: string): Rgba {
@@ -172,5 +172,20 @@ describe('buildPalette', () => {
   })
   it('每个方案都有中文名', () => {
     for (const k of Object.keys(SCHEME_LABEL) as PaletteScheme[]) expect(SCHEME_LABEL[k].length).toBeGreaterThan(0)
+  })
+})
+
+describe('colorFromQuery', () => {
+  it('接受 3/6 位 HEX，带不带 # 都行', () => {
+    expect(colorFromQuery('4B484B')).toBe('#4B484B')
+    expect(colorFromQuery('#4b484b')).toBe('#4b484b')
+    expect(colorFromQuery('fff')).toBe('#fff')
+    expect(colorFromQuery(['3b6cf6', 'x'])).toBe('#3b6cf6')
+  })
+  it('非法值返回 null', () => {
+    expect(colorFromQuery('12345')).toBeNull()
+    expect(colorFromQuery('zzzzzz')).toBeNull()
+    expect(colorFromQuery(undefined)).toBeNull()
+    expect(colorFromQuery(123)).toBeNull()
   })
 })

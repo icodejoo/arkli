@@ -1,10 +1,12 @@
 <script setup lang="ts">
 // 颜色助手：转换（HEX / RGB / HSL / HSV）、WCAG 对比度、HSL 配色三个分区
 import { computed, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { showFailToast, showSuccessToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
+import ColorFullscreen from '@/shared/ColorFullscreen.vue'
 import {
-  buildPalette, contrastRatio, formatColor, parseColor, readableOn, SCHEME_LABEL, wcagLevels, type PaletteScheme, type Rgba,
+  buildPalette, colorFromQuery, contrastRatio, formatColor, parseColor, readableOn, SCHEME_LABEL, wcagLevels, type PaletteScheme, type Rgba,
 } from './logic'
 
 /** 初始颜色 */
@@ -32,10 +34,17 @@ const LEVEL_ROWS = [
   { label: 'AAA 大号文字（≥ 4.5）', key: 'aaaLarge' },
 ] as const
 
-/** 输入框文本 */
-const text = ref(INITIAL)
+/** 路由：别的工具（如取色器）会带 ?c=HEX 过来 */
+const route = useRoute()
+/** 输入框文本：有合法的 ?c= 就用它，否则用初始色 */
+const text = ref(colorFromQuery(route.query.c) ?? INITIAL)
+/** 全屏展示颜色的弹层是否显示 */
+const fullShow = ref(false)
 /** 最近一次解析成功的颜色（输入非法时预览保留它） */
-const last = ref<Rgba>({ r: 59, g: 108, b: 246, a: 1 })
+const last = ref<Rgba>((() => {
+  const p = parseColor(text.value)
+  return p.ok ? p.color : { r: 59, g: 108, b: 246, a: 1 }
+})())
 
 /** 当前解析结果 */
 const parsed = computed(() => parseColor(text.value))
@@ -52,6 +61,8 @@ const rows = computed(() => [
   { label: 'HSL', value: formats.value.hsl },
   { label: 'HSV', value: formats.value.hsv },
 ])
+/** 全屏展示用的 HEX（不带透明度） */
+const fullHex = computed(() => formatColor({ ...color.value, a: 1 }).hex)
 /** 预览样式 */
 const previewStyle = computed(() => ({
   background: `rgba(${Math.round(color.value.r)}, ${Math.round(color.value.g)}, ${Math.round(color.value.b)}, ${color.value.a})`,
@@ -171,7 +182,9 @@ async function copy(value: string): Promise<void> {
     </template>
 
     <template v-else>
-    <div class="preview" :style="previewStyle">{{ formats.hex }}</div>
+    <div class="preview preview--tap" :style="previewStyle" role="button" aria-label="全屏显示颜色" @click="fullShow = true">{{ formats.hex }}</div>
+    <p class="tool-hint cc-center">点上面的色块全屏显示</p>
+    <color-fullscreen v-model="fullShow" :color="fullHex" />
 
     <div class="tool-card">
       <h3 class="tool-card__title">输入颜色</h3>
@@ -226,6 +239,16 @@ async function copy(value: string): Promise<void> {
   border: 1px solid var(--c-border);
   border-radius: var(--tool-card-radius);
   font: 600 20px ui-monospace, Menlo, Consolas, monospace;
+}
+
+/* 可点的预览块（全屏显示） */
+.preview--tap {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cc-center {
+  text-align: center;
 }
 
 /* 对比度页里卡片内的间距 */

@@ -13,9 +13,42 @@ export interface ToolMeta {
    * @example tags: ['ai']
    */
   tags?: string[]
+  /**
+   * AI 工具可选的模型（只需声明 L1/L3；L2、L4 占位由选择器统一补）。
+   * @example models: [{ layer: 'L1', modelId: 'siglip2-q4_half', title: '识物 SigLIP2', desc: '识别垃圾品类' }]
+   */
+  models?: ToolModelOption[]
+  /** 为 true 时标题栏显示摄像头按钮，可在普通模式与拍照识别模式间切换；模型选择器仅在识别模式出现 */
+  camera?: boolean
+  /** 为 true 时模型选择器由工具页自己放在页面里，标题栏不再自动显示 */
+  pickerInPage?: boolean
   /** 懒加载组件，每个工具会被打成独立 chunk */
   load: () => Promise<{ default: Component }>
 }
+
+/** 模型层级：L1 本地小模型 / L2 本地大模型 / L3 本机 AI / L4 远端 API */
+export type ModelLayer = 'L1' | 'L2' | 'L3' | 'L4'
+
+/** 工具可选的一个模型（选择器的一行） */
+export interface ToolModelOption {
+  /** 所属层级 */
+  layer: ModelLayer
+  /** L1/L2 为清单里的模型 id；L3 为 AI 提供者 id；同时是选择结果的持久化值 */
+  modelId: string
+  /** 模型名（不含层名），如「识物 SigLIP2」 */
+  title: string
+  /** 一句话说明模型作用，如「识别垃圾品类」 */
+  desc: string
+  /** 该模型支持的语言码；省略或 'all' 表示不限语言（如在线大模型） */
+  languages?: readonly string[] | 'all'
+  /** 是否支持源语言自动检测（auto）；省略为不支持 */
+  sourceAuto?: boolean
+}
+
+/** 路由 query 里表示模式的键 */
+export const MODE_QUERY = 'mode'
+/** 拍照识别模式的 query 值 */
+export const MODE_CAMERA = 'camera'
 
 /** AI 工具的标签值，AI 页按它筛选 */
 export const TAG_AI = 'ai'
@@ -47,7 +80,6 @@ export const tools: ToolMeta[] = [
   { id: 'ruler', name: '尺子', description: '厘米/英寸刻度，可用银行卡校准', load: () => import('./ruler/index.vue') },
   { id: 'compass', name: '指南针', description: '读取方向传感器，显示方位与度数', load: () => import('./compass/index.vue') },
   { id: 'clock-screen', name: '时间屏幕', description: '全屏大字时钟，数字/翻页，可显示农历', load: () => import('./clock-screen/index.vue') },
-  { id: 'danmaku', name: '手持弹幕', description: '全屏滚动文字，LED 屏效果', load: () => import('./danmaku/index.vue') },
   { id: 'device-info', name: '设备信息', description: '屏幕、系统、硬件、网络与特性探测', load: () => import('./device-info/index.vue') },
   { id: 'image-compress', name: '图片压缩', description: '压缩与格式转换，JPEG、WebP、PNG，可批量', load: () => import('./image-compress/index.vue') },
   { id: 'image-stitch', name: '图片拼接', description: '多图纵向或横向拼成一张长图', load: () => import('./image-stitch/index.vue') },
@@ -89,14 +121,24 @@ export const tools: ToolMeta[] = [
   { id: 'sketchpad', name: '画板', description: '手指涂画，撤销重做，保存成图片', load: () => import('./sketchpad/index.vue') },
   { id: 'ledger', name: '记账', description: '记收支，按月看分类占比，可导出备份', load: () => import('./ledger/index.vue') },
   { id: 'express-track', name: '快递识别', description: '识别单号属于哪家快递，跳官网查询', load: () => import('./express-track/index.vue') },
-  { id: 'waste-sort', name: '垃圾分类', description: '查物品该扔哪个桶，按上海四分类', load: () => import('./waste-sort/index.vue') },
+  { id: 'waste-sort', name: '垃圾分类', description: '查物品该扔哪个桶，或拍照识别（标题栏摄像头切换）', tags: [TAG_AI], camera: true, models: [{ layer: 'L1', modelId: 'siglip2-q4_half', title: '识物 SigLIP2', desc: '识别垃圾品类' }], load: () => import('./waste-sort/index.vue') },
   { id: 'wifi-qr', name: 'WiFi 二维码', description: '输入 WiFi 信息生成可扫码连接的二维码', load: () => import('./wifi-qr/index.vue') },
   { id: 'sys-helper', name: '系统调试助手', description: '按参数生成 ADB 命令，可一键复制', load: () => import('./sys-helper/index.vue') },
   { id: 'personality-test', name: '人格倾向测试', description: '28 道原创题，测出十六型人格倾向', load: () => import('./personality-test/index.vue') },
   { id: 'couplet', name: '对联生成', description: '自编对联库，可筛选，还能手写对联导出图', load: () => import('./couplet/index.vue') },
   { id: 'image-search', name: '以图搜图', description: '选图后分享，并跳转各搜图站入口', load: () => import('./image-search/index.vue') },
-  { id: 'typing-board', name: '打字板', description: '全屏大字静止显示，自适应字号可闪烁', load: () => import('./typing-board/index.vue') },
-  { id: 'translate', name: '翻译', description: '文字转交已装的翻译应用，没有就给网页入口', load: () => import('./translate/index.vue') },
+  { id: 'typing-board', name: '打字板', description: '全屏横屏大字，没超出屏幕就静止，超出就滚动，可闪烁', load: () => import('./typing-board/index.vue') },
+  {
+    id: 'translate',
+    name: '翻译',
+    description: '本地模型离线翻译，中英法西俄阿互译',
+    tags: [TAG_AI],
+    pickerInPage: true,
+    models: [
+      { layer: 'L1', modelId: 'nllb600m-un6-ccm-int4', title: 'NLLB 翻译', desc: '中英法西俄阿互译', languages: ['zh-CN', 'en', 'fr', 'es', 'ru', 'ar'], sourceAuto: true },
+    ],
+    load: () => import('./translate/index.vue'),
+  },
   { id: 'linux-manual', name: 'Linux 指令手册', description: '约 137 条常用命令中文速查，可搜索，示例一键复制', load: () => import('./linux-manual/index.vue') },
   { id: 'web-source', name: '网页源码', description: '抓取网址源码，只当文本显示', load: () => import('./web-source/index.vue') },
   { id: 'short-link', name: '短链还原', description: '逐跳追踪短链，列出跳转链', load: () => import('./short-link/index.vue') },
@@ -105,14 +147,13 @@ export const tools: ToolMeta[] = [
   { id: 'speed-test', name: '网速测试', description: '测 TCP 延迟与下行速率', load: () => import('./speed-test/index.vue') },
   { id: 'bilibili-cover', name: 'B 站封面', description: '提取并保存 B 站视频封面', load: () => import('./bilibili-cover/index.vue') },
   { id: 'exchange-rate', name: '汇率换算', description: '约 30 种币种，支持缓存与手动汇率', load: () => import('./exchange-rate/index.vue') },
-  { id: 'ocr', name: '文字识别', description: '图片转文字，逐行复制（需本地模型）', tags: [TAG_AI], load: () => import('./ocr/index.vue') },
-  { id: 'image-upscale', name: '图像放大', description: '2×/4× 超分，前后对比（需本地模型）', tags: [TAG_AI], load: () => import('./image-upscale/index.vue') },
-  { id: 'waste-classify', name: '垃圾分类识别', description: '拍照或选图，识别垃圾属于哪一类', tags: [TAG_AI], load: () => import('./waste-classify/index.vue') },
-  { id: 'object-count', name: '对象计数', description: '数图里有几个物体，可点击修正', tags: [TAG_AI], load: () => import('./object-count/index.vue') },
+  { id: 'ocr', name: '文字识别', description: '图片转文字，逐行复制（需本地模型）', tags: [TAG_AI], models: [{ layer: 'L1', modelId: 'ocr', title: 'OCR', desc: '图片转文字' }], load: () => import('./ocr/index.vue') },
+  { id: 'image-upscale', name: '图像放大', description: '2×/4× 超分，前后对比（需本地模型）', tags: [TAG_AI], models: [{ layer: 'L1', modelId: 'image-upscale', title: '超分', desc: '2×/4× 放大' }], load: () => import('./image-upscale/index.vue') },
+  { id: 'object-count', name: '对象计数', description: '数图里有几个物体，可点击修正', tags: [TAG_AI], models: [{ layer: 'L1', modelId: 'object-count', title: '对象计数', desc: '数图里的物体' }], load: () => import('./object-count/index.vue') },
   { id: 'id-photo', name: '证件照', description: '裁剪换底色，纯色背景可自动抠图', load: () => import('./id-photo/index.vue') },
   { id: 'table-extract', name: '图片转表格', description: '识别表格，复制 TSV/CSV，也能粘贴文字拆表', load: () => import('./table-extract/index.vue') },
-  { id: 'face-fusion', name: '人脸融合', description: '两张脸按比例合成（需本地模型）', tags: [TAG_AI], load: () => import('./face-fusion/index.vue') },
-  { id: 'colorize', name: '黑白上色', description: '给黑白照上色（需本地模型）', tags: [TAG_AI], load: () => import('./colorize/index.vue') },
+  { id: 'face-fusion', name: '人脸融合', description: '两张脸按比例合成（需本地模型）', tags: [TAG_AI], models: [{ layer: 'L1', modelId: 'face-fusion', title: '人脸融合', desc: '两张脸合成' }], load: () => import('./face-fusion/index.vue') },
+  { id: 'colorize', name: '黑白上色', description: '给黑白照上色（需本地模型）', tags: [TAG_AI], models: [{ layer: 'L1', modelId: 'colorize', title: '黑白上色', desc: '给黑白照上色' }], load: () => import('./colorize/index.vue') },
   { id: 'pomodoro', name: '番茄时钟', description: '专注休息轮换，到点系统提醒', load: () => import('./pomodoro/index.vue') },
   { id: 'notify-self', name: '通知自己', description: '立即或定时给自己发通知', load: () => import('./notify-self/index.vue') },
   { id: 'tts', name: '文字转语音', description: '朗读文字，可存成音频分享', load: () => import('./tts/index.vue') },

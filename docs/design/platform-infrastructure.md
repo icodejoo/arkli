@@ -51,7 +51,7 @@ summary: 六份工具设计共同依赖的底层能力：bridge 协议 v2、统�
 
 | 方法 | 谁用 | 说明 |
 |---|---|---|
-| `native.file.pick` | 图片、音视频、文本、编解码、备份 | 多选、mime 过滤；图片多选走自带选图页 `ImagePickerActivity`（checkbox 网格，需相册读取权限，被拒回退系统选择器），其余走 Photo Picker / 文档选择器；HEIC 在 API 28+ 自动转 JPEG；视频返回不透明句柄；图片拷贝上限 128MB、其他文件 64MB，拷贝中途超限即中止并删残留，HEIC 解码失败不留空文件 |
+| `native.file.pick` | 图片、音视频、文本、编解码、备份 | 多选、mime 过滤；图片、视频选择都走自带选图页 `ImagePickerActivity`（checkbox 网格，需相册读取权限，被拒回退系统选择器），其余走 Photo Picker / 文档选择器；HEIC 在 API 28+ 自动转 JPEG；视频返回不透明句柄；图片拷贝上限 128MB、其他文件 64MB，拷贝中途超限即中止并删残留，HEIC 解码失败不留空文件 |
 | `native.file.overwrite` | 图片拼接（覆盖原图） | `pick` 带 `keepSource` 才给图片项 `sourceHandle`；原生把选图 URI 推导成 MediaStore URI，`createWriteRequest` 弹系统授权框后写回（API 30+）；先校验格式一致，写前备份、失败还原；选图器 URI 本身只读，真机已验证，见 bridge-protocol.md |
 | `native.file.discard` | 图片拼接 | 丢弃 `cache/out/` 内文件（路径越界整体拒绝，不存在忽略），拼图成品连带缩略图 |
 | `native.cache.stats` / `native.cache.clear` | 设置页 | 统计缓存占用（按一级目录分组）、手动清空（跳过活跃写句柄的临时文件与 1 分钟内修改过的文件） |
@@ -144,7 +144,7 @@ summary: 六份工具设计共同依赖的底层能力：bridge 协议 v2、统�
 
 明确**不用**：`MANAGE_EXTERNAL_STORAGE`、`QUERY_ALL_PACKAGES`、悬浮窗、无障碍。
 
-例外：自带多选图片页读相册，声明 `READ_MEDIA_IMAGES`（API 33+）与 `READ_EXTERNAL_STORAGE`（`maxSdkVersion=32`）。起因是华为等机型的系统选择器点一下就直接返回，无法做 checkbox 多选；用户拒绝权限时自动回退系统选择器，功能不丢。
+例外：自带多选图片页读相册，声明 `READ_MEDIA_IMAGES` 与 `READ_MEDIA_VIDEO`（API 33+）与 `READ_EXTERNAL_STORAGE`（`maxSdkVersion=32`）。起因是华为等机型的系统选择器点一下就直接返回，无法做 checkbox 多选；用户拒绝权限时自动回退系统选择器，功能不丢。
 
 ## 八、实施顺序
 0. **两个 spike**（先做，结果决定后面怎么写）：

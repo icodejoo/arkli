@@ -342,3 +342,11 @@ html .van-safe-area-top {
 html .van-safe-area-bottom {
   padding-bottom: var(--safe-bottom);
 }
+
+// 固定导航栏的占位块高度改由 CSS 算（导航栏本身高度 + 顶部安全区），不用 Vant 的 JS 测量：
+// Vant 在窗口尺寸变化（如横竖屏切换）时重新量高度，但那一刻原生的 --safe-top 还没更新，
+// 量出 46px 而实际导航栏是 83px，页面内容就被导航栏盖住一截、文档高度也变短。
+// 项目里带 placeholder 的导航栏都开了 safe-area-inset-top，所以这里统一加上 --safe-top。
+html .van-nav-bar__placeholder {
+  height: calc(var(--van-nav-bar-height, 46px) + var(--safe-top)) !important;
+}

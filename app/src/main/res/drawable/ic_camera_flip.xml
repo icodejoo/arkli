@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 翻转镜头：相机机身挖出镜头，下方两道弧线箭头。由设计给的 SVG（viewBox 48）转换，线宽 2。
+     镜头孔用 evenOdd 挖出：孔半径 6 减去线宽的一半 1，可见孔半径为 5。
+     调整大小请改 Compose 里的 size，不要改这里的坐标。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <!-- 机身（填充 + 描边）与镜头孔 -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M12,11h5l2,-4h10l2,4h5v16H12z M18,18a6,6 0 1,0 12,0a6,6 0 1,0 -12,0z"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <!-- 左弧线 -->
+    <path
+        android:pathData="M24,38C12.954,38 4,33.523 4,28c0,-1.422 0.594,-2.775 1.664,-4"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <!-- 箭头 -->
+    <path
+        android:pathData="M24,38l-4,-4M24,38l-4,4"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <!-- 右弧线 -->
+    <path
+        android:pathData="M32,37.168C39.064,35.625 44,32.1 44,28c0,-1.422 -0.594,-2.775 -1.664,-4"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>

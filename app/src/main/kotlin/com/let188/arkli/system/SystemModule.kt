@@ -40,6 +40,9 @@ object SystemModule {
     /** 方法名：沉浸模式 */
     const val METHOD_SCREEN_IMMERSIVE = "native.screen.immersive"
 
+    /** 方法名：屏幕方向 */
+    const val METHOD_SCREEN_ORIENTATION = "native.screen.orientation"
+
     /** 方法名：设备静态信息 */
     const val METHOD_DEVICE_INFO = "native.device.info"
 
@@ -76,6 +79,7 @@ object SystemModule {
         bridge.register(METHOD_SCREEN_KEEP_AWAKE, KeepAwakeHandler(host))
         bridge.register(METHOD_SCREEN_BRIGHTNESS, BrightnessHandler(host))
         bridge.register(METHOD_SCREEN_IMMERSIVE, ImmersiveHandler(host))
+        bridge.register(METHOD_SCREEN_ORIENTATION, OrientationHandler(host))
         bridge.register(METHOD_DEVICE_INFO, DeviceHandler(collector) { it.info() })
         bridge.register(METHOD_DEVICE_STATUS, DeviceHandler(collector) { it.status() })
         bridge.register(METHOD_DEVICE_DISPLAY, DeviceHandler(collector) { it.display() })

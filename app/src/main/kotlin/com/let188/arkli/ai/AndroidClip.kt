@@ -103,6 +103,13 @@ internal object ClipRuntime {
     private var service: ClipService? = null
 
     /**
+     * 只看不建：没创建过服务说明从没加载过模型。
+     *
+     * @return 已创建的服务，没有返回 null
+     */
+    fun peek(): ClipService? = service
+
+    /**
      * 取识物服务。
      *
      * @param context 应用上下文

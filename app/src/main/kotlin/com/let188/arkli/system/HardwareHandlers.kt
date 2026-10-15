@@ -106,6 +106,22 @@ internal class ImmersiveHandler(private val host: ActivityHost) : BridgeHandler 
 }
 
 /**
+ * `native.screen.orientation`：`{ mode: 'landscape' | 'portrait' }` -> `{ mode }`。
+ * landscape 为传感器横屏（翻转手机自动正过来），portrait 还原竖屏。
+ *
+ * @param host 操作窗口的宿主
+ */
+internal class OrientationHandler(private val host: ActivityHost) : BridgeHandler {
+    /** 切换方向 */
+    override suspend fun handle(ctx: CallContext, params: JSONObject): Any? {
+        requireMainFrame(ctx)
+        val mode = SystemParams.string(params, "mode")
+        host.setOrientation(SystemParams.validated { ScreenParams.landscape(mode) })
+        return JSONObject().put("mode", mode)
+    }
+}
+
+/**
  * `native.device.info` / `status` / `display`：设备静态信息、动态状态、屏幕参数，字段见 [DeviceCollector]，取不到为 null。
  *
  * @param collector 采集器

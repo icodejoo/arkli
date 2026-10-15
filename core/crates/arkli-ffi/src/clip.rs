@@ -203,6 +203,8 @@ pub fn clip_unload() {
         s.encoder = None;
         s.model_path = None;
     });
+    // 会话释放后让分配器归还空闲页
+    crate::mem::purge_heap();
 }
 
 #[cfg(test)]

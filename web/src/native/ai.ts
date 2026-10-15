@@ -8,7 +8,7 @@
  * 没有宿主、原生返回 UNKNOWN_METHOD / NOT_READY、或 status 里该模型为 false 时，
  * 统一抛 {@link AiNotReadyError}，页面据此展示「模型未就绪」。
  */
-import { call as bridgeCall, isNativeAvailable } from './bridge'
+import { call as bridgeCall, isNativeAvailable, type CallOptions } from './bridge'
 import { NativeUnavailableError } from './system'
 
 /** 原生调用函数形状，便于注入测试 */
@@ -25,6 +25,9 @@ export const AI_METHODS = {
   matte: 'native.ai.matte',
   fuse: 'native.ai.fuse',
   colorize: 'native.ai.colorize',
+  translate: 'native.ai.translate',
+  warmup: 'native.ai.warmup',
+  unload: 'native.ai.unload',
 } as const
 
 /** 模型名 */
@@ -381,4 +384,112 @@ export async function aiProviders(call: CallFn = bridgeCall): Promise<AiProvider
 export async function aiRun(provider: string, task: AiTask, input: string, call: CallFn = bridgeCall): Promise<AiRunResult> {
   if (!isNativeAvailable()) throw new NativeUnavailableError(AI_METHODS.run)
   return call<AiRunResult>(AI_METHODS.run, { provider, task, input }, NO_TIMEOUT)
+}
+
+/**
+ * 翻译语言码（应用语言码，BCP-47 风格，如 `zh-CN`、`en`）。
+ * 具体哪些码可用由模型决定；原生不认的码会返回 BAD_PARAMS。
+ */
+export type TranslateLang = string
+
+/** `native.ai.translate` 的参数 */
+export interface TranslateParams {
+  /** 待翻译文本 */
+  text: string
+  /** 源语言；可为 `'auto'`（由模型自动识别，需模型声明 sourceAuto），目标不可 */
+  src: TranslateLang | 'auto'
+  /** 目标语言 */
+  tgt: TranslateLang
+  /** beam search 宽度 1~4，缺省由原生决定 */
+  numBeams?: number
+}
+
+/** `native.ai.translate` 的结果 */
+export interface TranslateResult {
+  /** 译文 */
+  text: string
+  /** 耗时毫秒 */
+  elapsedMs: number
+  /** 模型标识，如 `nllb600m-un6-ccm-int4` */
+  modelId: string
+  /** 实际源语言（auto 时原样为 `'auto'`） */
+  src: string
+  /** 实际目标语言 */
+  tgt: string
+  /** 被识别出的应用语言码，按出现顺序去重；没识别出为空数组；`src` 不是 auto 时就是 `[src]` */
+  detectedSrc: string[]
+  /** 有句子的语言无法识别而被原样放进输出时为 true；`src` 不是 auto 时恒为 false */
+  unrecognized: boolean
+}
+
+/** 支持取消的原生调用函数形状，便于注入测试 */
+export type CancelableCallFn = <T = unknown>(method: string, params?: Record<string, unknown>, options?: CallOptions) => Promise<T>
+
+/**
+ * 本地翻译（NLLB）。长调用不设超时，可用 signal 取消。源语言可传 `'auto'` 自动识别，
+ * 结果里的 `detectedSrc` / `unrecognized` 说明识别情况。
+ *
+ * 原生错误码原样抛出：BAD_PARAMS（文本过长或语言不支持）、NOT_READY（模型未就绪）、
+ * INTERNAL、CANCELLED（被取消）。
+ *
+ * @param params 文本、源语言、目标语言与可选 numBeams
+ * @param signal 取消信号，触发后调用以 CANCELLED 拒绝
+ * @param call 原生调用函数，默认走 bridge（仅测试注入）
+ * @returns 译文与耗时
+ * @throws NativeUnavailableError 不在 Arkli 容器内
+ * @example const r = await aiTranslate({ text: 'hello', src: 'en', tgt: 'zh-CN' }, ac.signal)
+ */
+export async function aiTranslate(params: TranslateParams, signal?: AbortSignal, call: CancelableCallFn = bridgeCall): Promise<TranslateResult> {
+  if (!isNativeAvailable()) throw new NativeUnavailableError(AI_METHODS.translate)
+  const p: Record<string, unknown> = { text: params.text, src: params.src, tgt: params.tgt }
+  if (params.numBeams !== undefined) p.numBeams = params.numBeams
+  return call<TranslateResult>(AI_METHODS.translate, p, { ...NO_TIMEOUT, signal })
+}
+
+/** `native.ai.warmup` 的结果 */
+export interface WarmupResult {
+  /** 提供者 id */
+  provider: string
+  /** 模型会话是否已加载 */
+  loaded: boolean
+  /** 本次加载耗时毫秒（已加载时很小） */
+  elapsedMs: number
+}
+
+/**
+ * 预热：只加载模型会话、不翻译，已加载则幂等。长调用不设超时，可用 signal 取消。
+ *
+ * 原生错误码原样抛出：NOT_READY（模型未安装）、BAD_PARAMS、INTERNAL、CANCELLED，
+ * 原生还没有该方法时为 UNKNOWN_METHOD；调用方一般静默忽略。
+ *
+ * @param provider 提供者 id，如 `local-nllb`
+ * @param signal 取消信号
+ * @param call 原生调用函数，默认走 bridge（仅测试注入）
+ * @returns 加载状态与耗时
+ * @throws NativeUnavailableError 不在 Arkli 容器内
+ * @example void aiWarmup('local-nllb', ac.signal).catch(() => {})
+ */
+export async function aiWarmup(provider: string, signal?: AbortSignal, call: CancelableCallFn = bridgeCall): Promise<WarmupResult> {
+  if (!isNativeAvailable()) throw new NativeUnavailableError(AI_METHODS.warmup)
+  return call<WarmupResult>(AI_METHODS.warmup, { provider }, { ...NO_TIMEOUT, signal })
+}
+
+/** `native.ai.unload` 的结果 */
+export interface UnloadResult {
+  /** 实际卸载掉的提供者 id */
+  unloaded: string[]
+}
+
+/**
+ * 卸载 AI 会话回收内存，幂等。
+ *
+ * @param provider 提供者 id；缺省卸载全部 AI 会话
+ * @param call 原生调用函数，默认走 bridge（仅测试注入）
+ * @returns 实际卸载的提供者
+ * @throws NativeUnavailableError 不在 Arkli 容器内
+ * @example void aiUnload('local-nllb').catch(() => {})
+ */
+export async function aiUnload(provider?: string, call: CancelableCallFn = bridgeCall): Promise<UnloadResult> {
+  if (!isNativeAvailable()) throw new NativeUnavailableError(AI_METHODS.unload)
+  return call<UnloadResult>(AI_METHODS.unload, provider === undefined ? {} : { provider })
 }
