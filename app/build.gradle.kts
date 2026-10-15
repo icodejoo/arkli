@@ -221,3 +221,52 @@ tasks.named("preBuild") { dependsOn(fetchOrtRuntime) }
 dependencies {
     implementation(files(sherpaJar).builtBy(fetchOrtRuntime))
 }
+
+// ---------------------------------------------------------------------------
+// MNN 本地文本模型运行库（Qwen3.5-0.8B 用）：libMNN.so + 我们的 JNI 封装 libarkli-mnn.so（arm64-v8a）。
+// 两个 so 由 native/mnn/build.sh 从钉死的 MNN 提交编出，已发布到 GitHub release mnn-478c10e-v1；
+// 这里构建时下载并校验 sha256，缓存在 <仓库>/.gradle/arkli-mnn/（已被 .gitignore 忽略）。
+// 改了 so 就要同步改下面的 sha256，并更新 docs/research/qwen35-mnn-model.md。
+// ---------------------------------------------------------------------------
+
+/** MNN 运行库 release 的下载前缀 */
+val mnnReleaseBase = "https://github.com/icodejoo/arkli/releases/download/mnn-478c10e-v1/"
+
+/** MNN 运行库的文件名与 sha256 */
+val mnnLibs = mapOf(
+    "libMNN.so" to "9cc1ff8b8b039431913a37ad1853dfa51162b41ae8b90927507204397096a353",
+    "libarkli-mnn.so" to "a596c65c26d042e2d19b1fe37772945af5a924e47885c2f59bfca4c424bbf18f",
+)
+
+/** MNN 运行库缓存目录 */
+val mnnCacheDir = rootProject.layout.projectDirectory.dir(".gradle/arkli-mnn").asFile
+
+/** MNN 运行库输出目录，作为额外的 jniLibs 源目录 */
+val mnnOutDir = layout.buildDirectory.dir("generated/mnn/jniLibs")
+
+val fetchMnnRuntime = tasks.register("fetchMnnRuntime") {
+    group = "arkli"
+    description = "取得并校验 libMNN.so / libarkli-mnn.so（MNN 提交 478c10e，arm64-v8a）"
+    inputs.property("libSha256", mnnLibs.entries.joinToString(",") { "${it.key}=${it.value}" })
+    outputs.dir(mnnOutDir)
+    doLast {
+        mnnLibs.forEach { (name, sha) ->
+            val cached = File(mnnCacheDir, "$sha-$name")
+            if (!(cached.isFile && sha256Of(cached) == sha)) {
+                logger.lifecycle("下载 $name：$mnnReleaseBase$name")
+                downloadTo(mnnReleaseBase + name, cached)
+                val got = sha256Of(cached)
+                if (got != sha) {
+                    cached.delete()
+                    throw GradleException("$name sha256 不符：期望 $sha，实际 $got")
+                }
+            }
+            val dst = File(mnnOutDir.get().asFile, "arm64-v8a/$name")
+            dst.parentFile.mkdirs()
+            cached.copyTo(dst, overwrite = true)
+        }
+    }
+}
+
+android.sourceSets.getByName("main").jniLibs.srcDir(mnnOutDir)
+tasks.named("preBuild") { dependsOn(fetchMnnRuntime) }

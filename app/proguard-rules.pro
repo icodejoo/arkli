@@ -8,3 +8,6 @@
 
 # sherpa-onnx：JNI 按名字回调 Kotlin 类与字段，整包保留
 -keep class com.k2fsa.sherpa.onnx.** { *; }
+
+# MNN 本地文本模型的 JNI 入口：原生函数名按类名与方法名解析，不能被混淆或裁剪
+-keep class com.let188.arkli.ai.MnnNative { *; }

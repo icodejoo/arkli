@@ -9,6 +9,7 @@ summary: native.model.* 的清单格式、下载器安全设计（白名单、�
 - **页面只能传模型 id，不能传 URL**。下载地址只来自随包的 `assets/ai/models.json`，防止被页面或注入内容指向任意地址（SSRF、恶意模型）。
 - 桥方法契约见 [Bridge 协议](bridge-protocol.md) 的「模型下载管理方法」；代码在 `com.let188.arkli.model`，前端在 `web/src/native/model.ts` 与 `web/src/stores/models.ts`。
 - **托管位置**：清单里的 URL（`https://github.com/icodejoo/arkli/releases/download/siglip2-q4half-v1/q4_half.onnx`）对应的 release 已于 2026-10-15 发布（公开仓库，Apache-2.0，附许可证文本与 `SHA256SUMS`）。真实链路已实测：302 直接落到 `release-assets.githubusercontent.com`（所以 `DOWNLOAD_HOSTS` 里这个域名要保留），下载后字节数 54,662,805 与 sha256 `6b4ea1ec…217a` 和清单一致。App 内的下载（含 302 与白名单校验）还没在真机上用真实地址走过，之前只用本机 Range 服务验证过下载器。
+- **第二个托管模型**：Qwen3.5-0.8B MNN 文本模型（6 个文件，合计 484,349,699 字节）在 release `qwen35-mnn-v1`，来源、sha256 与使用建议见 [Qwen3.5 MNN 模型](../research/qwen35-mnn-model.md)。
 
 ## 清单（`app/src/main/assets/ai/models.json`）
 

@@ -84,6 +84,70 @@
           ]
         }
       ]
+    },
+    {
+      "id": "qwen35-0.8b-mnn-q4",
+      "displayName": "本地文本模型（Qwen3.5-0.8B，MNN 4bit）",
+      "version": "1",
+      "dir": "models/qwen35-0.8b-mnn-q4",
+      "totalBytes": 484349699,
+      "license": "apache-2.0",
+      "files": [
+        {
+          "name": "llm.mnn.weight",
+          "bytes": 470382614,
+          "sha256": "4e25ef4cbfb49a33013d17300c2f68cd9c9ce8f2e3f7b947fd2c574ec297ca5e",
+          "role": "weights",
+          "urls": [
+            "https://github.com/icodejoo/arkli/releases/download/qwen35-mnn-v1/llm.mnn.weight"
+          ]
+        },
+        {
+          "name": "llm.mnn",
+          "bytes": 2148136,
+          "sha256": "94e0459e10584487a3bda77dc3c3322c0c01cfc9d223a7284e8d07345bf877d5",
+          "role": "model",
+          "urls": [
+            "https://github.com/icodejoo/arkli/releases/download/qwen35-mnn-v1/llm.mnn"
+          ]
+        },
+        {
+          "name": "llm.mnn.json",
+          "bytes": 5343877,
+          "sha256": "fe58a15987b391b443ade62a92221956349e11628fa36b1bfb9503af32923a1a",
+          "role": "model",
+          "urls": [
+            "https://github.com/icodejoo/arkli/releases/download/qwen35-mnn-v1/llm.mnn.json"
+          ]
+        },
+        {
+          "name": "tokenizer.txt",
+          "bytes": 6465727,
+          "sha256": "7e75de1f279a10b65bd9dc1a5207205cb8993823861c4c42bbbd74e48e1c23a4",
+          "role": "tokenizer",
+          "urls": [
+            "https://github.com/icodejoo/arkli/releases/download/qwen35-mnn-v1/tokenizer.txt"
+          ]
+        },
+        {
+          "name": "llm_config.json",
+          "bytes": 8692,
+          "sha256": "1791174c5ee8fa45654485c756895a3befcdfa077d5216275d585408c7d5004d",
+          "role": "config",
+          "urls": [
+            "https://github.com/icodejoo/arkli/releases/download/qwen35-mnn-v1/llm_config.json"
+          ]
+        },
+        {
+          "name": "config.json",
+          "bytes": 653,
+          "sha256": "9724121a351f3aa6ada52470489a7cf17dccfd7f35f4b630afa9d9102434873b",
+          "role": "config",
+          "urls": [
+            "https://github.com/icodejoo/arkli/releases/download/qwen35-mnn-v1/config.json"
+          ]
+        }
+      ]
     }
   ]
 }

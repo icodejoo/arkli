@@ -34,7 +34,7 @@ summary: 所有 AI 能力分四层供用户自由选择；本地模型一律按�
 
 ## 与既有决策的关系
 
-- [0002](0002-ai-inference-base.md)：视觉与语音推理基座仍是 sherpa-onnx 与共享 ORT，属于 L1 的运行时；本决策不改它。**本地 LLM（L2）如果要换 llama.cpp 或 MNN，需要改 0002，目前未改**，等 fp16 机型复测后再定（见下）。
+- [0002](0002-ai-inference-base.md)：视觉与语音推理基座仍是 sherpa-onnx 与共享 ORT，属于 L1 的运行时；**L2 本地 LLM 已于 2026-10-15 改用 MNN（用户拍板），0002 已修订**，见该文末「修订」。
 - [0004](0004-ai-provider-abstraction.md)：`AiProvider` 抽象与交接型提供者是本决策的骨架，目前只有交接型一个实现；L1、L2、L4 的提供者将来按同一接口接入。
 
 ## 对已有工作的映射
@@ -44,7 +44,7 @@ summary: 所有 AI 能力分四层供用户自由选择；本地模型一律按�
 | 垃圾分类识别（SigLIP2 `q4_half` + 英文词表向量） | L1 | 选型与真机验证完成（q4f16 在低端机 SIGILL，改用 q4_half，fp16 留到高端机再测），见 [垃圾分类调研](../research/garbage-classify-clip.md)；**App 接入第 1 步已做（2026-10-14）**：ORT 随包、`native.ai.classify` 与 `local-clip` 提供者真机跑通；**模型下载管理（第 2 步）已做（2026-10-14）**：`native.model.*` 通用下载管理，见 [模型下载管理](../design/model-download.md)（托管 release 与真实 302 链路待发布后验证）；**Web 页（第 3 步）已做（2026-10-14）**：`waste-classify` 工具页，下载引导、top-3 点选采纳、易混提示、真机跑通；状态为 **App 接入完成（待发布模型）** |
 | 语音输入（zipformer 流式，L1） | L1 | 模型 `sherpa-onnx-x-asr-480ms-streaming-zipformer-transducer-zh-en-punct-int8`（中英文，标点在 token 里），经 sherpa-onnx Kotlin/JNI 本地流式识别；契约见 [bridge-protocol 语音转文字方法](../design/bridge-protocol.md)；状态为 **App 接入完成（模型手动放置，下载管理待接）**，麦克风实采待真机口述验证 |
 | 对联生成（GPT-2 int4） | L1 | 模型已导出并发布，见 [对联 GPT-2](../research/couplet-gpt2-onnx.md)；App 接入未做 |
-| 通用文本生成（Qwen 系） | L2 | 真机可行，速度偏慢，见 [端侧 LLM 对比](../research/on-device-llm-comparison.md) |
+| 通用文本生成（Qwen3.5-0.8B） | L2 | **已接入（2026-10-15）**：MNN 运行时，`local-qwen` 提供者，经 `native.ai.run` 做摘要、校对、改写、问答；真机约 17 tok/s，卸载后内存回落到基线 +3MB；模型与运行库托管、溯源见 [Qwen3.5 MNN 模型](../research/qwen35-mnn-model.md)，选型数据见 [端侧 LLM 对比](../research/on-device-llm-comparison.md) |
 | 系统应用交接 | L3 | 已落地（`IntentHandoffProvider`） |
 | 在线 OpenAI | L4 | 未做；需要先出方案：密钥存储、`native.net` 增加 POST 与流式、供应商抽象 |
 
@@ -52,4 +52,4 @@ summary: 所有 AI 能力分四层供用户自由选择；本地模型一律按�
 
 - L4 的方案：密钥放 Android Keystore 加密；`native.net.*` 现在只支持 GET/HEAD，需要新增 POST 与流式输出；供应商抽象要为以后加别家留位。属架构级，开工前单独出方案并让用户确认。
 - 底部 tab 的 AI 页里“模型配置”占位入口，后续放四层的管理：下载、删除、配置 OpenAI、全局默认。其中本地模型的下载、删除与占用空间已有原生接口 `native.model.*`（`native.model.list` 给全部模型的状态与占用），对联 GPT-2、Qwen 接入时只需往清单 `assets/ai/models.json` 加条目并注册释放钩子（`ModelManager.addReleaseHook`）。
-- 本地 LLM 的运行时：Rust ort 不新增依赖但慢；llama.cpp/MNN 快 3–4 倍但要改 0002。**全部任务完成后，找一台有点积与 fp16 的手机复测再决定。**
+- 本地 LLM 的运行时：**已定 MNN（2026-10-15）**。待办只剩：找一台有点积与 fp16 的手机复测 MNN 与 ORT 的差距；真机上经 App 内下载（真实 release 链路）走通一次，目前因手机无网络只验证了“文件齐全 + sha256 校验 + 推理”。

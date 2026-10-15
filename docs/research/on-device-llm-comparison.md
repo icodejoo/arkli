@@ -1,10 +1,12 @@
 ---
 title: 端侧 LLM 选型对比：模型与运行时（真机实测）
 status: draft
-updated: 2026-10-14
+updated: 2026-10-15
 summary: Qwen3.5-0.8B 在 ORT 上的真机可行性、Qwen3 与 Qwen2.5 小模型、ORT/ORT GenAI/llama.cpp/MNN 四种运行时在同一台设备上的速度、体积与内存对比，以及对决策 0002 的影响
 ---
 ## TL;DR
+
+> **2026-10-15 更新**：用户拍板 L2 改用 MNN，已接入并在真机验证（见 [Qwen3.5 MNN 模型](qwen35-mnn-model.md) 与 [0002 修订](../decisions/0002-ai-inference-base.md)）。下文是选型当时的对比数据，其中“改 0002 之前先复测”的约束已被这次决定取代，复测仍保留为待办。
 
 - **换运行时比换模型提速大得多**：同一台真机（HUAWEI STG-AL00）、4 线程、干净时段，Qwen3.5-0.8B 解码 Rust ort 约 3.1 tok/s、ORT GenAI 约 3.8、llama.cpp 约 12–13、MNN 约 16.5；Qwen3-0.6B Rust ort 约 4.8、llama.cpp 约 21。
 - **瓶颈是 ORT 的 `MatMulNBits` 在这颗 CPU 上走慢路径**（占内核时间 93%）：设备（高通 KHAJE）无点积指令、无 fp16 算术。**结论只在这台老 CPU 上成立，新 SoC 上差距可能缩小，未验证。**

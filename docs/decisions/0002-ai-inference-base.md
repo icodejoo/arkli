@@ -1,11 +1,11 @@
 ---
 title: 0002 AI 推理基座
 status: active
-updated: 2026-10-13
-summary: 需要 AI 模型的工具统一用 sherpa-onnx 做基座，模型不干涉，只要兼容 ONNX
+updated: 2026-10-15
+summary: 需要 AI 模型的工具统一用 sherpa-onnx 做基座，模型不干涉，只要兼容 ONNX；2026-10-15 起 L2 本地大模型例外，用 MNN
 ---
 ## TL;DR
-推理基座固定为 sherpa-onnx；模型是可替换的资源，只要是 ONNX 就行，按需下载，不进 APK。
+推理基座固定为 sherpa-onnx；模型是可替换的资源，只要是 ONNX 就行，按需下载，不进 APK。**例外（2026-10-15，用户拍板）**：L2 本地大模型（Qwen）改用 MNN 运行时，不走 ORT，见文末「修订」。
 
 ## 决定（用户拍板，2026-10-13）
 - 所有可能用到 AI 模型的工具，推理基座选用 **sherpa-onnx**。
@@ -16,7 +16,7 @@ summary: 需要 AI 模型的工具统一用 sherpa-onnx 做基座，模型不干
 推理时优先用本地芯片能力（NPU 等），其次才是 CPU 上的本地模型推理。落成"加速器优先级链"：NPU provider → GPU/XNNPACK → CPU，初始化失败自动回退，CPU 路径必须永远可用。默认按"给 ONNX 推理挂 NPU provider"理解，不走厂商系统 AI 服务（碎片化、依赖 GMS/HMS）；可行性、体积、对模型的要求等由调研文档给出结论后再定。
 
 ## 影响
-- 不再引入 NCNN、MNN、llama.cpp 作为推理后端，减少多套推理库带来的体积。
+- 不再引入 NCNN、MNN、llama.cpp 作为推理后端，减少多套推理库带来的体积。**此条已被文末「修订（2026-10-15）」部分推翻：L2 本地大模型用 MNN；NCNN 与 llama.cpp 仍不引入。**
 - 工具设计只依赖"ONNX 模型 + 前后处理"，换模型不改代码，只换模型文件和配置。
 - 模型清单（名称、版本、下载地址、校验值、大小）需要一份 manifest，由原生壳读取。
 
@@ -37,3 +37,14 @@ summary: 需要 AI 模型的工具统一用 sherpa-onnx 做基座，模型不干
 
 ## 待用户拍板
 AI 运行时（ORT + sherpa JNI，arm64 约 27MB 未压缩）要不要进 APK：进 APK 最省事，但与"轻便"冲突；做成按需下载的"AI 运行时包"能让基础包变小，但 Play 渠道不允许下载 so，国内渠道规则也没查到。默认：先随包带，等体积基线实测后再定。
+
+## 修订（2026-10-15，用户拍板）：L2 本地大模型用 MNN
+**推翻了上面“不再引入 MNN”这一条，范围仅限 L2 本地文本大模型（Qwen3.5-0.8B）**；视觉与语音推理仍是 sherpa-onnx 加共享 ORT，不变。
+- **为什么改**：同一台真机（STG-AL00）上，Qwen3.5-0.8B 用 Rust ort 只有约 3.1 tok/s，MNN 约 17 tok/s，换运行时比换模型提速大得多（数据见 [端侧 LLM 对比](../research/on-device-llm-comparison.md)）。
+- **新增的东西**：`libMNN.so`（4.9MB，gzip -9 约 1.98MB）与我们自己的 JNI 封装 `libarkli-mnn.so`（约 37KB），arm64-v8a，随 APK；模型不随包，按需下载约 462 MiB。MNN 与 ORT 是两套运行时，模型格式不同（`.mnn`），不能互相加载，也不共用推理代码；能共用的只有下载管理、AI 中心和提供者抽象。
+- **MNN 版本钉死**：必须用 master 的固定提交 `478c10e8d2351c7a4ea6f6243b97841a1eb39190`，3.6.1 加载 Qwen3.5 权重会崩溃，见 [Qwen3.5 MNN 模型](../research/qwen35-mnn-model.md)。
+- **产物托管与构建**：两个 so 由 `native/mnn/build.sh` 编出，发布在 GitHub release `mnn-478c10e-v1`，`app/build.gradle.kts` 的 `fetchMnnRuntime` 构建时下载并校验 sha256；模型在 release `qwen35-mnn-v1`。
+- **分词与模板**：用 MNN 自带的，不引入 `tokenizers` 也不自写（翻译仍用 `tokenizers`，那是 L1 的 NLLB）。
+- **没变**：NCNN、llama.cpp 仍不引入；对 NPU 的结论不变。
+- **仍待做**：在有点积与 fp16 的新机型上复测 MNN 与 ORT 的差距（见对比文档第 10 节）。
+

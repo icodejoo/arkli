@@ -12,7 +12,7 @@
 
 ## 决策
 - [0001 技术栈与分层](decisions/0001-tech-stack.md) — Compose 壳 + Rust 核心 + WebView Vue SPA。active。
-- [0002 AI 推理基座](decisions/0002-ai-inference-base.md) — 统一用 sherpa-onnx，模型只要兼容 ONNX。active。
+- [0002 AI 推理基座](decisions/0002-ai-inference-base.md) — 统一用 sherpa-onnx，模型只要兼容 ONNX；2026-10-15 起 L2 本地大模型例外，用 MNN。active。
 - [0003 Web 优先、固定竖屏、图片与音视频走原生](decisions/0003-web-first-and-native-media.md) — 能放 web 的不放原生；固定竖屏；图片压缩统一原生、不用 Rust 与 FFmpeg。覆盖早期设计说法。active。
 - [0004 AI 提供者抽象与本机 AI 增强项](decisions/0004-ai-provider-abstraction.md) — AiProvider 抽象、系统应用交接、ML Kit GenAI 只预留；可用才显示。active。
 - [0005 AI 四层约束](decisions/0005-ai-four-layers.md) — 本地小模型 / 本地大模型 / 本机 AI / 远端 API；本地模型按需下载；用户自选；本机 AI 不支持就隐藏。active。
@@ -41,4 +41,5 @@
 - [本机 AI 与系统智能体接入调研](research/on-device-ai-agents.md) — ML Kit GenAI、AppFunctions、Chrome 内置 AI、国内厂商、PROCESS_TEXT 交接的结论与真机核实表。draft。
 - [对联 GPT-2 ONNX 导出与评估](research/couplet-gpt2-onnx.md) — fp32/int8/int4 体积、速度、质量，诗词与成语支持度，许可证状态，release 下载地址。draft。
 - [端侧 LLM 选型对比：模型与运行时](research/on-device-llm-comparison.md) — Qwen3.5/Qwen3/Qwen2.5 在 ORT、ORT GenAI、llama.cpp、MNN 上的真机速度、体积、内存，对 0002 的影响。draft。
+- [Qwen3.5-0.8B MNN 文本模型：托管与溯源](research/qwen35-mnn-model.md) — L2 文本模型的 release 下载地址、六个文件的体积与 sha256、与上游的差异、真机速度、运行时要求与使用建议。draft。
 - [「一个木函」功能清单](research/woobx-feature-list.md) — 对标产品 116 项功能，按 11 类列出，含形态与置信度。draft。

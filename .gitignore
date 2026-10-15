@@ -27,3 +27,7 @@ app/src/main/kotlin/uniffi/
 
 # Kotlin 2.x 编译器会话文件
 .kotlin/
+
+# 本地文本模型 so 的构建中间产物
+native/mnn/.work/
+native/mnn/out/

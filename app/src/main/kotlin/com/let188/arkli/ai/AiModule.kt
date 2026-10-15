@@ -13,6 +13,7 @@ import org.json.JSONObject
  * - `native.ai.providers` / `native.ai.run`：AI 提供者抽象（见 [AiProvider]），交接类提供者与本地识物提供者；
  * - `native.ai.classify`：本地 SigLIP2 识物，见 [AiClassifyPolicy] 与 [ClipService]；
  * - `native.ai.translate`：本地 NLLB 翻译（6 种联合国语言），见 [AiTranslatePolicy] 与 [TranslateService]；
+ * - 本地文本模型（Qwen3.5-0.8B，MNN）作为 `local-qwen` 提供者，经 `native.ai.run` 做摘要、校对、改写、提示词问答，见 [AiQwenPolicy] 与 [QwenService]；
  * - `native.ai.warmup` / `native.ai.unload`：本地模型会话的预热与卸载，见 [AiLifecyclePolicy]；
  * - 同时注册 `native.model.*` 模型下载管理（见 [ModelModule]），本地模型一律经它按需下载。
  *
@@ -68,11 +69,15 @@ object AiModule {
         val translate = TranslateRuntime.get(env.appContext)
         // 删除翻译模型前同样先释放会话（排在重任务闸门后）
         models.addReleaseHook(TranslateService.MODEL_ID) { translate.unload() }
+        val qwen = QwenRuntime.get(env.appContext)
+        // 删除文本模型前同样先释放会话（MNN 会话约占 500MB，更要及时放）
+        models.addReleaseHook(QwenService.MODEL_ID) { qwen.unload() }
         val registry = ProviderRegistry(
             listOf(
                 IntentHandoffProvider(AndroidHandoffPlatform(env.appContext, env.host)),
                 LocalClipProvider(clip, models),
                 LocalNllbProvider(translate, models),
+                LocalQwenProvider(qwen, models),
             ),
         )
         bridge.register(METHOD_PROVIDERS, AiProvidersHandler(registry))

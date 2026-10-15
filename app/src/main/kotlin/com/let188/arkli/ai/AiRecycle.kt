@@ -10,7 +10,7 @@ import kotlinx.coroutines.launch
 private const val AI_LOG_TAG = "ArkliAi"
 
 /**
- * 进程级的 AI 会话回收入口：退出 App、系统内存告急时尽力卸载翻译与识物会话。
+ * 进程级的 AI 会话回收入口：退出 App、系统内存告急时尽力卸载翻译、识物与文本模型会话。
  *
  * 在进程级协程里排在 [AiHeavyGate] 后执行：不阻塞主线程，也不打断正在跑的推理；
  * 页面（WebView 会话）销毁不会调用这里，所以不会误伤别的会话。从没加载过（没创建过服务）则什么都不做。
@@ -30,6 +30,7 @@ object AiRecycle {
         val sessions = listOfNotNull(
             TranslateRuntime.peek()?.let { LocalNllbProvider.ID to AiServiceControl { it.unload() } },
             ClipRuntime.peek()?.let { LocalClipProvider.ID to AiServiceControl { it.unload() } },
+            QwenRuntime.peek()?.let { LocalQwenProvider.ID to AiServiceControl { it.unload() } },
         )
         if (sessions.isEmpty()) return
         scope.launch {
