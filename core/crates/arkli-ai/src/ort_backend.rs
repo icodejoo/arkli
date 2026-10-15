@@ -100,6 +100,17 @@ impl Session for OrtModel {
         let (shape, data) = outputs[0].try_extract_tensor::<f32>().map_err(be)?;
         Tensor::new(shape.iter().copied().collect(), data.to_vec())
     }
+
+    fn run_named(&mut self, input: Tensor, output: &str) -> Result<Tensor> {
+        let name = self.session.inputs()[0].name().to_string();
+        let value = OrtTensor::from_array((input.shape, input.data)).map_err(be)?;
+        let outputs = self
+            .session
+            .run(ort::inputs![name.as_str() => value])
+            .map_err(be)?;
+        let (shape, data) = outputs[output].try_extract_tensor::<f32>().map_err(be)?;
+        Tensor::new(shape.iter().copied().collect(), data.to_vec())
+    }
 }
 
 #[cfg(test)]
@@ -138,5 +149,49 @@ mod tests {
         let input = Tensor::new(vec![1, 3, 64, 64], vec![0.0; 3 * 64 * 64]).unwrap();
         let out = s.run(input).unwrap();
         assert_eq!(out.shape, vec![1, 1, 64, 64]);
+    }
+}
+
+#[cfg(test)]
+mod clip_tests {
+    use super::*;
+    use crate::clip::ClipEncoder;
+    use crate::image::{PixelFormat, RawImage};
+    use crate::provider::{Provider, SessionOptions};
+
+    /// 读取环境变量，没设置就让测试失败并说明。
+    fn env(name: &str) -> String {
+        std::env::var(name).unwrap_or_else(|_| panic!("未设置 {name}"))
+    }
+
+    /// 运行条件：ARKLI_ORT_DYLIB（ORT 动态库）、ARKLI_CLIP_MODEL（q4_half.onnx）、
+    /// ARKLI_CLIP_RGB（前 8 字节为小端 u32 宽高，其后是原图 RGB）、
+    /// ARKLI_CLIP_EXPECT（PC 端 PIL 预处理得到的 768 个小端 f32 向量，已归一化）。
+    /// 命令：`cargo test -p arkli-ai --features ort-backend -- --ignored clip`
+    #[test]
+    #[ignore = "需要 ARKLI_ORT_DYLIB / ARKLI_CLIP_MODEL / ARKLI_CLIP_RGB / ARKLI_CLIP_EXPECT"]
+    fn 真实ort编码向量与pc参考接近() {
+        let backend = OrtBackend::load(env("ARKLI_ORT_DYLIB")).unwrap();
+        let opts = SessionOptions {
+            provider: Provider::Cpu,
+            intra_threads: 4,
+        };
+        let session = backend
+            .load_model(Path::new(&env("ARKLI_CLIP_MODEL")), &opts)
+            .unwrap();
+        let raw = std::fs::read(env("ARKLI_CLIP_RGB")).unwrap();
+        let w = u32::from_le_bytes(raw[0..4].try_into().unwrap());
+        let h = u32::from_le_bytes(raw[4..8].try_into().unwrap());
+        let img = RawImage::new(w, h, PixelFormat::Rgb, raw[8..].to_vec()).unwrap();
+        let got = ClipEncoder::new(session).embed(&img).unwrap();
+        let expect: Vec<f32> = std::fs::read(env("ARKLI_CLIP_EXPECT"))
+            .unwrap()
+            .chunks_exact(4)
+            .map(|b| f32::from_le_bytes(b.try_into().unwrap()))
+            .collect();
+        assert_eq!(got.len(), expect.len());
+        let cos: f32 = got.iter().zip(&expect).map(|(a, b)| a * b).sum();
+        println!("与 PC 参考向量的余弦 = {cos}");
+        assert!(cos > 0.999, "余弦 {cos}");
     }
 }

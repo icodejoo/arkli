@@ -3,6 +3,8 @@
 // 用 proc-macro 方式生成脚手架，不使用 .udl
 uniffi::setup_scaffolding!();
 
+pub mod clip;
+
 /// 返回核心库版本号。
 ///
 /// 返回值：形如 `0.1.0` 的版本字符串，直接取自 arkli-core。

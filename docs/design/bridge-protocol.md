@@ -387,7 +387,7 @@ await call('native.file.save', { items: [{ path, name: 'out.bin' }] })
 | `native.net.tcp` | `{ host, port（1~65535）, timeoutMs?: 5000（1~15000） }` | `{ ok, elapsedMs, error? }`。连不上、超时、域名解析失败都返回 `ok:false` 不抛错；目标在内网才抛 `PERMISSION_DENIED` |
 | `native.net.whois` | `{ query, server? }` | `{ server（最终应答的服务器）, text, truncated }`。`query` 只允许字母数字与 `.-:`（≤253）；`server` 缺省 `whois.iana.org`，连 43 端口发 `query\r\n`；应答里的 `refer:` / `whois:` / `ReferralServer:` 行指向下一级，最多再跟 2 级；每次 8 秒超时，文本上限 64KB。后续级失败（被拒、超时、连不上）回退到上一级的结果，第一级失败才抛错 |
 | `native.net.speed` | `{ url, maxBytes?: 26214400（≤52428800）, durationMs?: 8000（≤15000） }` | `{ bytes, elapsedMs, bps }`。流式下载并丢弃，到量或到时即停，`bps = bytes*8/秒`；`elapsedMs` 从响应头到达后算起（不含建连与握手）；最多跟 3 跳重定向；非 2xx 抛 `NETWORK` |
-| `native.ai.status` | `{}` | `{ models: { ocr, upscale, classify, matte, fuse, colorize } }`，布尔。原生 AI 运行时未接入，目前恒为全 `false`，本地模型的 `native.ai.ocr` 等不注册；待 sherpa / ort 接入后替换。提供者类方法见下面「AI 提供者方法」 |
+| `native.ai.status` | `{}` | `{ models: { ocr, upscale, classify, matte, fuse, colorize } }`，布尔。原生 AI 运行时未接入，目前恒为全 `false`，本地模型的 `native.ai.ocr` 等不注册；待 sherpa / ort 接入后替换（识物已经接入 ORT，但**不看它**，页面用 `native.ai.providers` 里 `local-clip` 的可用性，`classify` 在此仍报 `false` 以保持既有行为）。提供者类方法见下面「AI 提供者方法」 |
 
 **`native.net.http` 细节**
 
@@ -407,23 +407,49 @@ await call('native.file.save', { items: [{ path, name: 'out.bin' }] })
 
 ## AI 提供者方法
 
-前端封装在 `web/src/native/ai.ts`（`aiProviders()` / `aiRun()`）与 `useAiProviders`。全部只接受主 frame（`PERMISSION_DENIED`）。代码在 `com.let188.arkli.ai`，决策见 [0004](../decisions/0004-ai-provider-abstraction.md)。页面只看**能力**，不认厂商；提供者不可用时页面隐藏入口或降级。
+前端封装在 `web/src/native/ai.ts`（`aiProviders()` / `aiRun()` / `aiClassifyImage()`）与 `useAiProviders`。全部只接受主 frame（`PERMISSION_DENIED`）。代码在 `com.let188.arkli.ai`，决策见 [0004](../decisions/0004-ai-provider-abstraction.md)。页面只看**能力**，不认厂商；提供者不可用时页面隐藏入口或降级。
 
 | 方法 | params | 成功时的 data | 错误 |
 |---|---|---|---|
-| `native.ai.providers` | `{}` | `{ providers: [{ id, displayName, available, reason?, tasks[] }], capabilities: string[] }`。`providers` 含不可用的（带 `reason`），按注册顺序；`capabilities` 是**可用**提供者 `tasks` 的并集，按固定顺序排列。`reason` 取 `no_handler`（系统里没有能接手文本的应用）/ `unsupported_device` / `not_installed` / `not_configured`，页面遇到不认识的值按“不可用”处理。`tasks` 取 `summarize` / `proofread` / `rewrite` / `describeImage` / `prompt` / `translate` | 仅主 frame 限制 |
-| `native.ai.run` | `{ provider: string, task: string, input: string }`。`provider` 1~64 字符；`task` 取上面六个之一；`input` 去空白后非空、≤ 50000 字符。`describeImage` 要图片输入，本方法只收文本，当前一律 `BAD_PARAMS` | 交接类：`{ handoff: true, handled: boolean }`，`handled=false` 表示没有应用接手，拿不回结果；直接结果类（将来）：`{ handoff: false, handled: true, text: string }` | `BAD_PARAMS`（字段缺失或类型不对、task 未知、provider 未注册、provider 不支持该 task、input 为空或超长）；`NOT_READY`（提供者当前不可用，message 带 `reason`） |
+| `native.ai.providers` | `{}` | `{ providers: [{ id, displayName, available, reason?, tasks[] }], capabilities: string[] }`。`providers` 含不可用的（带 `reason`），按注册顺序；本地模型类提供者（现在只有 `local-clip`）额外带 `modelId`（对应 `native.model.*` 的清单 id）、`downloaded`（已安装且 sha256 校验通过）、`sizeBytes`（磁盘占用，含未完成的 `.part`）、`downloading`（正在下载或校验），其余提供者没有这四项，旧页面忽略即可；`capabilities` 是**可用**提供者 `tasks` 的并集，按固定顺序排列。`reason` 取 `no_handler`（系统里没有能接手文本的应用）/ `unsupported_device` / `not_installed` / `not_configured`，页面遇到不认识的值按“不可用”处理。`tasks` 取 `summarize` / `proofread` / `rewrite` / `describeImage` / `prompt` / `translate` / `classifyImage` | 仅主 frame 限制 |
+| `native.ai.run` | `{ provider: string, task: string, input: string }`。`provider` 1~64 字符；`task` 取上面六个之一；`input` 去空白后非空、≤ 50000 字符。`describeImage` 与 `classifyImage` 要图片输入，本方法只收文本，一律 `BAD_PARAMS`（识图走 `native.ai.classify`） | 交接类：`{ handoff: true, handled: boolean }`，`handled=false` 表示没有应用接手，拿不回结果；直接结果类（将来）：`{ handoff: false, handled: true, text: string }` | `BAD_PARAMS`（字段缺失或类型不对、task 未知、provider 未注册、provider 不支持该 task、input 为空或超长）；`NOT_READY`（提供者当前不可用，message 带 `reason`） |
+| `native.ai.classify` | `{ provider?: string, path: string, topK?: number }`。`path` 是缓存相对路径（如 `cache/pick/a.jpg`，防穿越，沿用 `native.image.*` 的写法）；`provider` 缺省取第一个支持 `classifyImage` 的提供者（现在只有 `local-clip`）；`topK` 1~10，默认 3 | `{ items: [{ id, nameZh, nameEn, category, score }], categories: [{ category, name, prob }], confidence, uncertain, elapsedMs, inferMs, modelId }`。`items` 是 top-k 物品，`score` 为与图像的余弦相似度（4 位小数）；`categories` 是全部分类的聚合概率（`softmax(100×余弦)` 按分类求和，降序，和为 1）；`confidence` 为最大分类概率，**低于 0.8 时 `uncertain=true`，页面应提示“拿不准”**；`category` 取 `R` 可回收物 / `H` 有害垃圾 / `W` 湿垃圾 / `D` 干垃圾（**词表分类是草稿，待对照官方指引核对**）；`elapsedMs` 含解码缩放与模型首次加载，`inferMs` 为 Rust 侧缩放 + 推理 + 分类；`modelId` 现为 `siglip2-q4_half` | `BAD_PARAMS`（`path` 缺失、不是有效缓存图片或穿越，`topK` 越界，`provider` 未知或不支持）；`NOT_READY`（模型文件未就绪，message 带 `not_installed` 与模型路径；Rust 侧报“未加载”也映射到这里）；`INTERNAL`（图片无法解码、ORT 库加载失败、推理失败）；`PERMISSION_DENIED`（非主 frame） |
 
 当前提供者：
 
 | id | 说明 |
 |---|---|
 | `intent-handoff` | 系统应用交接。支持全部文本类任务（除 `describeImage`）。可用性：`queryIntentActivities(ACTION_PROCESS_TEXT, text/plain)` 非空。执行：`ACTION_PROCESS_TEXT`（`EXTRA_PROCESS_TEXT_READONLY=true`）经 `ActivityHost.startIntent` 拉起；`task` 只用于页面文案，**不会传给对方应用**，因为系统接口只能带文本 |
+| `local-clip` | 本地识物（L1，SigLIP2 `q4_half`，决策 [0005](../decisions/0005-ai-four-layers.md)）。只声明 `classifyImage`，入口是 `native.ai.classify`，`native.ai.run` 不适用。可用性：模型已由 `native.model.*` 安装并**校验通过**（`installed`，见下节），否则 `available=false, reason=not_installed`；注意 adb 手动放进去的文件是 `unverified`，要先调一次 `native.model.verify` 才算可用。流程：原生 `AndroidImageCodec` 解码 + EXIF 摆正 + 降采样（最长边约 896）→ 取 RGB 传给 Rust（UniFFI `clip_classify`）→ Rust 按 PIL 的抗锯齿 bilinear 缩到 224×224、`(v/255-0.5)/0.5`、NCHW 推理、L2 归一化 → 与随包词表（`assets/ai/garbage_vocab.json` + `.f16`，182 条英文裸词向量）做余弦。会话在进程内复用（首次识别时才加载，约 0.5 秒）；模型文件长度或修改时间变了会自动重载。**同一时刻只跑一个 AI 重任务**（`AiHeavyGate`，后来者排队），耗时在 IO 线程，不占主线程 |
 
 约定与取舍：
 - **清单**：API 30+ 的包可见性限制下，探测 `ACTION_PROCESS_TEXT` 响应者需要清单 `<queries>` 声明该 Intent（`text/plain`），已加。
 - 校验、可用性汇总、能力合并、结果序列化是纯函数（`AiPolicy`），登记处是 `ProviderRegistry`，都有 JVM 单测。
-- 预留位置（未实现，代码里没有 ML Kit 类）：`MlKitGenAiProvider`（谷歌 ML Kit GenAI / AICore，依赖白名单机型，要提 minSdk）、本地 ONNX、在线 OpenAI。接入时只需新增 `AiProvider` 实现并注册，桥方法与页面不改。
+- **ORT 运行时**：随包的 `libonnxruntime.so`（sherpa-onnx 1.13.8 的 ORT 1.28.2，arm64，22.25MB）由 Gradle 任务 `fetchOrtRuntime` 构建时下载并校验 sha256，见 `app/build.gradle.kts`；Rust 的 `ort`（load-dynamic）以**裸名** `libonnxruntime.so` dlopen，真机上从 APK 内直接映射（`/proc/<pid>/maps` 里能看到 APK 内该 so 的偏移）。不要再加 `onnxruntime-android` AAR。
+- **debug 真机验证**：现在走 `native.model.ensure` 下载（见下节与 [模型下载管理](model-download.md)）；仍想手动放文件时，debug 构建下用 adb 放到约定目录，再 `native.model.verify`：`adb push q4_half.onnx /data/local/tmp/` 再 `adb shell run-as com.let188.arkli mkdir -p files/models/siglip2-q4_half`，然后 `adb shell "run-as com.let188.arkli cp /data/local/tmp/q4_half.onnx files/models/siglip2-q4_half/q4_half.onnx"`（Git Bash 下给 adb 的 `/data/...` 路径要设 `MSYS_NO_PATHCONV=1`）。图片放到应用缓存 `cache/arkli/pick/dbg/` 后，用已有的调试广播调用：`adb shell am broadcast -a com.let188.arkli.debug.CMD --es cmd rpc --es method native.ai.classify --es params '{"path":"cache/pick/dbg/a.jpg"}'`，结果在 logcat 的 `DBGMSG` 行。release 包没有这些调试钩子。
+- 预留位置（未实现，代码里没有 ML Kit 类）：`MlKitGenAiProvider`（谷歌 ML Kit GenAI / AICore，依赖白名单机型，要提 minSdk）、其他本地 ONNX 任务（OCR、对联）、在线 OpenAI。接入时只需新增 `AiProvider` 实现并注册，桥方法与页面不改。
+
+## 模型下载管理方法
+
+前端封装在 `web/src/native/model.ts`（`modelList` / `modelStatus` / `modelEnsure` / `modelCancel` / `modelRemove` / `modelVerify`）与 `useModelState(id)`。代码在 `com.let188.arkli.model`，设计、安全与验证见 [模型下载管理](model-download.md)。全部只接受主 frame（`PERMISSION_DENIED`）。**页面只传模型 `id`，不能传 URL**；下载地址只来自随包清单 `assets/ai/models.json`；返回值不含任何磁盘路径。下载在原生自己的协程里跑，不随页面会话关闭而取消，页面重载后 `status` 接着看；因为会话级的事件推送在页面关掉后会丢，所以用“`ensure` 立即返回 + 轮询 `status`”，没有 `pack.progress` 事件。
+
+通用的 `data`（下面称**模型状态**）：`{ id, displayName, version, state, totalBytes, downloadedBytes, diskBytes, phase?, speedBps?, error? }`
+
+- `state`：`absent` 未安装（可能留有 `.part` 可续传，`downloadedBytes` 即其长度）/ `downloading` 下载或校验中 / `installed` 已安装且校验通过 / `unverified` 文件齐全但没有有效校验标记（如手动放进去的）/ `corrupt` 有文件长度不对。页面遇到不认识的值按“不可用”处理。
+- `downloadedBytes`：已落地字节（完整文件算全长，否则取 `.part` 长度）；`diskBytes`：磁盘占用（含 `.part`），用来展示“占用空间”。
+- `phase`、`speedBps` 只在 `downloading` 时有：`phase` 为 `download` 或 `verify`，`speedBps` 为本次任务的平均速度（字节/秒）。
+- `error` 是**最近一次下载失败**的原因 `{ code, message }`，开始新下载或删除后清除；取消不算失败。`code` 取 `NO_SPACE`（剩余空间不足 1.2 倍）/ `NETWORK`（网络错误或所有源失败）/ `HASH_MISMATCH`（sha256 不一致）/ `SIZE_MISMATCH`（服务器长度与清单不符）/ `SOURCE_REJECTED`（地址或重定向被白名单拒绝）/ `INTERNAL`。
+
+| 方法 | params | 成功时的 data | 错误 |
+|---|---|---|---|
+| `native.model.list` | `{}` | `{ models: [模型状态] }`，与清单同序 | 仅主 frame 限制 |
+| `native.model.status` | `{ id }` | 模型状态 | `BAD_PARAMS`（`id` 缺失、不是字符串或不在清单里） |
+| `native.model.ensure` | `{ id }` | 模型状态 + `started`（本次是否真的启动了任务）+ `meteredHint`（当前是否计费网络，页面自行决定要不要提醒，原生不拦截）。幂等：`installed` 或已在下载直接返回；`unverified` 只做校验；其余启动下载，有 `.part` 就续传。**立即返回**，失败原因之后从 `status` 的 `error` 读 | `BAD_PARAMS` |
+| `native.model.cancel` | `{ id }` | 模型状态（幂等）。保留 `.part`，下次 `ensure` 续传 | `BAD_PARAMS` |
+| `native.model.remove` | `{ id }` | 模型状态（`absent`、占用 0）。先取消下载，再释放已加载的推理会话（识物是 `clip_unload`，排在重任务闸门后），最后删清单列出的文件、`.part` 与校验标记，不递归 | `BAD_PARAMS`；`INTERNAL`（有文件删不掉） |
+| `native.model.verify` | `{ id }` | 模型状态。重算 sha256（真机 STG-AL00 上 54MB 整次调用约 1.5 秒，含 0.5 秒的轮询粒度），通过则写校验标记变 `installed`；**不通过则删除该文件**并记 `HASH_MISMATCH`；文件不齐全则不动 | `BAD_PARAMS`；`NOT_READY`（正在下载） |
+
+下载器行为（细节与取舍见 [模型下载管理](model-download.md)）：只用 `HttpURLConnection`（经 `HttpTransport`）；每一跳（含 302）都要求 https、主机精确命中 `NetPolicy.DOWNLOAD_HOSTS`（`github.com`、`objects.githubusercontent.com`、`release-assets.githubusercontent.com`，与页面出站白名单和 CSP 分开）；最多 5 跳；`Range` 断点续传，服务器忽略 Range 就从头来；多个下载源按序回退；每源连续 3 次无进展才换源，退避 1/2/4/8 秒；下载前要求可用空间 ≥ 待下载字节 × 1.2；完成后 sha256 校验再原子改名；同一模型同一时刻只有一个任务。清单里的 URL 目前是占位，托管 release 尚未发布。
 
 ## 文件夹清理方法
 

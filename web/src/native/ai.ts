@@ -1,5 +1,5 @@
 /**
- * 本地 AI 能力封装：OCR、超分、图像分类、人像抠图、人脸融合、黑白上色。
+ * 本地 AI 能力封装：OCR、超分、人像抠图、人脸融合、黑白上色。
  * 对应原生 `native.ai.*`。模型运行时（sherpa-onnx + ort）由原生侧提供，页面只管调用与降级。
  *
  * 所有 `path` 都是缓存相对路径：页面先用 `writeBlobToCache` 写进去，
@@ -34,8 +34,6 @@ export type AiModel = 'ocr' | 'upscale' | 'classify' | 'matte' | 'fuse' | 'color
 const FILES_URL_PREFIX = '/files/'
 /** 推理耗时长，不设超时 */
 const NO_TIMEOUT = { timeoutMs: 0 }
-/** 分类默认返回条数 */
-const DEFAULT_TOP_K = 5
 /** 视为「未就绪」的原生错误码 */
 const NOT_READY_CODES = ['UNKNOWN_METHOD', 'NOT_READY']
 
@@ -79,14 +77,6 @@ export interface UpscaleResult extends AiImageResult {
   width: number
   /** 结果高 */
   height: number
-}
-
-/** 分类条目 */
-export interface ClassifyItem {
-  /** 标签（中文，由原生侧标签表给出） */
-  label: string
-  /** 置信度 0~1 */
-  score: number
 }
 
 /** 模型未就绪错误 */
@@ -176,18 +166,72 @@ export function aiUpscale(path: string, scale: 2 | 4, call: CallFn = bridgeCall)
   return invoke<UpscaleResult>('upscale', AI_METHODS.upscale, { path, scale }, call)
 }
 
+/** 识物（本地 SigLIP2）的一个候选物品 */
+export interface ImageClassifyItem {
+  /** 词表里的稳定 id，如 `milk_carton` */
+  id: string
+  /** 中文名 */
+  nameZh: string
+  /** 英文名 */
+  nameEn: string
+  /** 分类代码：R 可回收物 / H 有害垃圾 / W 湿垃圾 / D 干垃圾（草稿，待核对） */
+  category: string
+  /** 与图像的余弦相似度，4 位小数 */
+  score: number
+}
+
+/** 识物的分类聚合概率 */
+export interface ImageClassifyCategory {
+  /** 分类代码 */
+  category: string
+  /** 分类中文名，如「可回收物」 */
+  name: string
+  /** 聚合概率 0~1 */
+  prob: number
+}
+
+/** `native.ai.classify` 的结果 */
+export interface ImageClassifyResult {
+  /** top-k 物品，按余弦相似度降序 */
+  items: ImageClassifyItem[]
+  /** 各分类聚合概率，降序 */
+  categories: ImageClassifyCategory[]
+  /** 最大分类概率 */
+  confidence: number
+  /** 置信度低于 0.8，应提示「拿不准」 */
+  uncertain: boolean
+  /** 总耗时毫秒（含解码） */
+  elapsedMs: number
+  /** 其中推理部分毫秒 */
+  inferMs: number
+  /** 模型标识，如 `siglip2-q4_half` */
+  modelId: string
+}
+
+/** 识物默认返回条数 */
+const DEFAULT_IMAGE_TOP_K = 3
+
 /**
- * 图像分类。
+ * 本地识物（垃圾分类，SigLIP2 q4_half）：对一张缓存图片给出 top-k 物品与分类概率。
  *
- * @param path 图片缓存相对路径
- * @param topK 返回前几名，默认 5
+ * 不看 `native.ai.status`（它仍是占位），直接调用；模型文件不在时原生返回 NOT_READY，这里统一成
+ * {@link AiNotReadyError}。图片解码、EXIF 摆正、缩放都在原生与 Rust 里完成。
+ *
+ * @param path 图片缓存相对路径，如 `cache/pick/a.jpg`
+ * @param topK 返回前几名，1~10，默认 3
  * @param call 原生调用函数，默认走 bridge（仅测试注入）
- * @returns 分类条目（按分数降序）
- * @throws AiNotReadyError 模型未就绪
- * @example const { items } = await aiClassify(path, 3)
+ * @returns 识别结果
+ * @throws AiNotReadyError 无宿主、方法不存在或模型未就绪
+ * @example const r = await aiClassifyImage(path); if (r.uncertain) tip('拿不准')
  */
-export function aiClassify(path: string, topK: number = DEFAULT_TOP_K, call: CallFn = bridgeCall): Promise<{ items: ClassifyItem[] }> {
-  return invoke<{ items: ClassifyItem[] }>('classify', AI_METHODS.classify, { path, topK }, call)
+export async function aiClassifyImage(path: string, topK: number = DEFAULT_IMAGE_TOP_K, call: CallFn = bridgeCall): Promise<ImageClassifyResult> {
+  if (!isNativeAvailable()) throw new AiNotReadyError('classify')
+  try {
+    return await call<ImageClassifyResult>(AI_METHODS.classify, { path, topK }, NO_TIMEOUT)
+  } catch (e) {
+    if (isNotReadyError(e)) throw new AiNotReadyError('classify')
+    throw e
+  }
 }
 
 /**
@@ -249,7 +293,7 @@ export async function fetchAiResult(path: string, fetchFn: typeof fetch = (...a)
 }
 
 /** AI 任务：页面只认任务，不认厂商 */
-export type AiTask = 'summarize' | 'proofread' | 'rewrite' | 'describeImage' | 'prompt' | 'translate'
+export type AiTask = 'summarize' | 'proofread' | 'rewrite' | 'describeImage' | 'prompt' | 'translate' | 'classifyImage'
 
 /** 提供者不可用的原因（未知值按字符串透传，页面不认识就当「不可用」） */
 export type AiUnavailableReason = 'no_handler' | 'unsupported_device' | 'not_installed' | 'not_configured' | (string & {})
@@ -266,6 +310,14 @@ export interface AiProviderInfo {
   reason?: AiUnavailableReason
   /** 支持的任务 */
   tasks: AiTask[]
+  /** 本地模型类提供者才有：清单里的模型 id，对应 `native.model.*` */
+  modelId?: string
+  /** 本地模型类提供者才有：模型已安装且 sha256 校验通过 */
+  downloaded?: boolean
+  /** 本地模型类提供者才有：磁盘占用字节（含未完成的 .part） */
+  sizeBytes?: number
+  /** 本地模型类提供者才有：是否正在下载或校验 */
+  downloading?: boolean
 }
 
 /** `native.ai.providers` 的结果 */

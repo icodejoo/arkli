@@ -19,6 +19,7 @@ import android.webkit.WebView
 import com.let188.arkli.MainActivity
 import com.let188.arkli.bridge.ArkliBridge
 import com.let188.arkli.bridge.BridgeHandler
+import com.let188.arkli.model.ModelDebugHooks
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import org.json.JSONObject
@@ -49,7 +50,7 @@ private const val NET_URL_PLAIN = "http://api.wikimedia.org/feed/v1/wikipedia/zh
  * 只在 debug 源集，release 包不含。通过反射读取主代码里的私有字段，不改动主代码。
  *
  * 触发示例：`adb shell am broadcast -a com.let188.arkli.debug.CMD --es cmd crash`
- * 命令：nettest / crash / hello / ping / sleep(--ei ms) / ticker / cancel(--es id) / state，
+ * 命令：modelurl(--es url，不带则清除；覆盖模型下载源并放行 http://127.0.0.1，仅调试) / nettest / crash / hello / ping / sleep(--ei ms) / ticker / cancel(--es id) / state，
  * 文件类见 [DebugFileCommands]：filepick(--es mime --ez multiple) / filesave / writetest(--ei mb --es enc) / writeopen / rangetest / securitytest / videotest / listcache / previewtest
  */
 class DebugHooksProvider : ContentProvider() {
@@ -173,6 +174,10 @@ class DebugHooksProvider : ContentProvider() {
             "rpc" -> send(wv, i.getStringExtra("method") ?: "native.ping", i.getStringExtra("params") ?: "{}", i.getStringExtra("id"))
             "evaljs" -> wv.evaluateJavascript(i.getStringExtra("js") ?: "0", null)
             "nettest" -> netTest(wv)
+            "modelurl" -> {
+                ModelDebugHooks.urlOverride = i.getStringExtra("url")?.let { listOf(it) }
+                Log.i(TAG, "模型下载源覆盖=${ModelDebugHooks.urlOverride}")
+            }
             "state" -> Log.i(TAG, "state url=${wv.url} pid=${android.os.Process.myPid()} session=${bridge()?.session}")
         }
     }

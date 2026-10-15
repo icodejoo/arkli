@@ -1,0 +1,1109 @@
+{
+ "format": 1,
+ "note": "分类为草稿，需对照官方《生活垃圾分类投放指引》核对后才能当作权威结果",
+ "model": "siglip2-base-patch16-224",
+ "dtype": "f16le",
+ "dim": 768,
+ "count": 182,
+ "prompt": "bare english name, lowercase, no template",
+ "categories": {
+  "R": "可回收物",
+  "H": "有害垃圾",
+  "W": "湿垃圾",
+  "D": "干垃圾"
+ },
+ "items": [
+  {
+   "id": "clean_cardboard_box",
+   "nameZh": "干净纸盒",
+   "nameEn": "clean cardboard box",
+   "category": "R"
+  },
+  {
+   "id": "shipping_carton",
+   "nameZh": "快递纸箱",
+   "nameEn": "shipping carton",
+   "category": "R"
+  },
+  {
+   "id": "newspaper",
+   "nameZh": "报纸",
+   "nameEn": "newspaper",
+   "category": "R"
+  },
+  {
+   "id": "book",
+   "nameZh": "书本",
+   "nameEn": "book",
+   "category": "R"
+  },
+  {
+   "id": "clean_paper_sheet",
+   "nameZh": "干净纸张",
+   "nameEn": "clean paper sheet",
+   "category": "R"
+  },
+  {
+   "id": "printer_paper",
+   "nameZh": "打印纸",
+   "nameEn": "printer paper",
+   "category": "R"
+  },
+  {
+   "id": "magazine",
+   "nameZh": "杂志",
+   "nameEn": "magazine",
+   "category": "R"
+  },
+  {
+   "id": "milk_carton",
+   "nameZh": "牛奶利乐包",
+   "nameEn": "milk carton",
+   "category": "R"
+  },
+  {
+   "id": "paper_cup",
+   "nameZh": "纸杯",
+   "nameEn": "paper cup",
+   "category": "D"
+  },
+  {
+   "id": "used_tissue_paper",
+   "nameZh": "用过的纸巾",
+   "nameEn": "used tissue paper",
+   "category": "D"
+  },
+  {
+   "id": "toilet_paper",
+   "nameZh": "卫生纸",
+   "nameEn": "toilet paper",
+   "category": "D"
+  },
+  {
+   "id": "wet_wipes",
+   "nameZh": "湿纸巾",
+   "nameEn": "wet wipes",
+   "category": "D"
+  },
+  {
+   "id": "greasy_takeout_food_container",
+   "nameZh": "油污外卖盒",
+   "nameEn": "greasy takeout food container",
+   "category": "D"
+  },
+  {
+   "id": "clean_plastic_food_container",
+   "nameZh": "干净外卖餐盒",
+   "nameEn": "clean plastic food container",
+   "category": "R"
+  },
+  {
+   "id": "styrofoam_food_box",
+   "nameZh": "泡沫餐盒",
+   "nameEn": "styrofoam food box",
+   "category": "D"
+  },
+  {
+   "id": "styrofoam_packaging",
+   "nameZh": "泡沫塑料",
+   "nameEn": "styrofoam packaging",
+   "category": "D"
+  },
+  {
+   "id": "paper_bag",
+   "nameZh": "纸袋",
+   "nameEn": "paper bag",
+   "category": "R"
+  },
+  {
+   "id": "packaging_paper_box",
+   "nameZh": "包装纸盒",
+   "nameEn": "packaging paper box",
+   "category": "R"
+  },
+  {
+   "id": "egg_carton",
+   "nameZh": "鸡蛋托",
+   "nameEn": "egg carton",
+   "category": "R"
+  },
+  {
+   "id": "sticky_note",
+   "nameZh": "便利贴",
+   "nameEn": "sticky note",
+   "category": "D"
+  },
+  {
+   "id": "plastic_bottle",
+   "nameZh": "塑料瓶",
+   "nameEn": "plastic bottle",
+   "category": "R"
+  },
+  {
+   "id": "water_bottle",
+   "nameZh": "矿泉水瓶",
+   "nameEn": "water bottle",
+   "category": "R"
+  },
+  {
+   "id": "soda_bottle",
+   "nameZh": "饮料瓶",
+   "nameEn": "soda bottle",
+   "category": "R"
+  },
+  {
+   "id": "bubble_tea_cup",
+   "nameZh": "奶茶杯",
+   "nameEn": "bubble tea cup",
+   "category": "R"
+  },
+  {
+   "id": "disposable_plastic_cup",
+   "nameZh": "一次性塑料杯",
+   "nameEn": "disposable plastic cup",
+   "category": "R"
+  },
+  {
+   "id": "drinking_straw",
+   "nameZh": "吸管",
+   "nameEn": "drinking straw",
+   "category": "D"
+  },
+  {
+   "id": "plastic_bag",
+   "nameZh": "塑料袋",
+   "nameEn": "plastic bag",
+   "category": "D"
+  },
+  {
+   "id": "plastic_cling_wrap",
+   "nameZh": "保鲜膜",
+   "nameEn": "plastic cling wrap",
+   "category": "D"
+  },
+  {
+   "id": "shampoo_bottle",
+   "nameZh": "洗发水瓶",
+   "nameEn": "shampoo bottle",
+   "category": "R"
+  },
+  {
+   "id": "plastic_basin",
+   "nameZh": "塑料盆",
+   "nameEn": "plastic basin",
+   "category": "R"
+  },
+  {
+   "id": "plastic_bucket",
+   "nameZh": "塑料桶",
+   "nameEn": "plastic bucket",
+   "category": "R"
+  },
+  {
+   "id": "plastic_toy",
+   "nameZh": "塑料玩具",
+   "nameEn": "plastic toy",
+   "category": "R"
+  },
+  {
+   "id": "clothes_hanger",
+   "nameZh": "衣架",
+   "nameEn": "clothes hanger",
+   "category": "R"
+  },
+  {
+   "id": "plastic_cutlery",
+   "nameZh": "塑料餐具",
+   "nameEn": "plastic cutlery",
+   "category": "D"
+  },
+  {
+   "id": "disposable_chopsticks",
+   "nameZh": "一次性筷子",
+   "nameEn": "disposable chopsticks",
+   "category": "D"
+  },
+  {
+   "id": "plastic_spoon",
+   "nameZh": "塑料勺子",
+   "nameEn": "plastic spoon",
+   "category": "D"
+  },
+  {
+   "id": "toothbrush",
+   "nameZh": "牙刷",
+   "nameEn": "toothbrush",
+   "category": "D"
+  },
+  {
+   "id": "plastic_bottle_cap",
+   "nameZh": "塑料盖子",
+   "nameEn": "plastic bottle cap",
+   "category": "R"
+  },
+  {
+   "id": "plastic_storage_box",
+   "nameZh": "塑料收纳盒",
+   "nameEn": "plastic storage box",
+   "category": "R"
+  },
+  {
+   "id": "bubble_wrap",
+   "nameZh": "泡泡膜",
+   "nameEn": "bubble wrap",
+   "category": "D"
+  },
+  {
+   "id": "lighter",
+   "nameZh": "打火机",
+   "nameEn": "lighter",
+   "category": "D"
+  },
+  {
+   "id": "plastic_film_wrap",
+   "nameZh": "塑料薄膜",
+   "nameEn": "plastic film wrap",
+   "category": "D"
+  },
+  {
+   "id": "glass_bottle",
+   "nameZh": "玻璃瓶",
+   "nameEn": "glass bottle",
+   "category": "R"
+  },
+  {
+   "id": "broken_glass_shards",
+   "nameZh": "破碎玻璃",
+   "nameEn": "broken glass shards",
+   "category": "R"
+  },
+  {
+   "id": "drinking_glass",
+   "nameZh": "玻璃杯",
+   "nameEn": "drinking glass",
+   "category": "R"
+  },
+  {
+   "id": "glass_jar",
+   "nameZh": "玻璃罐",
+   "nameEn": "glass jar",
+   "category": "R"
+  },
+  {
+   "id": "wine_bottle",
+   "nameZh": "酒瓶",
+   "nameEn": "wine bottle",
+   "category": "R"
+  },
+  {
+   "id": "mirror",
+   "nameZh": "镜子",
+   "nameEn": "mirror",
+   "category": "D"
+  },
+  {
+   "id": "incandescent_light_bulb",
+   "nameZh": "白炽灯泡",
+   "nameEn": "incandescent light bulb",
+   "category": "D"
+  },
+  {
+   "id": "fluorescent_tube_light",
+   "nameZh": "荧光灯管",
+   "nameEn": "fluorescent tube light",
+   "category": "H"
+  },
+  {
+   "id": "compact_fluorescent_lamp",
+   "nameZh": "节能灯",
+   "nameEn": "compact fluorescent lamp",
+   "category": "H"
+  },
+  {
+   "id": "led_light_bulb",
+   "nameZh": "LED灯泡",
+   "nameEn": "LED light bulb",
+   "category": "R"
+  },
+  {
+   "id": "aluminum_can",
+   "nameZh": "易拉罐",
+   "nameEn": "aluminum can",
+   "category": "R"
+  },
+  {
+   "id": "tin_can",
+   "nameZh": "铁罐头盒",
+   "nameEn": "tin can",
+   "category": "R"
+  },
+  {
+   "id": "metal_spoon",
+   "nameZh": "金属勺子",
+   "nameEn": "metal spoon",
+   "category": "R"
+  },
+  {
+   "id": "aluminum_foil",
+   "nameZh": "铝箔纸",
+   "nameEn": "aluminum foil",
+   "category": "D"
+  },
+  {
+   "id": "iron_nail",
+   "nameZh": "铁钉",
+   "nameEn": "iron nail",
+   "category": "R"
+  },
+  {
+   "id": "screw",
+   "nameZh": "螺丝",
+   "nameEn": "screw",
+   "category": "R"
+  },
+  {
+   "id": "key",
+   "nameZh": "钥匙",
+   "nameEn": "key",
+   "category": "R"
+  },
+  {
+   "id": "metal_pot",
+   "nameZh": "锅",
+   "nameEn": "metal pot",
+   "category": "R"
+  },
+  {
+   "id": "metal_hanger",
+   "nameZh": "金属衣架",
+   "nameEn": "metal hanger",
+   "category": "R"
+  },
+  {
+   "id": "wire",
+   "nameZh": "铁丝",
+   "nameEn": "wire",
+   "category": "R"
+  },
+  {
+   "id": "old_clothes",
+   "nameZh": "旧衣服",
+   "nameEn": "old clothes",
+   "category": "R"
+  },
+  {
+   "id": "t_shirt",
+   "nameZh": "旧T恤",
+   "nameEn": "t-shirt",
+   "category": "R"
+  },
+  {
+   "id": "old_shoes",
+   "nameZh": "旧鞋子",
+   "nameEn": "old shoes",
+   "category": "R"
+  },
+  {
+   "id": "towel",
+   "nameZh": "毛巾",
+   "nameEn": "towel",
+   "category": "R"
+  },
+  {
+   "id": "handbag",
+   "nameZh": "旧包包",
+   "nameEn": "handbag",
+   "category": "R"
+  },
+  {
+   "id": "pillow",
+   "nameZh": "枕头",
+   "nameEn": "pillow",
+   "category": "R"
+  },
+  {
+   "id": "dishcloth",
+   "nameZh": "抹布",
+   "nameEn": "dishcloth",
+   "category": "D"
+  },
+  {
+   "id": "socks",
+   "nameZh": "袜子",
+   "nameEn": "socks",
+   "category": "R"
+  },
+  {
+   "id": "umbrella",
+   "nameZh": "雨伞",
+   "nameEn": "umbrella",
+   "category": "R"
+  },
+  {
+   "id": "aa_alkaline_battery",
+   "nameZh": "普通干电池",
+   "nameEn": "AA alkaline battery",
+   "category": "H"
+  },
+  {
+   "id": "button_cell_battery",
+   "nameZh": "纽扣电池",
+   "nameEn": "button cell battery",
+   "category": "H"
+  },
+  {
+   "id": "rechargeable_battery",
+   "nameZh": "充电电池",
+   "nameEn": "rechargeable battery",
+   "category": "H"
+  },
+  {
+   "id": "lithium_ion_battery",
+   "nameZh": "锂电池",
+   "nameEn": "lithium ion battery",
+   "category": "H"
+  },
+  {
+   "id": "lead_acid_battery",
+   "nameZh": "铅酸电池",
+   "nameEn": "lead acid battery",
+   "category": "H"
+  },
+  {
+   "id": "power_bank",
+   "nameZh": "充电宝",
+   "nameEn": "power bank",
+   "category": "R"
+  },
+  {
+   "id": "old_mobile_phone",
+   "nameZh": "旧手机",
+   "nameEn": "old mobile phone",
+   "category": "R"
+  },
+  {
+   "id": "charging_cable",
+   "nameZh": "充电线",
+   "nameEn": "charging cable",
+   "category": "R"
+  },
+  {
+   "id": "earphones",
+   "nameZh": "耳机",
+   "nameEn": "earphones",
+   "category": "R"
+  },
+  {
+   "id": "computer_keyboard",
+   "nameZh": "键盘",
+   "nameEn": "computer keyboard",
+   "category": "R"
+  },
+  {
+   "id": "computer_mouse",
+   "nameZh": "鼠标",
+   "nameEn": "computer mouse",
+   "category": "R"
+  },
+  {
+   "id": "remote_control",
+   "nameZh": "遥控器",
+   "nameEn": "remote control",
+   "category": "R"
+  },
+  {
+   "id": "electric_wire",
+   "nameZh": "电线",
+   "nameEn": "electric wire",
+   "category": "R"
+  },
+  {
+   "id": "ink_cartridge",
+   "nameZh": "墨盒",
+   "nameEn": "ink cartridge",
+   "category": "H"
+  },
+  {
+   "id": "toner_cartridge",
+   "nameZh": "硒鼓",
+   "nameEn": "toner cartridge",
+   "category": "H"
+  },
+  {
+   "id": "medicine_pills",
+   "nameZh": "药片",
+   "nameEn": "medicine pills",
+   "category": "H"
+  },
+  {
+   "id": "medicine_bottle",
+   "nameZh": "药瓶",
+   "nameEn": "medicine bottle",
+   "category": "H"
+  },
+  {
+   "id": "expired_medicine",
+   "nameZh": "过期药品",
+   "nameEn": "expired medicine",
+   "category": "H"
+  },
+  {
+   "id": "ointment_tube",
+   "nameZh": "药膏",
+   "nameEn": "ointment tube",
+   "category": "H"
+  },
+  {
+   "id": "mercury_thermometer",
+   "nameZh": "水银温度计",
+   "nameEn": "mercury thermometer",
+   "category": "H"
+  },
+  {
+   "id": "paint_can",
+   "nameZh": "油漆桶",
+   "nameEn": "paint can",
+   "category": "H"
+  },
+  {
+   "id": "insecticide_spray_can",
+   "nameZh": "杀虫剂",
+   "nameEn": "insecticide spray can",
+   "category": "H"
+  },
+  {
+   "id": "nail_polish",
+   "nameZh": "指甲油",
+   "nameEn": "nail polish",
+   "category": "H"
+  },
+  {
+   "id": "disinfectant_bottle",
+   "nameZh": "消毒液",
+   "nameEn": "disinfectant bottle",
+   "category": "H"
+  },
+  {
+   "id": "glue",
+   "nameZh": "胶水",
+   "nameEn": "glue",
+   "category": "D"
+  },
+  {
+   "id": "cosmetics",
+   "nameZh": "化妆品",
+   "nameEn": "cosmetics",
+   "category": "D"
+  },
+  {
+   "id": "dish_soap_bottle",
+   "nameZh": "洗洁精瓶",
+   "nameEn": "dish soap bottle",
+   "category": "R"
+  },
+  {
+   "id": "herbicide_container",
+   "nameZh": "除草剂",
+   "nameEn": "herbicide container",
+   "category": "H"
+  },
+  {
+   "id": "film_negative",
+   "nameZh": "胶片",
+   "nameEn": "film negative",
+   "category": "H"
+  },
+  {
+   "id": "leftover_food",
+   "nameZh": "剩饭剩菜",
+   "nameEn": "leftover food",
+   "category": "W"
+  },
+  {
+   "id": "cooked_rice",
+   "nameZh": "米饭",
+   "nameEn": "cooked rice",
+   "category": "W"
+  },
+  {
+   "id": "noodles",
+   "nameZh": "面条",
+   "nameEn": "noodles",
+   "category": "W"
+  },
+  {
+   "id": "fruit_peel",
+   "nameZh": "果皮",
+   "nameEn": "fruit peel",
+   "category": "W"
+  },
+  {
+   "id": "banana_peel",
+   "nameZh": "香蕉皮",
+   "nameEn": "banana peel",
+   "category": "W"
+  },
+  {
+   "id": "orange_peel",
+   "nameZh": "橘子皮",
+   "nameEn": "orange peel",
+   "category": "W"
+  },
+  {
+   "id": "apple_core",
+   "nameZh": "苹果核",
+   "nameEn": "apple core",
+   "category": "W"
+  },
+  {
+   "id": "watermelon_rind",
+   "nameZh": "西瓜皮",
+   "nameEn": "watermelon rind",
+   "category": "W"
+  },
+  {
+   "id": "vegetable_leaves",
+   "nameZh": "菜叶",
+   "nameEn": "vegetable leaves",
+   "category": "W"
+  },
+  {
+   "id": "vegetables",
+   "nameZh": "蔬菜",
+   "nameEn": "vegetables",
+   "category": "W"
+  },
+  {
+   "id": "potato",
+   "nameZh": "土豆",
+   "nameEn": "potato",
+   "category": "W"
+  },
+  {
+   "id": "carrot",
+   "nameZh": "胡萝卜",
+   "nameEn": "carrot",
+   "category": "W"
+  },
+  {
+   "id": "corn_cob",
+   "nameZh": "玉米芯",
+   "nameEn": "corn cob",
+   "category": "W"
+  },
+  {
+   "id": "eggshell",
+   "nameZh": "蛋壳",
+   "nameEn": "eggshell",
+   "category": "W"
+  },
+  {
+   "id": "used_tea_leaves",
+   "nameZh": "茶叶渣",
+   "nameEn": "used tea leaves",
+   "category": "W"
+  },
+  {
+   "id": "coffee_grounds",
+   "nameZh": "咖啡渣",
+   "nameEn": "coffee grounds",
+   "category": "W"
+  },
+  {
+   "id": "small_bones",
+   "nameZh": "小骨头",
+   "nameEn": "small bones",
+   "category": "W"
+  },
+  {
+   "id": "fish_bones",
+   "nameZh": "鱼骨",
+   "nameEn": "fish bones",
+   "category": "W"
+  },
+  {
+   "id": "large_bone",
+   "nameZh": "大骨头",
+   "nameEn": "large bone",
+   "category": "D"
+  },
+  {
+   "id": "shrimp_shells",
+   "nameZh": "虾壳",
+   "nameEn": "shrimp shells",
+   "category": "W"
+  },
+  {
+   "id": "raw_meat",
+   "nameZh": "肉",
+   "nameEn": "raw meat",
+   "category": "W"
+  },
+  {
+   "id": "bread",
+   "nameZh": "面包",
+   "nameEn": "bread",
+   "category": "W"
+  },
+  {
+   "id": "cake",
+   "nameZh": "糕点",
+   "nameEn": "cake",
+   "category": "W"
+  },
+  {
+   "id": "fresh_fruit",
+   "nameZh": "水果",
+   "nameEn": "fresh fruit",
+   "category": "W"
+  },
+  {
+   "id": "grapes",
+   "nameZh": "葡萄",
+   "nameEn": "grapes",
+   "category": "W"
+  },
+  {
+   "id": "sunflower_seed_shells",
+   "nameZh": "瓜子壳",
+   "nameEn": "sunflower seed shells",
+   "category": "W"
+  },
+  {
+   "id": "peanut_shells",
+   "nameZh": "花生壳",
+   "nameEn": "peanut shells",
+   "category": "W"
+  },
+  {
+   "id": "fallen_leaves",
+   "nameZh": "落叶",
+   "nameEn": "fallen leaves",
+   "category": "W"
+  },
+  {
+   "id": "flowers",
+   "nameZh": "鲜花",
+   "nameEn": "flowers",
+   "category": "W"
+  },
+  {
+   "id": "withered_flowers",
+   "nameZh": "枯萎的花",
+   "nameEn": "withered flowers",
+   "category": "W"
+  },
+  {
+   "id": "expired_food",
+   "nameZh": "过期食品",
+   "nameEn": "expired food",
+   "category": "W"
+  },
+  {
+   "id": "soup",
+   "nameZh": "剩菜汤",
+   "nameEn": "soup",
+   "category": "W"
+  },
+  {
+   "id": "pet_food",
+   "nameZh": "宠物饲料",
+   "nameEn": "pet food",
+   "category": "W"
+  },
+  {
+   "id": "tofu",
+   "nameZh": "豆腐",
+   "nameEn": "tofu",
+   "category": "W"
+  },
+  {
+   "id": "tapioca_pearls",
+   "nameZh": "奶茶珍珠",
+   "nameEn": "tapioca pearls",
+   "category": "W"
+  },
+  {
+   "id": "leftover_drink",
+   "nameZh": "饮料残液",
+   "nameEn": "leftover drink",
+   "category": "W"
+  },
+  {
+   "id": "broken_ceramic_pieces",
+   "nameZh": "陶瓷碎片",
+   "nameEn": "broken ceramic pieces",
+   "category": "D"
+  },
+  {
+   "id": "ceramic_bowl",
+   "nameZh": "陶瓷碗",
+   "nameEn": "ceramic bowl",
+   "category": "D"
+  },
+  {
+   "id": "ceramic_mug",
+   "nameZh": "陶瓷杯",
+   "nameEn": "ceramic mug",
+   "category": "D"
+  },
+  {
+   "id": "flower_pot",
+   "nameZh": "花盆",
+   "nameEn": "flower pot",
+   "category": "D"
+  },
+  {
+   "id": "cigarette_butt",
+   "nameZh": "烟蒂",
+   "nameEn": "cigarette butt",
+   "category": "D"
+  },
+  {
+   "id": "cigarette_pack",
+   "nameZh": "烟盒",
+   "nameEn": "cigarette pack",
+   "category": "D"
+  },
+  {
+   "id": "dust",
+   "nameZh": "尘土",
+   "nameEn": "dust",
+   "category": "D"
+  },
+  {
+   "id": "sweepings",
+   "nameZh": "扫地灰",
+   "nameEn": "sweepings",
+   "category": "D"
+  },
+  {
+   "id": "diaper",
+   "nameZh": "尿不湿",
+   "nameEn": "diaper",
+   "category": "D"
+  },
+  {
+   "id": "face_mask",
+   "nameZh": "口罩",
+   "nameEn": "face mask",
+   "category": "D"
+  },
+  {
+   "id": "adhesive_bandage",
+   "nameZh": "创可贴",
+   "nameEn": "adhesive bandage",
+   "category": "D"
+  },
+  {
+   "id": "cotton_swab",
+   "nameZh": "棉签",
+   "nameEn": "cotton swab",
+   "category": "D"
+  },
+  {
+   "id": "sanitary_pad",
+   "nameZh": "卫生巾",
+   "nameEn": "sanitary pad",
+   "category": "D"
+  },
+  {
+   "id": "disposable_gloves",
+   "nameZh": "一次性手套",
+   "nameEn": "disposable gloves",
+   "category": "D"
+  },
+  {
+   "id": "modeling_clay",
+   "nameZh": "橡皮泥",
+   "nameEn": "modeling clay",
+   "category": "D"
+  },
+  {
+   "id": "eraser",
+   "nameZh": "橡皮擦",
+   "nameEn": "eraser",
+   "category": "D"
+  },
+  {
+   "id": "pencil",
+   "nameZh": "铅笔",
+   "nameEn": "pencil",
+   "category": "D"
+  },
+  {
+   "id": "ballpoint_pen",
+   "nameZh": "圆珠笔",
+   "nameEn": "ballpoint pen",
+   "category": "D"
+  },
+  {
+   "id": "durian_husk",
+   "nameZh": "榴莲壳",
+   "nameEn": "durian husk",
+   "category": "D"
+  },
+  {
+   "id": "coconut_shell",
+   "nameZh": "椰子壳",
+   "nameEn": "coconut shell",
+   "category": "D"
+  },
+  {
+   "id": "seashell",
+   "nameZh": "贝壳",
+   "nameEn": "seashell",
+   "category": "D"
+  },
+  {
+   "id": "chestnut_shell",
+   "nameZh": "栗子壳",
+   "nameEn": "chestnut shell",
+   "category": "D"
+  },
+  {
+   "id": "bamboo_chopsticks",
+   "nameZh": "竹筷",
+   "nameEn": "bamboo chopsticks",
+   "category": "D"
+  },
+  {
+   "id": "toothpick",
+   "nameZh": "牙签",
+   "nameEn": "toothpick",
+   "category": "D"
+  },
+  {
+   "id": "cat_litter",
+   "nameZh": "猫砂",
+   "nameEn": "cat litter",
+   "category": "D"
+  },
+  {
+   "id": "hair",
+   "nameZh": "毛发",
+   "nameEn": "hair",
+   "category": "D"
+  },
+  {
+   "id": "sponge",
+   "nameZh": "旧海绵",
+   "nameEn": "sponge",
+   "category": "D"
+  },
+  {
+   "id": "broken_plate",
+   "nameZh": "破碗碟",
+   "nameEn": "broken plate",
+   "category": "D"
+  },
+  {
+   "id": "wallpaper",
+   "nameZh": "壁纸",
+   "nameEn": "wallpaper",
+   "category": "D"
+  },
+  {
+   "id": "dirty_stained_paper",
+   "nameZh": "污染纸张",
+   "nameEn": "dirty stained paper",
+   "category": "D"
+  },
+  {
+   "id": "rubber_gloves",
+   "nameZh": "橡胶手套",
+   "nameEn": "rubber gloves",
+   "category": "D"
+  },
+  {
+   "id": "slippers",
+   "nameZh": "拖鞋",
+   "nameEn": "slippers",
+   "category": "D"
+  },
+  {
+   "id": "stuffed_toy",
+   "nameZh": "玩偶",
+   "nameEn": "stuffed toy",
+   "category": "R"
+  },
+  {
+   "id": "backpack",
+   "nameZh": "旧书包",
+   "nameEn": "backpack",
+   "category": "R"
+  },
+  {
+   "id": "bicycle",
+   "nameZh": "自行车",
+   "nameEn": "bicycle",
+   "category": "R"
+  },
+  {
+   "id": "wood",
+   "nameZh": "木头",
+   "nameEn": "wood",
+   "category": "D"
+  },
+  {
+   "id": "wooden_board",
+   "nameZh": "木板",
+   "nameEn": "wooden board",
+   "category": "R"
+  },
+  {
+   "id": "tire",
+   "nameZh": "轮胎",
+   "nameEn": "tire",
+   "category": "D"
+  },
+  {
+   "id": "disposable_raincoat",
+   "nameZh": "一次性雨衣",
+   "nameEn": "disposable raincoat",
+   "category": "D"
+  },
+  {
+   "id": "plastic_card",
+   "nameZh": "卡片",
+   "nameEn": "plastic card",
+   "category": "D"
+  },
+  {
+   "id": "glass_lampshade",
+   "nameZh": "玻璃灯罩",
+   "nameEn": "glass lampshade",
+   "category": "R"
+  },
+  {
+   "id": "rotten_fruit",
+   "nameZh": "腐烂水果",
+   "nameEn": "rotten fruit",
+   "category": "W"
+  },
+  {
+   "id": "nut_shells",
+   "nameZh": "果壳",
+   "nameEn": "nut shells",
+   "category": "W"
+  },
+  {
+   "id": "dried_fruit_shell",
+   "nameZh": "干果壳",
+   "nameEn": "dried fruit shell",
+   "category": "W"
+  },
+  {
+   "id": "cookies",
+   "nameZh": "饼干",
+   "nameEn": "cookies",
+   "category": "W"
+  },
+  {
+   "id": "tea_bag",
+   "nameZh": "茶包",
+   "nameEn": "tea bag",
+   "category": "W"
+  }
+ ]
+}

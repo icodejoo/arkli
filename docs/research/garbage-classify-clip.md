@@ -7,10 +7,10 @@ summary: 垃圾分类拍照识别的路线对比、候选模型、四个 CLIP �
 ## TL;DR
 
 - **路线**：用开放词汇 CLIP 类零样本。词表物品名离线算成文本向量内置，设备上只跑图像塔，图片向量与词表向量做余弦相似度取 top-3，再查垃圾四分类。云 API 和专训模型都不推荐。
-- **模型**：SigLIP2 base/16 + 英文词表最好，图像塔用 q4f16（约 55MB，按需下载）。TinyCLIP-8M 不可用，TinyCLIP-39M 勉强，Chinese-CLIP 不如 SigLIP2。SigLIP2 的 int8 版精度崩，不能用。
+- **模型**：SigLIP2 base/16 + 英文词表最好。**发布格式定为 `q4_half.onnx`（54.66MB，按需下载）**：int4 权重、fp32 计算、fp16 存 scales，低端机也能跑。**q4f16 在 STG-AL00 上真机 SIGILL，不能用，留到有 fp16 的高端机再实测。** TinyCLIP-8M 不可用，TinyCLIP-39M 勉强，Chinese-CLIP 不如 SigLIP2。SigLIP2 的 int8 版精度崩，不能用。
 - **展示**：top-3 物品让用户点选，默认分类取按类别聚合概率最大的一类，聚合置信度低于约 0.8 时提示“拿不准，请选择”。
 - **中文**：匹配用英文名向量，界面显示词表里对应的中文名。设备上不需要文本塔。
-- **局限**：测试图偏干净、分类标注是草稿、没在手机上测。q4f16 在手机 ORT 上能否运行，见下方“待验证”。
+- **局限**：测试图偏干净、分类标注是草稿；识别精度没在手机上用真实拍摄图测过。真机运行结果见第 8 节。
 
 ## 1. 问题与约束
 
@@ -142,11 +142,43 @@ SigLIP2 英文，物品 top-1 / 物品 top-3 / 分类 top-1：
 - 没做 Chinese-CLIP 的 int8 与 RN50 对照、手机真机延迟；未使用 TACO（Flickr 连不上）。
 - 许可证细节：TinyCLIP 的 GitHub 页面没写清代码与权重各自的授权，上线前核对仓库 LICENSE；YFCC15M 训练数据衍生风险待评估。
 
-## 8. 待验证与下一步
+## 8. 真机验证（2026-10-14，HUAWEI STG-AL00，骁龙 680，Android 12）
 
-- **q4f16 在手机 ORT 上能否运行**（MatMulNBits 算子、full 与 mobile 包差异）、延迟、内存、与 PC 向量一致性：已派真机验证，结果出来后补充到本文档。
-- 项目已有 sherpa 自带 ORT 1.28.2（见 [spike-ort-sherpa](spike-ort-sherpa.md)），是否带该算子要在验证中确认；集成若需新增依赖，先问用户。
-- 与 [media-ai.md](../design/tools/media-ai.md) 的“图像识别”设计冲突：原设计是 ImageNet 1000 类，改为 CLIP 零样本后需同步更新。
+设备 CPU 特性只有 `fp asimd aes pmull sha crc32`，**没有 fp16 算术，也没有 dotprod**。
+
+- **q4f16 不能用**：模型能加载，首次推理 SIGILL（非法指令）。Maven 1.28.0、Maven 1.31.0、sherpa 自带 1.28.2 三个 ORT 都复现；反汇编崩在 `fneg v2.8h`，紧挨 `ucvtf v2.8h`，是 `MatMulNBits` 的 fp16 反量化内核，ORT 没做硬件判断。别的 ARMv8.0 机型也未必安全。
+- **发布格式 `q4_half.onnx`（54.66MB）**：从 HF 的 q4（block 32，fp32 激活）出发，把 210 个 fp32 权重/scales 改成 fp16 存储，图里加 Cast 回 fp32，计算全走 fp32，不碰 fp16 内核。体积与 q4f16（54.63MB）基本相同，PC 指标一致（物品 top1/top3 0.8106/0.9668，四分类 top1 0.9103）。不想改模型时可直接用 HF 的 `vision_model_q4.onnx`（63.27MB），指标相同。
+- **ORT 必须用 full 包**：mobile 1.18.0 连 fp32 的 .onnx 都不能加载；转 .ort 后 q4 缺 `MatMulNBits`。sherpa 自带的 ORT 1.28.2（22.25MB，deflate 约 7.9MB）是通用包，q4 / q4_half / fp32 / fp16 都能跑。**不能再加 `onnxruntime-android` AAR**：sherpa 的 so 符号带 `@@VERS_1.28.2`，换进 Java AAR 报 `cannot locate symbol OrtGetApiBase`，同名 so 也会冲突。走 Rust `ort` + dlopen 是对的（该组合在 APK 进程里还没复验，spike 只在 `adb shell` 里验证过）。
+
+速度与内存（sherpa ORT 1.28.2，C 程序，冷机，每次间隔 1.5 s，各 40 次，4 线程）：
+
+| 配置 | 体积 | 加载 | 首次 / 中位 / p95（ms） | 峰值 RSS | 正确性 |
+|---|---|---|---|---|---|
+| fp32 | 371.8MB | 1327 ms | 896 / 896 / 904 | 439MB | 基准 |
+| **q4_half** | 54.7MB | 514 ms | 969 / 970 / 972 | 139MB | 对 PC 同变体 cos 1.0；对 PC fp32 cos 0.961 |
+| q4（HF） | 63.3MB | 471 ms | 968 / 973 / 975 | 139MB | 同 q4_half |
+| q4f16（HF） | 54.6MB | 能加载 | 首次 SIGILL | — | 不可用 |
+| int8 | 94.6MB | 758 ms | 544 / 537 / 542 | 286MB | 不可用：对 PC fp32 cos 0.77，物品 top3 0.734 |
+| bnb4 | 57.6MB | 407 ms | 1040 / 1014 / 1020 | 255MB | 对 PC fp32 cos 0.967，但 40 张里物品 top1 只有 0.775 |
+
+- q4_half 线程 1/2/4：3430 / 1815 / 970 ms，按核数线性缩放；加载 513 ms；增量内存约 100MB（进程基线约 39MB）。ORT 1.31 与 1.28 速度一致。
+- **连续跑会降频**：约 28 次（约 27 s）后从 967 ms 骤降到 3.2–5.6 s，机身约 75 度。单张拍照识别基本碰不到，连拍与批量处理要考虑；同时只跑一个重任务。
+- NNAPI（fp32 中位 1360 ms，CPU 902 ms）与 XNNPACK（首次 2564 ms，RSS 909MB）都不如 CPU；q4 加这两者没测。
+- 其他 int4 配置（PC，301 张）：block 64 物品 top1/top3 0.777/0.954，block 128 为 0.791/0.937，精度更差；block 32 + `accuracy_level=4` 精度相同但设备上更慢。block 32 是体积与精度的平衡点。
+- 正确性：设备向量对 PC 同变体余弦均为 1.00000，top-3 集合 100% 一致；但用的是 PC 预处理好的 224×224 张量，**设备端图片解码与缩放没验证**（PIL 与 Rust/Kotlin 的 bilinear 有细微差异，需要自行校验）。
+
+### 中英向量融合：不做
+
+PC 301 张，fp32 向量，物品 top1 / top3 / 四分类 top1：仅英文 0.804 / 0.970 / 0.894；仅中文 0.718 / 0.920 / 0.861；平均向量（中文权重 0.25）0.814 / 0.970 / 0.904；权重 0.5 为 0.821 / 0.947 / 0.910。四分类最多涨 1.6 个百分点，物品 top3 只降不涨，差距在噪声内（标准误约 2.3 个百分点）；用部署用的 q4f16 向量时融合反而变差。**结论：词表向量只用英文，更小、更稳**（182×768 fp16 约 280KB）。
+
+## 9. 项目现状与待办
+
+- **App 里已有 ORT（2026-10-14 第 1 步）**：`jniLibs` 里有 `libarkli_ffi.so` 与 `libonnxruntime.so`（sherpa-onnx 1.13.8 的 ORT 1.28.2，由 Gradle 任务 `fetchOrtRuntime` 构建时下载并校验），`arkli-ai` 的 `clip` / `classify` 经 UniFFI 进了 APK，桥方法 `native.ai.classify` 与 `local-clip` 提供者可用；真机已在 APK 进程内用**裸名** dlopen 复验（不再只是 `adb shell`）。模型文件的下载管理已在第 2 步做完（2026-10-14，`native.model.*`，见 [模型下载管理](../design/model-download.md)）：清单随包，下载后 sha256 校验才算可用，`native.ai.providers` 里 `local-clip` 带 `downloaded/sizeBytes/downloading`；真机用本机 Range 服务验证了断点续传、篡改拒绝、删除后重下，**托管 release 尚未发布，真实 GitHub 302 链路未验证**。手动用 adb 放文件仍可行，但要再调一次 `native.model.verify` 才算可用。
+- 接入 SigLIP2 q4_half 需要：模型文件 54.7MB 按需下载；英文词表向量约 280KB；预处理直接缩放到 224×224（bilinear，mean、std 都取 0.5），由 Rust 或原生实现并校验；不需要新增依赖（ORT 随 sherpa 本来就要带）。**ORT 升级后要重跑 q4_half**，因为 `MatMulNBits` 的 fp16 路径目前就是崩的，将来修没修要确认。**预处理已定案并真机校验（2026-10-14）**：缩放放在 Rust（按 PIL 的抗锯齿 bilinear 公式自写，原生 `createScaledBitmap` 缩小时没有抗锯齿，会偏），原生只负责解码、EXIF 摆正与降采样；8 张真机图 top-3 物品 id 与 PC 完全一致、余弦差 ≤0.0015，分类与置信度同口径。PC 上用 q4_half 向量加“英文裸词”词表（无模板）跑 301 张：物品 top1 / top3 0.814 / 0.950，四分类 top1 0.900，按分类聚合 0.904，与上文“仅英文”口径（fp32 向量、3 模板平均：0.804 / 0.970 / 0.894）在噪声内一致（标准误约 2.3 个百分点），置信度 <0.8 的占 22.6%，其中聚合准确率 0.662，其余 0.974。
+- **fp16（q4f16）留到有 fp16 的高端机再实测**：测速度是否比 q4_half 快、能否稳定运行、精度是否仍与 PC 一致；在那之前发布格式就是 q4_half。
+- 真机测试文件保留：手机上 `com.example.siglipspike`、`/sdcard/Android/data/com.example.siglipspike/`、`/data/local/tmp/siglipspike/`（约 1.5GB）；产物在会话临时目录的 `spike\`，不在仓库。
+- ~~与 [media-ai.md](../design/tools/media-ai.md) 的“图像识别”设计冲突~~：已同步为 CLIP 零样本（2026-10-14）。
+- **Web 页已做（第 3 步，2026-10-14）**：`web/src/tools/waste-classify/`，替换旧 `image-classify`（旧 `aiClassify` 已删）。点候选即采纳、拿不准不给强结论、本地易混提示表（id 与词表核对）、连续识别超 20 次提示歇一会儿。**App 接入完成，待发布模型**；词表分类仍是草稿，待对照官方指引核对。
 
 ## 9. 数据位置
 

@@ -76,7 +76,7 @@ const ICONS: Record<string, string> = {
   'exchange-rate': '💱',
   ocr: '👁️',
   'image-upscale': '🔬',
-  'image-classify': '🏷️',
+  'waste-classify': '🗑️',
   'object-count': '🫘',
   'id-photo': '🪪',
   'table-extract': '📊',

@@ -59,7 +59,8 @@ object AiPolicy {
      * 序列化单个提供者。
      *
      * @param p 提供者
-     * @return `{ id, displayName, available, reason?, tasks[] }`
+     * @return `{ id, displayName, available, reason?, tasks[], modelId?, downloaded?, sizeBytes?, downloading? }`，
+     *   后四项只有本地模型类提供者才有
      */
     fun providerJson(p: AiProvider): JSONObject {
         val a = p.availability()
@@ -68,6 +69,9 @@ object AiPolicy {
         AiTask.values().filter { it in caps }.forEach { tasks.put(it.wire) }
         val o = JSONObject().put("id", p.id).put("displayName", p.displayName).put("available", a.available)
         a.reason?.let { o.put("reason", it.wire) }
+        p.modelInfo()?.let {
+            o.put("modelId", it.modelId).put("downloaded", it.downloaded).put("sizeBytes", it.sizeBytes).put("downloading", it.downloading)
+        }
         return o.put("tasks", tasks)
     }
 

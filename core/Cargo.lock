@@ -29,6 +29,7 @@ version = "0.1.0"
 name = "arkli-ffi"
 version = "0.1.0"
 dependencies = [
+ "arkli-ai",
  "arkli-core",
  "uniffi",
 ]

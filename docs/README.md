@@ -23,6 +23,7 @@
 
 - [工具落地总览与待决策](design/tools-overview.md) — 116 项汇总、全部新增依赖、设计间冲突与待拍板清单。draft。
 - [公共基础设施草案](design/platform-infrastructure.md) — bridge v2、统一方法表、安全、权限、模型与数据包、实施顺序。draft。
+- [本地模型下载管理](design/model-download.md) — native.model.* 的清单格式、下载器安全设计、状态机、真机验证与后续优化。active。
 - [图片类工具](design/tools/image.md) — 21 项。draft。
 - [音视频与 AI 类工具](design/tools/media-ai.md) — 10 项。draft。
 - [文本与计算类工具](design/tools/text-calc.md) — 22 项。draft。

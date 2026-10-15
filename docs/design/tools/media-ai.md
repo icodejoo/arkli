@@ -19,7 +19,7 @@ summary: 「音视频」「AI 与识别」分类全部工具的落地方案：�
 | 3 | 视频转 GIF | Web 界面 + 原生抽帧 + Rust 编码 | Media3 FrameExtractor + Rust `gif` | 约 0.1~0.3MB（推测）/ 无 | P1 |
 | 4 | 文字转语音 | Web 界面 + 原生 | 系统 TextToSpeech；离线音色包另议 | 0 / 可选 14~31MB | P1（离线包 P2） |
 | 5 | OCR 文字识别 | Web 界面 + Rust | PP-OCRv5 mobile + 共享 ORT + Rust 前后处理 | ORT 22.25MB 未压缩（全体 AI 共用）/ 约 21MB | P0 |
-| 6 | AI 图像识别 | Web 界面 + Rust | ImageNet 1000 类轻量分类模型 + 中文标签表 | 0 / 5~21MB | P2 |
+| 6 | 垃圾分类识别（原 AI 图像识别） | Web 界面 + Rust | SigLIP2 q4_half CLIP 零样本 + 182 条词表 | 0 / 54.7MB（按需下载） | P2 |
 | 7 | AI 人脸融合 | — | 不做 | — | 建议不做 |
 | 8 | 黑白图像上色 | — | 暂不做，留模型接口 | — | 建议不做 |
 | 9 | 图像分辨率提升 | Web 界面 + Rust | Real-ESRGAN general x4v3（SRVGGNetCompact）分块推理 | 0 / 约 4.7MB | P1 |
@@ -108,7 +108,8 @@ summary: 「音视频」「AI 与识别」分类全部工具的落地方案：�
 - **可复用**：图片类的「图片提取表格」可以复用检测和识别结果，再加表格结构推断，不另引模型。
 - **风险/测试**：sherpa 那份 ORT 的算子覆盖（自建包，有没有裁剪过不清楚）必须拿真模型跑一遍；`ort` crate 动态加载的版本兼容；测竖排文字、低光拍照、超长截图（分块检测）。
 
-### 6. AI 图像识别（P2，难度 M）
+### 6. 垃圾分类识别（原 AI 图像识别，P2，难度 M）
+- **2026-10-14 已改**：不再用 ImageNet 分类，改为 CLIP 零样本（SigLIP2 `q4_half`，54.7MB 按需下载，词表随包），工具 id `waste-classify`，桥方法 `native.ai.classify`（返回 `items/categories/confidence/uncertain`），见 [垃圾分类调研](../research/garbage-classify-clip.md)与[桥协议](bridge-protocol.md)。下面的 ImageNet 方案与 `rust.ai.classify` 协议仅作历史记录，已不采用。
 - **能否本地化**：能，但只到「千类物体分类」这个程度，达不到服务端「识万物」的水平。
 - **模型类别**：ImageNet-1k 轻量分类网络，如 MobileNetV3-Large（约 5.4M 参数，fp32 约 21MB，int8 约 5.5MB，推测）或 EfficientNet-Lite0 量级。输入 224×224，输出 top-5。中文标签表 1000 行，要自己整理进模型包。
 - **Bridge**：`rust.ai.classify { path, topK?: 5 }` → `{ items: [{ label, labelZh, score }], costMs }`。

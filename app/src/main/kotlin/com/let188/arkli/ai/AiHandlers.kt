@@ -4,10 +4,15 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import com.let188.arkli.bridge.BridgeErrors
+import com.let188.arkli.bridge.BridgeException
 import com.let188.arkli.bridge.BridgeHandler
 import com.let188.arkli.bridge.CallContext
 import com.let188.arkli.files.ActivityHost
 import com.let188.arkli.files.requireMainFrame
+import com.let188.arkli.image.SourceResolver
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 /** 处理文本用的 MIME，与 `native.intent.processText` 一致 */
@@ -69,5 +74,28 @@ internal class AiRunHandler(private val registry: ProviderRegistry) : BridgeHand
         val req = AiPolicy.parseRun(params)
         val provider = AiPolicy.requireRunnable(registry.get(req.provider), req)
         return AiPolicy.resultJson(provider.run(req.task, req.input))
+    }
+}
+
+/**
+ * `native.ai.classify`：`{ provider?, path, topK? }` -> 识别结果（见 [AiClassifyPolicy.resultJson]）。
+ * 解码与推理在后台线程，同一时刻只跑一个（[AiHeavyGate]）。
+ *
+ * @param registry 提供者登记处
+ * @param resolver 页面路径解析器，必须拒绝路径穿越
+ */
+internal class AiClassifyHandler(
+    private val registry: ProviderRegistry,
+    private val resolver: SourceResolver,
+) : BridgeHandler {
+    /** 校验 -> 选提供者 -> 解析路径 -> 识别 */
+    override suspend fun handle(ctx: CallContext, params: JSONObject): Any? {
+        requireMainFrame(ctx)
+        val req = AiClassifyPolicy.parse(params)
+        val classifier = AiClassifyPolicy.requireClassifier(registry.all(), req.provider)
+        val file = resolver.resolve(req.path)?.takeIf { it.isFile }
+            ?: throw BridgeException(BridgeErrors.BAD_PARAMS, "path 不是有效的缓存图片路径")
+        val result = withContext(Dispatchers.IO) { classifier.classify(file, req.topK) }
+        return AiClassifyPolicy.resultJson(result)
     }
 }

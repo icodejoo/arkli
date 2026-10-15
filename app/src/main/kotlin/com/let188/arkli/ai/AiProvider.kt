@@ -23,7 +23,10 @@ enum class AiTask(val wire: String, val isText: Boolean) {
     PROMPT("prompt", true),
 
     /** 翻译 */
-    TRANSLATE("translate", true);
+    TRANSLATE("translate", true),
+
+    /** 图像分类识物（输入是图片，走 `native.ai.classify`，不走 `native.ai.run`） */
+    CLASSIFY_IMAGE("classifyImage", false);
 
     companion object {
         /**
@@ -75,6 +78,16 @@ data class AiAvailability(val available: Boolean, val reason: AiUnavailableReaso
     }
 }
 
+/**
+ * 本地模型类提供者的下载状态，序列化进 `native.ai.providers` 的提供者条目。
+ *
+ * @property modelId 清单里的模型 id，对应 `native.model.*`
+ * @property downloaded 模型已安装且校验通过
+ * @property sizeBytes 磁盘占用（含未完成的 .part）
+ * @property downloading 是否正在下载或校验
+ */
+data class AiModelInfo(val modelId: String, val downloaded: Boolean, val sizeBytes: Long, val downloading: Boolean)
+
 /** 提供者执行任务的结果 */
 sealed class AiRunResult {
     /**
@@ -122,6 +135,13 @@ interface AiProvider {
      * @return 可用性
      */
     fun availability(): AiAvailability
+
+    /**
+     * 本地模型类提供者的下载状态；不依赖本地模型的提供者保持默认的 null，序列化时不输出相关字段。
+     *
+     * @return 模型状态，或 null
+     */
+    fun modelInfo(): AiModelInfo? = null
 
     /**
      * 执行一次任务。调用前由上层保证任务受支持、输入已校验、提供者可用。

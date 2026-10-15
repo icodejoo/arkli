@@ -72,7 +72,7 @@ summary: 六份工具设计共同依赖的底层能力：bridge 协议 v2、统�
 | `native.shortcut.pin` | 网页转应用 | |
 | `native.sensor.subscribe` / `unsubscribe` | 尺子、指南针、水平仪等 | 原生 SensorHub 只保留每个传感器的最新值，按设定频率（上限 60Hz）发一条消息；页面退出或切后台自动注销 |
 | `native.net.http` / `resolve` / `whois` | 网址探查、IP 查询、Whois、端口与 DNS | 可访问任意域名；统一超时、2MB 读取上限、手动跟随跳转、并发上限。汇率不走它，页面直接请求白名单接口 |
-| `native.pack.ensure` / `list` / `delete` | AI 模型、词典与数据包 | 见第四节；事件 `pack.progress` |
+| `native.model.list` / `status` / `ensure` / `cancel` / `remove` / `verify` | 本地模型下载管理 | **已落地（2026-10-14）**，命名由规划的 `native.pack.*` 改为 `native.model.*`，契约见 [Bridge 协议](bridge-protocol.md)，设计见 [模型下载管理](model-download.md)；轮询 `status`，没有 `pack.progress` 事件。词典与数据包（`kind=data`）仍用规划的 `native.pack.*`，未做 |
 | `native.task.status` / `cancel` | 视频、AI、下载 | 事件 `task.progress` / `task.done` / `task.error`，进度节流不超过 10Hz |
 | `rust.*` | 计算类 | 同步短任务直接返回；长任务走 task |
 
@@ -89,7 +89,7 @@ summary: 六份工具设计共同依赖的底层能力：bridge 协议 v2、统�
     - 首帧暗色脚本由内联改为外置 `web/public/theme-init.js`（`script-src 'self'` 不允许内联脚本）。
     - 清单加 `INTERNET`；主 App 用 `res/xml/network_security_config.xml`，全局 `cleartextTrafficPermitted=false`。spike 的 `spike_network_security_config.xml` 没有被任何清单引用，是遗留文件，发版前与 SpikeActivity 一起移除。
     - debug 验证：广播 `--es cmd nettest`，结果在 logcat 的 `DBGNET` 行。
-  - **未实现**：`native.net.*`、`native.pack.*`、汇率接口、回环 HTTP（含 CSP 的回环地址）、Worker 的 `connect-src 'none'`。
+  - **未实现**：`native.pack.*`（词典与数据包）、汇率接口、回环 HTTP（含 CSP 的回环地址）、Worker 的 `connect-src 'none'`。
   - **已知噪音**：Vant 图标字体 CSS 里 data: woff2 之后还有一条 `at.alicdn.com` 的 woff 回退，会被 `font-src` 拒绝并在 console 报一条 CSP 违规，不影响显示（先用内嵌字体）。
   - JS 解释器所在的 Worker 单独加 `connect-src 'none'`，禁止出站。
 - **JS 解释器工具**：必须跑在 Web Worker 里，不能放 iframe。spike 实测：新通道的 `ArkliNative` 只注入主页面和 `srcdoc` iframe（`srcdoc` 继承父来源，所以也拿得到），`data:`、sandbox、跨源 frame 和 Worker 里都没有；旧的 `@JavascriptInterface` 方案会注入所有 frame（Worker 除外），跨源 frame 的调用确实到了原生。
@@ -106,6 +106,11 @@ summary: 六份工具设计共同依赖的底层能力：bridge 协议 v2、统�
 - **使用**：模型由 Rust 的 AI 运行时加载；数据包经 PathHandler 暴露给页面读取。
 - **事件**：`pack.progress`（百分比、速度）、完成与失败走 task 事件。
 - **加速包（NPU）**：本期不做，manifest 里的 `kind` 预留 `accel` 以便以后扩展。
+- **落地状态（2026-10-14）**：**模型部分已落地**，命名为 `native.model.*`，设计与验证见 [模型下载管理](model-download.md)。与上面规划的差异：
+  - 清单是**随包的 `assets/ai/models.json`**（信任锚就是 APK 签名），**没有 Ed25519 签名、`kind`、`minAppVersion`**；`urls` 放在每个文件上；目标目录是 `filesDir/models/<id>/`，不是 `packs/<id>/<version>/`。
+  - 下载器已做：`HttpURLConnection` + Range 续传、多源回退、逐跳校验重定向（主机白名单 `NetPolicy.DOWNLOAD_HOSTS`，与页面出站白名单分开）、空间检查（1.2 倍）、sha256 校验、原子落盘、取消保留 `.part`、重试与退避、同一模型单任务。
+  - 进度走“`ensure` 立即返回 + 轮询 `status`”，**没有 `pack.progress` 事件**（事件推送是会话级的，页面关闭后会丢，而下载要跨会话存活）。
+  - **未做**：词典与数据包（`kind=data`、`native.pack.*`、PathHandler 暴露 `/files/packs/**`）、清单签名与远程更新、多连接分片、前台服务、`accel` 加速包。
 
 ## 五、长任务与前台服务
 - 视频压缩、转 GIF 这类用前台服务，API 35+ 声明 `mediaProcessing` 类型，状态通过 `native.task.status` 查询。

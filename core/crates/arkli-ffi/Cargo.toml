@@ -11,4 +11,6 @@ crate-type = ["cdylib", "lib"]
 
 [dependencies]
 arkli-core = { path = "../arkli-core" }
+# 识物：真实 ORT 后端（load-dynamic，运行时才找 libonnxruntime.so，宿主机编译不需要它）
+arkli-ai = { path = "../arkli-ai", features = ["ort-backend"] }
 uniffi = "0.32.2"

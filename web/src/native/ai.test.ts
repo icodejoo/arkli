@@ -55,7 +55,6 @@ describe('getAiStatus', () => {
 const CASES: Array<[string, (m: Mod, c: Call) => Promise<unknown>, string, Record<string, unknown>, string]> = [
   ['aiOcr', (m, c) => m.aiOcr('p.jpg', 'en', c), 'native.ai.ocr', { path: 'p.jpg', lang: 'en' }, 'ocr'],
   ['aiUpscale', (m, c) => m.aiUpscale('p.jpg', 4, c), 'native.ai.upscale', { path: 'p.jpg', scale: 4 }, 'upscale'],
-  ['aiClassify', (m, c) => m.aiClassify('p.jpg', 3, c), 'native.ai.classify', { path: 'p.jpg', topK: 3 }, 'classify'],
   ['aiMatte', (m, c) => m.aiMatte('p.jpg', c), 'native.ai.matte', { path: 'p.jpg' }, 'matte'],
   ['aiFuse', (m, c) => m.aiFuse('a', 'b', 0.3, c), 'native.ai.fuse', { pathA: 'a', pathB: 'b', ratio: 0.3 }, 'fuse'],
   ['aiColorize', (m, c) => m.aiColorize('p.jpg', c), 'native.ai.colorize', { path: 'p.jpg' }, 'colorize'],
@@ -94,13 +93,11 @@ describe('其他', () => {
     const m = await load(true)
     await expect(m.aiMatte('p', fakeCall(ALL_ON, null, { code: 'INTERNAL', message: 'x' }))).rejects.toMatchObject({ code: 'INTERNAL' })
   })
-  it('aiFuse 不传 ratio 时不带该字段，aiClassify 默认 topK=5', async () => {
+  it('aiFuse 不传 ratio 时不带该字段', async () => {
     const m = await load(true)
     const call = fakeCall(ALL_ON, {})
     await m.aiFuse('a', 'b', undefined, call)
     expect(call).toHaveBeenCalledWith('native.ai.fuse', { pathA: 'a', pathB: 'b' }, { timeoutMs: 0 })
-    await m.aiClassify('p', undefined, call)
-    expect(call).toHaveBeenLastCalledWith('native.ai.classify', { path: 'p', topK: 5 }, { timeoutMs: 0 })
   })
   it('aiOcr 默认 zh', async () => {
     const m = await load(true)
@@ -160,5 +157,50 @@ describe('aiProviders / aiRun', () => {
     await expect(off.aiRun('p', 'prompt', 'x', ret({}))).rejects.toMatchObject({ name: 'NativeUnavailableError' })
     const on = await load(true)
     await expect(on.aiRun('p', 'prompt', 'x', boom('NOT_READY'))).rejects.toMatchObject({ code: 'NOT_READY' })
+  })
+})
+
+describe('aiClassifyImage（本地识物）', () => {
+  const RESULT = {
+    items: [{ id: 'milk_carton', nameZh: '牛奶利乐包', nameEn: 'milk carton', category: 'R', score: 0.31 }],
+    categories: [{ category: 'R', name: '可回收物', prob: 0.97 }],
+    confidence: 0.97,
+    uncertain: false,
+    elapsedMs: 1200,
+    inferMs: 1000,
+    modelId: 'siglip2-q4_half',
+  }
+  /** 只回结果的 call，不经过 status */
+  const ok = () => vi.fn(async () => RESULT) as unknown as Call & ReturnType<typeof vi.fn>
+  /** 抛指定错误码的 call */
+  const fail = (code: string) =>
+    vi.fn(async () => {
+      throw { code, message: 'x' }
+    }) as unknown as Call
+
+  it('直接调 native.ai.classify，不查 status，不设超时，默认 topK=3', async () => {
+    const m = await load(true)
+    const call = ok()
+    expect(await m.aiClassifyImage('cache/pick/a.jpg', undefined, call)).toEqual(RESULT)
+    expect(call).toHaveBeenCalledTimes(1)
+    expect(call).toHaveBeenCalledWith('native.ai.classify', { path: 'cache/pick/a.jpg', topK: 3 }, { timeoutMs: 0 })
+  })
+  it('topK 原样传递', async () => {
+    const m = await load(true)
+    const call = ok()
+    await m.aiClassifyImage('p', 7, call)
+    expect(call).toHaveBeenCalledWith('native.ai.classify', { path: 'p', topK: 7 }, { timeoutMs: 0 })
+  })
+  it('无宿主：抛 AiNotReadyError 且不调原生', async () => {
+    const m = await load(false)
+    const call = ok()
+    await expect(m.aiClassifyImage('p', 3, call)).rejects.toBeInstanceOf(m.AiNotReadyError)
+    expect(call).not.toHaveBeenCalled()
+  })
+  it('NOT_READY / UNKNOWN_METHOD 统一成 AiNotReadyError，其他错误照抛', async () => {
+    const m = await load(true)
+    await expect(m.aiClassifyImage('p', 3, fail('NOT_READY'))).rejects.toMatchObject({ name: 'AiNotReadyError', model: 'classify' })
+    await expect(m.aiClassifyImage('p', 3, fail('UNKNOWN_METHOD'))).rejects.toBeInstanceOf(m.AiNotReadyError)
+    await expect(m.aiClassifyImage('p', 3, fail('BAD_PARAMS'))).rejects.toMatchObject({ code: 'BAD_PARAMS' })
   })
 })

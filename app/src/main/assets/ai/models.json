@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "note": "随包信任锚：下载地址只能来自这里，页面不能传 URL。q4_half 的托管 release 尚未发布，URL 为占位，发布前请核对。",
+  "models": [
+    {
+      "id": "siglip2-q4_half",
+      "displayName": "本地识物模型（SigLIP2）",
+      "version": "1",
+      "dir": "models/siglip2-q4_half",
+      "totalBytes": 54662805,
+      "license": "apache-2.0",
+      "files": [
+        {
+          "name": "q4_half.onnx",
+          "bytes": 54662805,
+          "sha256": "6b4ea1ecba627b754df325d86cc971620ac961b47d81310a3c0659827dff217a",
+          "role": "model",
+          "urls": [
+            "https://github.com/icodejoo/arkli/releases/download/siglip2-q4half-v1/q4_half.onnx"
+          ]
+        }
+      ]
+    }
+  ]
+}

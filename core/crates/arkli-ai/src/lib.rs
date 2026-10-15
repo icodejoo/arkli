@@ -12,6 +12,8 @@
 //! - [`db`]：DB 检测后处理（连通域、最小外接矩形、unclip）
 //! - [`ctc`]：CTC 贪心解码
 //! - [`pipeline`]：`OcrPipeline::recognize`，支持取消令牌与进度回调
+//! - [`clip`]：CLIP 类图像编码器（缩放、归一化、向量），用于 SigLIP2 识物
+//! - [`classify`]：词表向量与零样本分类（top-k、按分类聚合的 softmax 概率、置信度）
 //!
 //! ## 测试
 //! 默认 `cargo test -p arkli-ai` 只用 mock 会话，不需要 ORT 动态库与模型文件。
@@ -23,6 +25,8 @@
 //! - 识别字典默认追加空格字符（`use_space_char`），类别数 = 字典行数 + 2
 
 pub mod backend;
+pub mod classify;
+pub mod clip;
 pub mod ctc;
 pub mod db;
 pub mod error;

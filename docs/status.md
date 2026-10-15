@@ -1,7 +1,7 @@
 ---
 title: 当前状态与待办
 status: active
-updated: 2026-10-13
+updated: 2026-10-14
 summary: 接手入口：做到哪、已拍板什么、验证到什么程度、下一步按顺序做什么、技术债、本机环境与工作约定
 ---
 ## TL;DR
@@ -10,6 +10,9 @@ summary: 接手入口：做到哪、已拍板什么、验证到什么程度、�
 - **底部 tab 导航（2026-10-14）**：首页 / AI / 收藏 / 设置四个根 tab（`van-tabbar` route+replace），tab 之间淡入淡出，进 `/tool/:id` 仍推入、返回回到来的 tab，工具页无底栏；四页 keep-alive 并按路由名还原滚动；`ToolMeta.tags`（`'ai'`）驱动 AI 页，收藏存 localStorage（`stores/favorites.ts`），工具页导航栏右侧星标切换。首页原右上角设置入口已移除（设置现为 tab）。真机 safe-area 与底栏高度待在手机上看。
 - **长按图标添加到桌面（2026-10-14）**：首页任意工具长按 500ms → 底部菜单“添加到桌面” → `native.shortcut.pinTool`（`label/icon/route`，路由只认 `/tool/<id>`）。图标用工具 emoji 画在浅灰圆角底上，点桌面图标直达 `#/tool/<id>`（`MainActivity` 改 `singleTop`，冷启动走 `startRoute`，热启动走 `onNewIntent`）。STG-AL00 真机验证：长按弹菜单且不误进页面、系统确认框图标与名称正确、冷/热启动均直达、单实例。已知：从快捷方式冷启动进工具页后按返回直接回桌面（不经首页）。另修闹钟：补声明 `SCHEDULE_EXACT_ALARM`，被拒时降级非精确闹钟。
 - **二维码扫码原型（2026-10-14）**：`native.qrcode.scan`（Compose 全屏取景 + CameraX `ImageAnalysis` Y 平面 + zxing-cpp，闪光灯，相机权限）、`native.qrcode.decodeImage`（相册图，选项全开）、web 工具页 `qrcode-scan`；CameraX 1.5.3、zxing-cpp 3.1.1 已获批准。**只过编译与单测，未上真机**。zxing-cpp 3.1.1 由 Kotlin 2.3 编译、会把 kotlin-stdlib 拉到 2.3.20，所以 Kotlin 插件从 2.1.21 升到 2.3.20（`kotlinOptions` 改 `compilerOptions`）。release APK 2,501,582 → 4,917,628 字节（+2.4MB，其中 so 1.75MB 以未压缩存入，dex +0.7MB），口径见 [落地跟踪表](design/rollout-tracker.md)。
+- **识物第 1 步：ORT 接入 + `native.ai.classify`（2026-10-14）**：App 里首次有了 ORT。Rust `arkli-ai` 新增 `clip`（PIL 同款抗锯齿 bilinear 缩放 → 归一化 → SigLIP2 `q4_half` 推理 → L2 向量）与 `classify`（182 条英文词表、`softmax(100×余弦)` 按分类聚合、置信度 <0.8 判“拿不准”），经 `arkli-ffi` 的 UniFFI 暴露；Kotlin 新增 `LocalClipProvider`（`local-clip`）、`ClipService`、`AiHeavyGate`（重任务互斥）、桥方法 `native.ai.classify`；web 加 `aiClassifyImage()`（旧 `aiClassify` 与 `image-classify` 页已在第 3 步删除）。**真机 STG-AL00 验证**：裸名 `libonnxruntime.so` 在 APK 进程内从 APK 直接映射并推理成功；8 张图 top-3 物品 id 与 PC 完全一致，余弦差 ≤0.0015，单张约 1.0 s；首次加载约 +0.7 s，进程峰值 RSS +约 107MB。词表随包（`assets/ai/`，生成脚本 `tools/ai-vocab/`），**分类仍是草稿，待对照官方指引核对**。模型文件本步不下载（debug 用 adb 放进 `filesDir/models/siglip2-q4_half/`），第 2 步做下载管理。详见 [桥协议](design/bridge-protocol.md) 的 AI 提供者方法。
+- **识物第 2 步：通用模型下载管理 `native.model.*`（2026-10-14）**：随包清单 `assets/ai/models.json`（信任锚，页面只传 id 不传 URL）+ 原生 `ModelManager`/`ModelDownloader`（只用 `HttpURLConnection`，Range 续传、多源回退、逐跳校验重定向、空间 1.2 倍检查、sha256 校验后原子改名、取消保留 `.part`、重试退避、同一模型单任务），桥方法 `list/status/ensure/cancel/remove/verify`（轮询 `status`，无事件推送），前端 `model.ts` 与 `useModelState`；`native.ai.providers` 的 `local-clip` 增 `modelId/downloaded/sizeBytes/downloading`，可用性改为“已安装且校验通过”，`remove` 会先 `clip_unload`。`NetPolicy` 新增独立的 `DOWNLOAD_HOSTS`（`github.com`、`objects.githubusercontent.com`、`release-assets.githubusercontent.com`），不进页面 CSP。**测试**：Kotlin 全量 518 个通过（新增 59 个：下载器 25、管理器 17、清单与策略 17），web 138 个文件 1962 个通过，`vue-tsc` 通过。**真机 STG-AL00（debug 包 + 本机 Range 服务 + `adb reverse`）**：中途掉线与取消后均按 `Range` 续传到完整、sha256 与清单一致，服务器忽略 Range 时从头来，篡改 1 字节被 `HASH_MISMATCH` 拒绝，下载后 `native.ai.classify` 跑通，`remove` 后回到未安装并可再次下载；release 包无 debug 钩子、无明文放行。**未验证**：GitHub release 的真实 302 链路（**托管 release 尚未发布，清单里的 URL 是占位**）、移动网络、后台被杀后的续传、空间不足的真机路径（仅单测）。**未做**：多连接分片、前台服务、清单签名。设计见 [模型下载管理](design/model-download.md)。
+- **识物第 3 步：Web 工具页 `waste-classify`（2026-10-14）**：替换旧 `image-classify`（旧 `aiClassify`、页面、`native.ai.status` 的前端消费都已删，原生 `native.ai.status` 保留）。流程：未安装→下载引导（计费网络先确认、进度/速度/取消续传、错误码转人话）→选图→识别→顶部大字分类 + top-3 点选采纳（拿不准不给强结论）→易混提示→删除模型。**App 接入完成（待发布模型）**。真机 STG-AL00 走通：删除→下载（本机 Range 服务）→选图→识别→点候选→删除确认；仅相册选图，没有 `native.camera.capture`。词表分类仍是草稿，页面底部固定“仅供参考”小字。
 - 仍缺：视频压缩/提取音频/转 GIF 的 Media3 替换（平台 API 版已有）；OCR/超分/识别/抠图/融合/上色（页面已做，本地模型方法只有 `native.ai.status` 桩，模型未接入；另有 AI 提供者抽象 `native.ai.providers` / `native.ai.run` 与系统应用交接，见 [0004](decisions/0004-ai-provider-abstraction.md)，真机验证待做）；查字的部首笔画、藏头诗等（缺合规数据）。
 - 当前 release APK **1,737,792 字节**（空壳基线 1,220,629）。测试：Kotlin 156、web 38 文件 413 例、`arkli-ai` 49 个单测加 9 个 doctest，全绿。
 - **下一步**：系统能力（权限、分享、剪贴板、震动等）→ 联网余下部分 → 视频音频（Media3，要先确认依赖）→ AI 运行时真机复验。见"待办"。
@@ -54,7 +57,7 @@ summary: 接手入口：做到哪、已拍板什么、验证到什么程度、�
 - **调试入口**（仅 debug 源集，release 不含）：`adb shell am broadcast -a com.let188.arkli.debug.CMD --es cmd <命令>`。命令：`crash` `hello` `ping` `state` `sleep` `ticker` `cancel` `filepick` `filesave` `writetest` `writeopen` `rangetest` `videotest` `listcache` `securitytest` `nettest` `imgprep` `imgrun` `exifdump` `imglist` `nav` `rpc`（`--es method --es params [--es id]`，任意调一个 bridge 方法，结果看 `DBGMSG`）`previewtest`（生成 1080×20000 长图并打开原生预览，日志含底图/局部解码耗时）。日志过滤 `adb logcat | grep -E "ArkliDebug|DBGMSG|DBGNET"`。
 
 ### Rust
-- `core/crates/arkli-ai`：PP-OCR 管线的纯逻辑（预处理、DB 后处理、CTC、取消与进度）、provider 探测、推理后端 trait；`ort` 仅在 `ort-backend` 特性后。`arkli-core` 仍零依赖。**未接入 UniFFI，未进 APK，APK 进程内的 ORT 加载与 OCR 端到端耗时没复验。**
+- `core/crates/arkli-ai`：PP-OCR 管线的纯逻辑（预处理、DB 后处理、CTC、取消与进度）、provider 探测、推理后端 trait；`ort` 仅在 `ort-backend` 特性后。`arkli-core` 仍零依赖。**识物（`clip` 编码器 + `classify` 分类，纯函数）已经经 `arkli-ffi` 的 UniFFI 接入并进 APK，真机裸名 dlopen 已在 APK 进程内复验；OCR 管线本身仍没接 UniFFI，OCR 端到端耗时没复验。**
 
 ### Web（25 个工具，id 见 `web/src/tools/registry.ts`）
 - 文本与计算：金额转大写、进制转换、单位换算、时间计算器、日期计算器、亲戚关系计算器、阳历/阴历互转、中文转拼音。
@@ -74,20 +77,20 @@ summary: 接手入口：做到哪、已拍板什么、验证到什么程度、�
 `native.permission.*`（落地后把 `native.file.save` 在 API 24~28 的临时权限申请改走它）、`native.share`、`native.clipboard.*`（`sensitive: true`）、`native.screen.*`、`native.haptic.vibrate`、`native.settings.open`、`native.intent.*`、`native.camera.capture`。抛硬币与掷骰子的音效和震动、设备信息里的电池、存储、品牌型号也依赖它（建议 `native.device.info/status/display`，有了 `xdpi` 尺子可免校准）。
 
 ### 2. 联网余下部分
-`native.net.*`（http、resolve、whois，超时、2MB 上限、手动跳转、取消）、`native.pack.*`（带 Ed25519 签名的 manifest、Range 断点续传、sha256、原子落盘，托管位置未定）、汇率接口逐个实测 CORS 后加入白名单、`network_security_config` 放行回环 `127.0.0.1`。
+`native.net.*`（http、resolve、whois，超时、2MB 上限、手动跳转、取消）、`native.pack.*`（词典与数据包；模型部分已落地为 `native.model.*`，没做签名，见 [模型下载管理](design/model-download.md)）、汇率接口逐个实测 CORS 后加入白名单、`network_security_config` 放行回环 `127.0.0.1`。
 
 ### 3. 长任务与视频音频
 `native.task.*`、前台服务（API 35+ 声明 `mediaProcessing`）、通知封装、闹钟（番茄钟）。视频压缩、提取音频走 Media3 Transformer 与平台 `MediaExtractor/Muxer`，**先问用户确认 Media3 依赖**。
 
 ### 4. AI 运行时真机复验
-`arkli-ai` 经 UniFFI 接入（`CancelToken` 做 Object、进度做 callback interface）；**在 APK 进程里复验**裸名 dlopen 与 sherpa 共用 ORT；通道顺序 BGR/RGB、cls 模型输入尺寸（v5 未核实）、默认参数在 1080×2400 截图上的检出率、耗时与内存；每次升级 sherpa 加一条 OCR 端到端回归；NNAPI 默认关。模型文件来源（约 21.5MB，ModelScope RapidAI）与托管位置待定。PNG 解码 `png` crate 未批准，输入暂由原生解码成像素。
+`arkli-ai` 的 OCR 管线经 UniFFI 接入（`CancelToken` 做 Object、进度做 callback interface；识物那部分已接，见上）；与 sherpa 共用同一份 ORT（裸名 dlopen 已在 APK 进程里复验，sherpa JNI 同进程共用未测）；通道顺序 BGR/RGB、cls 模型输入尺寸（v5 未核实）、默认参数在 1080×2400 截图上的检出率、耗时与内存；每次升级 sherpa 加一条 OCR 端到端回归；NNAPI 默认关。模型文件来源（约 21.5MB，ModelScope RapidAI）与托管位置待定。PNG 解码 `png` crate 未批准，输入暂由原生解码成像素。
 
 ### 5. 其余 P0
 OCR 工具页（依赖 4）。二维码扫码原型已做，待真机验证。
 
 ### 5b. AI 四层与模型（决策见 [0005](decisions/0005-ai-four-layers.md)）
 - **全部任务完成后，找一台有点积（`asimddp`）和 fp16（`fphp`）的手机复测** Rust ort、llama.cpp、MNN，再决定是否改 0002（见 [端侧 LLM 对比](research/on-device-llm-comparison.md)）。
-- 对联 GPT-2 int4 在 Android 真机上跑通并实测速度、对联工具页接入（下载、解码、上联 ≤14 字、拦截英文数字括号、等长约束）；垃圾分类 SigLIP2 q4f16 真机验证、识物工具页接入；L4 在线 OpenAI 先出方案（密钥存储、`native.net` 加 POST 与流式）；AI 页“模型配置”占位入口接管理功能。
+- 对联 GPT-2 int4 在 Android 真机上跑通并实测速度、对联工具页接入（下载、解码、上联 ≤14 字、拦截英文数字括号、等长约束）；垃圾分类识物工具页接入（第 1 步“ORT 接入 + `native.ai.classify`”与第 2 步模型下载管理已做；剩第 3 步 Web 页；SigLIP2 `q4_half`，54.7MB 按需下载，词表向量只用英文；q4f16 在 STG-AL00 上 SIGILL，**fp16 留到高端机再实测**；真机测试文件保留）；L4 在线 OpenAI 先出方案（密钥存储、`native.net` 加 POST 与流式）；AI 页“模型配置”占位入口接管理功能。
 - 设备上 `/data/local/tmp/qwenspike/`（约 641MB）是探测残留，用户尚未说清理。
 
 ### 6. 工具与前端小项
@@ -100,8 +103,8 @@ OCR 工具页（依赖 4）。二维码扫码原型已做，待真机验证。
 
 ## 待用户拍板 / 未知
 - **开源协议**还没选（仓库无 LICENSE）：GPL 类依赖（如 libimagequant）会牵连整个 App，选协议要早于引入这类依赖。
-- 模型与数据包托管位置；拼豆色号表数据来源；国内商店对按需下载 so 的规则（没查到原文）。
-- AI 运行时（ORT + sherpa JNI，arm64 约 27MB 未压缩）是否随包：默认随包，等体积基线复议。
+- 模型与数据包托管位置（**识物 `q4_half.onnx` 的 GitHub release `siglip2-q4half-v1` 尚未发布，清单 URL 是占位**；发布后要实测一次真实 302 落点主机，并考虑补镜像）；拼豆色号表数据来源；国内商店对按需下载 so 的规则（没查到原文）。
+- AI 运行时（ORT + sherpa JNI，arm64 约 27MB 未压缩）是否随包：**ORT 已随包**（只带 `libonnxruntime.so` 22.25MB，不带 sherpa JNI；release APK 4,917,752 → 27,643,404 字节，gzip -9 3,309,480 → 11,605,440），是否改为按需下载 ORT 等复议；sherpa JNI 等接 sherpa 能力时再定。**新增构建步骤待确认**：Gradle 任务 `fetchOrtRuntime` 构建时从 GitHub 下载 50MB 的 sherpa AAR 并校验 sha256，缓存在 `.gradle/arkli-ort/`。
 - 高通、华为运行库再分发许可（NPU 暂搁置）。
 - **对联 GPT-2 的 release（`couplet-gpt2-v1`，公开仓库）许可证无法确认可再分发**：用户决定不向作者确认、风险自负；作者若不允许要删除 release（见 [对联 GPT-2](research/couplet-gpt2-onnx.md)）。
 - 端侧 LLM 的 tokenizer：引入 `tokenizers` crate（新依赖）还是自写 BPE 解析，未定。

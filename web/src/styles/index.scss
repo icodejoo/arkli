@@ -22,6 +22,12 @@
   --c-error: #dc2626;
   --c-warn-bg: #fff4d6;
   --c-warn-text: #7a5a00;
+  // 垃圾分类四色：可回收 / 有害 / 湿 / 干，及其上的文字色
+  --c-waste-r: #2563eb;
+  --c-waste-h: #dc2626;
+  --c-waste-w: #8a5a2b;
+  --c-waste-d: #4b5563;
+  --c-waste-on: #ffffff;
 
   // Vant 主题：主色、圆角、字体、背景、文字、边框
   --van-primary-color: var(--c-primary);
@@ -70,6 +76,11 @@
   --c-error: #f87171;
   --c-warn-bg: #3a3010;
   --c-warn-text: #f5d77a;
+  --c-waste-r: #7aa2ff;
+  --c-waste-h: #f87171;
+  --c-waste-w: #d6a46a;
+  --c-waste-d: #aab0bc;
+  --c-waste-on: #10131a;
   --van-text-color-3: #6b7280;
   --van-progress-background: var(--c-surface-active);
 }

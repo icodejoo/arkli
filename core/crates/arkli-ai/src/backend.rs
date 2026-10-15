@@ -41,6 +41,16 @@ pub trait Session: Send {
     /// - `input`：输入张量
     /// - 返回：第一个输出张量
     fn run(&mut self, input: Tensor) -> Result<Tensor>;
+
+    /// 运行一次推理并按名字取输出（多输出模型用，如 SigLIP2 的 `pooler_output`）。
+    ///
+    /// - `input`：输入张量
+    /// - `output`：输出名
+    /// - 返回：该名字对应的输出张量；默认实现不支持，返回 [`AiError::Unsupported`]
+    fn run_named(&mut self, input: Tensor, output: &str) -> Result<Tensor> {
+        let _ = input;
+        Err(AiError::Unsupported(format!("该会话不支持按名取输出：{output}")))
+    }
 }
 
 /// 推理后端：能列出可用 provider、能加载模型。

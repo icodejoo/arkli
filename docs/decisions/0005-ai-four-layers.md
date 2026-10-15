@@ -7,7 +7,7 @@ summary: 所有 AI 能力分四层供用户自由选择；本地模型一律按�
 ## TL;DR
 
 - AI 能力统一分**四层**：L1 本地小模型、L2 本地大模型、L3 本机 AI、L4 远端 API。
-- **本地模型（L1、L2）一律按需下载，不随包发布**。
+- **本地模型（L1、L2）一律按需下载，不随包发布**（已有统一的原生下载管理 `native.model.*`，见 [模型下载管理](../design/model-download.md)）。
 - **用户自由选择**用哪一层；**本机 AI 不支持就隐藏**（不置灰）。
 - 页面只认统一的 `AiProvider` 接口（见 [0004](0004-ai-provider-abstraction.md)），不认厂商和具体模型。
 - 在线先只做 OpenAI；本地 LLM 的推理路线与运行时选型见 [端侧 LLM 对比](../research/on-device-llm-comparison.md)，**未定论**。
@@ -41,7 +41,7 @@ summary: 所有 AI 能力分四层供用户自由选择；本地模型一律按�
 
 | 能力 | 层 | 状态 |
 |---|---|---|
-| 垃圾分类识别（SigLIP2 q4f16 + 英文词表向量） | L1 | 选型完成，见 [垃圾分类调研](../research/garbage-classify-clip.md)；真机验证中 |
+| 垃圾分类识别（SigLIP2 `q4_half` + 英文词表向量） | L1 | 选型与真机验证完成（q4f16 在低端机 SIGILL，改用 q4_half，fp16 留到高端机再测），见 [垃圾分类调研](../research/garbage-classify-clip.md)；**App 接入第 1 步已做（2026-10-14）**：ORT 随包、`native.ai.classify` 与 `local-clip` 提供者真机跑通；**模型下载管理（第 2 步）已做（2026-10-14）**：`native.model.*` 通用下载管理，见 [模型下载管理](../design/model-download.md)（托管 release 与真实 302 链路待发布后验证）；**Web 页（第 3 步）已做（2026-10-14）**：`waste-classify` 工具页，下载引导、top-3 点选采纳、易混提示、真机跑通；状态为 **App 接入完成（待发布模型）** |
 | 对联生成（GPT-2 int4） | L1 | 模型已导出并发布，见 [对联 GPT-2](../research/couplet-gpt2-onnx.md)；App 接入未做 |
 | 通用文本生成（Qwen 系） | L2 | 真机可行，速度偏慢，见 [端侧 LLM 对比](../research/on-device-llm-comparison.md) |
 | 系统应用交接 | L3 | 已落地（`IntentHandoffProvider`） |
@@ -50,5 +50,5 @@ summary: 所有 AI 能力分四层供用户自由选择；本地模型一律按�
 ## 待办与未决
 
 - L4 的方案：密钥放 Android Keystore 加密；`native.net.*` 现在只支持 GET/HEAD，需要新增 POST 与流式输出；供应商抽象要为以后加别家留位。属架构级，开工前单独出方案并让用户确认。
-- 底部 tab 的 AI 页里“模型配置”占位入口，后续放四层的管理：下载、删除、配置 OpenAI、全局默认。
+- 底部 tab 的 AI 页里“模型配置”占位入口，后续放四层的管理：下载、删除、配置 OpenAI、全局默认。其中本地模型的下载、删除与占用空间已有原生接口 `native.model.*`（`native.model.list` 给全部模型的状态与占用），对联 GPT-2、Qwen 接入时只需往清单 `assets/ai/models.json` 加条目并注册释放钩子（`ModelManager.addReleaseHook`）。
 - 本地 LLM 的运行时：Rust ort 不新增依赖但慢；llama.cpp/MNN 快 3–4 倍但要改 0002。**全部任务完成后，找一台有点积与 fp16 的手机复测再决定。**
