@@ -2,7 +2,9 @@
 // 垃圾分类：默认是本地词典检索（上海四分类）；路由 mode=camera 时切到拍照识别
 import { computed, defineAsyncComponent, ref } from "vue";
 import { useRoute } from "vue-router";
+import BottomActions from "@/shared/BottomActions.vue";
 import ModelPicker from "@/shared/ModelPicker.vue";
+import type { BottomActionItem } from "@/shared/bottomActions";
 import { MODE_CAMERA, MODE_QUERY, findTool, hasAiChoices } from "@/tools/registry";
 import { CATS, WASTE_ITEMS } from "./data";
 import { countByCat, getCat, search } from "./logic";
@@ -26,6 +28,20 @@ const classify = ref<{
 } | null>(null);
 /** 是否处于拍照识别模式 */
 const camera = computed(() => route.query[MODE_QUERY] === MODE_CAMERA);
+/** 识别不可用（模型未就绪或正在识别）时禁用拍照/相册 */
+const blocked = computed(() => !classify.value?.ready || !!classify.value?.busy);
+/** 底部动作栏：模型选择器（插槽）、相册、拍照 */
+const actions = computed<BottomActionItem[]>(() => [
+    { key: "picker" },
+    { key: "album", text: "相册", icon: "photo-o", disabled: blocked.value },
+    { key: "photo", text: "拍照", icon: "photograph-o", kind: "button", type: "danger", disabled: blocked.value },
+]);
+
+/** 动作栏点击：相册 / 拍照 */
+function onAction(key: string): void {
+    if (key === "album") classify.value?.fromAlbum();
+    else if (key === "photo") classify.value?.takePhoto();
+}
 
 /** 搜索框内容 */
 const query = ref("");
@@ -109,41 +125,16 @@ const counts = computed(() => countByCat());
 
         <p class="tool-hint">{{ DISCLAIMER }}</p>
 
-        <!-- 识别模式：底部动作栏，左边拍照、相册，右边模型选择器 -->
-        <van-action-bar
-            v-if="camera"
-            class="ws-bar"
-            placeholder
-            :safe-area-inset-bottom="false"
-        >
-            <model-picker v-if="hasPicker" :tool-id="TOOL_ID" />
-
-            <van-action-bar-icon
-                plain
-                type="primary"
-                icon="photo-o"
-                text="相册"
-                :disabled="!classify?.ready || classify?.busy"
-                @click="classify?.fromAlbum()"
-            />
-
-            <van-action-bar-button
-                type="danger"
-                icon="photograph-o"
-                text="拍照"
-                :disabled="!classify?.ready || classify?.busy"
-                @click="classify?.takePhoto()"
-            />
-        </van-action-bar>
+        <!-- 识别模式：底部动作栏，左边模型选择器，右边相册、拍照 -->
+        <bottom-actions v-if="camera" :items="actions" @select="onAction">
+            <template #item-picker>
+                <model-picker v-if="hasPicker" :tool-id="TOOL_ID" />
+            </template>
+        </bottom-actions>
     </div>
 </template>
 
 <style lang="scss" scoped>
-/* 底部动作栏：避开手势条 */
-.ws-bar {
-    padding-bottom: var(--safe-bottom);
-}
-
 /* 结果列表 */
 .ws-list {
     display: flex;

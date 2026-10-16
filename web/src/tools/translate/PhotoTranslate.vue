@@ -1,11 +1,10 @@
 <script setup lang="ts">
-// 拍照翻译：拍照 / 相册（可多选）取图，逐张 OCR 后逐块翻译，译文叠在原图对应位置；可弹窗看原文译文整段文本。
+// 图片翻译区：由翻译页底部动作栏驱动。取图（拍照 / 相册可多选）后只显示图片，点「翻译」才逐张 OCR + 逐块翻译，
+// 处理中图上有上下扫描效果，译文叠在原图对应位置；可弹窗看原文译文整段文本。
 // 拍照一律走原生 captureCamera，相册走 native.file.pick（无宿主时才退回 input 兜底）。模型状态只读 AI 目录，下载等都在 AI 中心。
-import { computed, onBeforeUnmount, onDeactivated, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
 import { showFailToast, showSuccessToast, showToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
-import { AI_CENTER_PATH, MSG_NO_MODEL } from '@/shared/modelPicker'
 import { pickImages, type PickedImage } from '@/shared/image-io'
 import { captureCamera, cameraItemToPicked, clearCamera, isCancelled, isAlbum } from '@/native/camera'
 import { isNativeAvailable } from '@/native/bridge'
@@ -51,8 +50,6 @@ const emit = defineEmits<{
   (e: 'use-qwen'): void
 }>()
 
-/** 路由器：模型未就绪时跳 AI 中心 */
-const router = useRouter()
 /** 翻译模型目录（只读） */
 const trCatalog = useAiCatalog(TRANSLATE_TOOL_ID)
 /** 文字识别模型目录（只读） */
@@ -60,7 +57,7 @@ const ocrCatalog = useAiCatalog(OCR_TOOL_ID)
 
 /** 翻译与 OCR 模型是否都就绪 */
 const modelsReady = computed(() => trCatalog.current.value?.status === 'ready' && ocrCatalog.current.value?.status === 'ready')
-/** 两个目录都探测过、却有模型没就绪：才显示提示条（探测前不闪） */
+/** 两个目录都探测过、却有模型没就绪：页面据此显示提示条（探测前不闪） */
 const showMissing = computed(() => trCatalog.ready.value && ocrCatalog.ready.value && !modelsReady.value)
 
 /** 各张图的结果（按选图顺序） */
@@ -75,7 +72,7 @@ const active = ref(0)
 const showText = ref(false)
 /** 取消控制器 */
 let controller: AbortController | null = null
-/** 本轮持有的图片（结束或换批时释放） */
+/** 本轮持有的图片（清除或换批时释放） */
 let held: PickedImage[] = []
 
 /** 预览区容器与其显示宽（叠层换算用） */
@@ -84,14 +81,8 @@ const stageWidth = ref(0)
 /** 监听容器尺寸变化 */
 let observer: ResizeObserver | null = null
 
-onMounted(() => {
-  if (!stage.value || typeof ResizeObserver === 'undefined') return
-  observer = new ResizeObserver((es) => {
-    stageWidth.value = es[0]?.contentRect.width ?? 0
-  })
-  observer.observe(stage.value)
-})
-
+/** 是否有图（图片模式） */
+const hasImages = computed(() => items.value.length > 0)
 /** 进度条文案 */
 const progressLabel = computed(() => (progress.value ? progressText(progress.value) : ''))
 /** 进度百分比（处理中把当前张算半格，视觉上更连贯） */
@@ -100,6 +91,22 @@ const percent = computed(() => (progress.value ? progressPercent(progress.value)
 const allText = computed(() => aggregateText(items.value))
 /** 有任何文字块结果时才允许看文本 */
 const hasText = computed(() => allText.value.length > 0)
+/** 只含译文的整段文本（页面的「复制」用） */
+const translatedText = computed(() => aggregateTranslated(items.value))
+
+// 预览容器只在有图时才渲染：出现时开始量宽，消失时停止
+watch(stage, (el) => {
+  observer?.disconnect()
+  observer = null
+  if (!el || typeof ResizeObserver === 'undefined') return
+  observer = new ResizeObserver((es) => {
+    stageWidth.value = es[0]?.contentRect.width ?? 0
+  })
+  observer.observe(el)
+})
+onMounted(() => {
+  stageWidth.value = stage.value?.clientWidth ?? 0
+})
 
 /** 某张图上每个译文块的叠层样式（框在原图像素，按显示宽缩放） */
 function overlays(it: PhotoItemResult): Array<{ key: number; text: string; style: Record<string, string> }> {
@@ -109,12 +116,7 @@ function overlays(it: PhotoItemResult): Array<{ key: number; text: string; style
     .filter((o) => o.text)
 }
 
-/** 点提示条：去 AI 中心 */
-function goAiCenter(): void {
-  void router.push(AI_CENTER_PATH)
-}
-
-/** 释放上一批图片并清掉相机临时产物 */
+/** 释放上一批图片 */
 function releaseHeld(): void {
   held.forEach((i) => i.release())
   held = []
@@ -123,11 +125,11 @@ function releaseHeld(): void {
 /** 拍照：原生相机；相机里点相册则转相册选；无宿主退回单张 input 选图 */
 async function fromCamera(): Promise<void> {
   try {
-    if (!isNativeAvailable()) return await start(await pickImages({ multiple: false }))
+    if (!isNativeAvailable()) return load(await pickImages({ multiple: false }))
     const r = await captureCamera({ modes: ['photo', 'album'] })
     if (isCancelled(r)) return
     if (isAlbum(r)) return await fromAlbum()
-    if (r.kind === 'image') await start([cameraItemToPicked(r)])
+    if (r.kind === 'image') load([cameraItemToPicked(r)])
   } catch (e) {
     showToast((e as { message?: string }).message ?? MSG_PICK_FAILED)
   }
@@ -137,35 +139,56 @@ async function fromCamera(): Promise<void> {
 async function fromAlbum(): Promise<void> {
   try {
     const got = await pickImages({ multiple: true, max: MAX_PHOTOS, onFailed: (f) => showToast(`读取失败：${f[0].message}`) })
-    await start(got)
+    load(got)
   } catch (e) {
     showToast((e as { message?: string }).message ?? MSG_PICK_FAILED)
   }
 }
 
+/** 把图片列表转成“待处理”的结果行 */
+function pendingItems(picked: PickedImage[]): PhotoItemResult[] {
+  return picked.map((p) => ({ name: p.name, url: p.url, width: 0, height: 0, status: 'pending', blocks: [] }))
+}
+
 /**
- * 开始一批：换掉旧结果，逐张识别翻译。
+ * 载入一批图片：换掉旧图与旧结果，只显示图，不识别（点「翻译」才跑）。
  *
- * @param picked 选到的图片
+ * @param picked 选到的图片；空数组或正在处理时直接释放
  */
-async function start(picked: PickedImage[]): Promise<void> {
+function load(picked: PickedImage[]): void {
   if (!picked.length || busy.value) {
-    picked.forEach((i) => i.release())
-    return
-  }
-  if (!trCatalog.ready.value) await trCatalog.refresh()
-  const provider = trCatalog.current.value?.providerId
-  if (!provider || !modelsReady.value) {
     picked.forEach((i) => i.release())
     return
   }
   releaseHeld()
   held = picked
+  active.value = 0
+  progress.value = null
+  items.value = pendingItems(picked)
+}
+
+/** 清掉图片与结果，回到文字模式 */
+function clear(): void {
+  controller?.abort()
+  releaseHeld()
+  void clearCamera()
+  items.value = []
+  progress.value = null
+  active.value = 0
+}
+
+/** 对已载入的图片逐张识别并翻译；没图、正在处理或模型没就绪时什么也不做 */
+async function run(): Promise<void> {
+  if (!held.length || busy.value) return
+  if (!trCatalog.ready.value) await trCatalog.refresh()
+  const provider = trCatalog.current.value?.providerId
+  if (!provider || !modelsReady.value) return
+  const picked = held
   const ac = new AbortController()
   controller = ac
   busy.value = true
   active.value = 0
-  items.value = picked.map((p) => ({ name: p.name, url: p.url, width: 0, height: 0, status: 'pending', blocks: [] }))
+  items.value = pendingItems(picked)
   progress.value = initProgress(picked.length)
   try {
     const inputs: PhotoInput[] = []
@@ -210,56 +233,46 @@ async function copy(text: string): Promise<void> {
   else showFailToast(MSG_COPY_FAILED)
 }
 
-/** 离开：取消、释放图片、清相机临时产物 */
-function cleanup(): void {
-  controller?.abort()
-  releaseHeld()
-  void clearCamera()
-}
-
 onDeactivated(() => controller?.abort())
 onBeforeUnmount(() => {
   observer?.disconnect()
-  cleanup()
+  clear()
 })
+
+/** 供翻译页读取状态、驱动动作 */
+defineExpose({ fromCamera, fromAlbum, run, cancel, clear, hasImages, busy, hasText, translatedText, modelsReady, showMissing })
 </script>
 
 <template>
-  <div class="tool-card pt">
-    <h3 class="tool-card__title">拍照翻译</h3>
-    <van-notice-bar v-if="showMissing" mode="link" wrapable :scrollable="false" left-icon="info-o" @click="goAiCenter">{{ MSG_NO_MODEL }}</van-notice-bar>
-
-    <div class="pt__actions">
-      <van-button icon="photograph" plain round size="small" :disabled="busy || !modelsReady" @click="fromCamera">拍照</van-button>
-      <van-button icon="photo-o" plain round size="small" :disabled="busy || !modelsReady" @click="fromAlbum">相册（可多选）</van-button>
-      <van-button v-if="busy" type="danger" plain round size="small" @click="cancel">取消</van-button>
-    </div>
-
-    <div v-if="progress" class="pt__progress">
+  <div v-if="hasImages" class="pt">
+    <div v-if="progress && busy" class="pt__progress">
       <van-progress :percentage="percent" :show-pivot="false" stroke-width="4" />
       <p class="pt__progress-text">{{ progressLabel }}</p>
     </div>
 
-    <!-- 预览：始终挂着容器以便量宽；多图可横滑 -->
+    <!-- 预览：多图可横滑 -->
     <div ref="stage" class="pt__stage">
-      <van-swipe v-if="items.length" :show-indicators="items.length > 1" :loop="false" :initial-swipe="active" @change="active = $event">
+      <van-swipe :show-indicators="items.length > 1" :loop="false" :initial-swipe="active" @change="active = $event">
         <van-swipe-item v-for="(it, i) in items" :key="i">
           <div class="pt__slide">
             <img class="pt__img" :src="it.url" :alt="it.name" />
             <div class="pt__layer">
               <div v-for="o in overlays(it)" :key="o.key" class="pt__box" :style="o.style">{{ o.text }}</div>
             </div>
-            <div v-if="it.status === 'running'" class="pt__tag"><van-loading size="14px" color="#fff">处理中</van-loading></div>
+            <!-- 处理中：上下往返的扫描线 -->
+            <div v-if="it.status === 'running'" class="pt__scan" aria-hidden="true" />
+            <div v-if="it.status === 'running'" class="pt__tag"><van-loading size="14px" color="#fff">识别中</van-loading></div>
             <div v-else-if="it.status === 'failed'" class="pt__tag pt__tag--err">{{ it.error }}</div>
             <div v-else-if="it.status === 'cancelled'" class="pt__tag">已取消</div>
-            <div v-else-if="it.status === 'pending'" class="pt__tag">排队中</div>
+            <div v-else-if="it.status === 'pending' && busy" class="pt__tag">排队中</div>
           </div>
         </van-swipe-item>
       </van-swipe>
     </div>
 
-    <div v-if="items.length" class="pt__actions">
+    <div class="pt__actions">
       <van-button type="primary" round size="small" :disabled="!hasText" @click="showText = true">查看文本</van-button>
+      <van-button plain round size="small" :disabled="busy" @click="clear">移除图片</van-button>
     </div>
 
     <van-popup v-model:show="showText" position="bottom" round closeable :style="{ height: '75%' }">
@@ -267,7 +280,7 @@ onBeforeUnmount(() => {
         <h3 class="pt__pop-title">原文与译文</h3>
         <div class="pt__pop-actions">
           <van-button size="mini" plain round :disabled="!hasText" @click="copy(allText)">复制全部</van-button>
-          <van-button size="mini" plain round :disabled="!hasText" @click="copy(aggregateTranslated(items))">只复制译文</van-button>
+          <van-button size="mini" plain round :disabled="!hasText" @click="copy(translatedText)">只复制译文</van-button>
         </div>
         <div class="pt__pop-body">
           <section v-for="(it, i) in items" :key="i" class="pt__group">
@@ -296,7 +309,7 @@ onBeforeUnmount(() => {
 }
 
 .pt__progress {
-  margin-top: $space-3;
+  margin-bottom: $space-3;
 }
 
 .pt__progress-text {
@@ -305,13 +318,10 @@ onBeforeUnmount(() => {
   color: var(--c-text-muted);
 }
 
-.pt__stage {
-  margin-top: $space-3;
-}
-
 // 图片按宽度铺满，叠层与图同尺寸绝对定位，译文框坐标相对图片左上角
 .pt__slide {
   position: relative;
+  overflow: hidden;
   line-height: 0;
 }
 
@@ -338,6 +348,28 @@ onBeforeUnmount(() => {
   word-break: break-all;
   background: rgb(0 0 0 / 92%);
   border-radius: 2px;
+}
+
+// 扫描线：沿图片上下往返，带光晕
+.pt__scan {
+  position: absolute;
+  right: 0;
+  left: 0;
+  height: 3px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--c-primary, #1989fa), transparent);
+  box-shadow: 0 0 12px 3px var(--c-primary, #1989fa);
+  animation: pt-scan 1.6s ease-in-out infinite alternate;
+}
+
+@keyframes pt-scan {
+  from {
+    top: 0;
+  }
+
+  to {
+    top: calc(100% - 3px);
+  }
 }
 
 .pt__tag {

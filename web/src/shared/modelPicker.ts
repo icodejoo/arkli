@@ -184,3 +184,11 @@ export function writeChoice(toolId: string, id: string, storage?: ChoiceStorage)
     // 无存储环境，忽略
   }
 }
+
+/** 选择器的一个分组：多类模型同屏分开选时，每类一组 */
+export interface PickerSection {
+  /** 工具 id（目录与记忆的选择都按它） */
+  toolId: string
+  /** 分组标题 */
+  title: string
+}

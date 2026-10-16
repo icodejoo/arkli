@@ -1,13 +1,16 @@
 <script setup lang="ts">
-// 翻译：上中下三段。上=输入+源语言；中=模型选择+交换；下=目标语言+复制+结果。
+// 翻译：上=源语言+输入；中=交换；下=目标语言+复制+结果；底部动作栏=AI 模型、拍照、相册、翻译。
+// 拍照/相册选了图就进入图片模式：输入框换成图片，点「翻译」逐张识别并翻译，处理中禁用翻译按钮。
 // 用所选提供者（L1 NLLB / L2 Qwen）在页内出结果；可选项、提供者 id、语言清单都来自 AI 目录（原生 native.ai.providers 的报价），不写死。
 // 模型状态只读 store（经目录），下载/删除/校验都在 AI 中心，本页不碰。
 import { computed, onBeforeUnmount, onDeactivated, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { showFailToast, showSuccessToast } from 'vant'
+import BottomActions from '@/shared/BottomActions.vue'
 import ModelPicker from '@/shared/ModelPicker.vue'
+import type { BottomActionItem } from '@/shared/bottomActions'
 import { copyText } from '@/shared/clipboard'
-import { AI_CENTER_PATH, MSG_NO_MODEL } from '@/shared/modelPicker'
+import { AI_CENTER_PATH, MSG_NO_MODEL, type PickerSection } from '@/shared/modelPicker'
 import { aiTranslate, isAiCancelled } from '@/native/ai'
 import { useAiCatalog } from '@/native/useAiCatalog'
 import { sessionProviderOf } from '@/shared/aiCatalog'
@@ -21,6 +24,13 @@ import { isPairSupported, MSG_SHORT_TO_QWEN, PROVIDER_QWEN, routeShort } from '.
 
 /** 本工具 id（与 registry 一致） */
 const TOOL_ID = 'translate'
+/** 文字识别工具 id（图片模式下选择器多一组 OCR 模型） */
+const OCR_TOOL_ID = 'ocr'
+/** 动作项 key */
+const ACT_PICKER = 'picker'
+const ACT_CAMERA = 'camera'
+const ACT_ALBUM = 'album'
+const ACT_GO = 'go'
 /** 路由器：无可用模型时跳 AI 中心 */
 const router = useRouter()
 
@@ -60,10 +70,36 @@ const catalogReady = catalog.ready
 const providerId = computed(() => catalog.current.value?.providerId)
 /** 当前所选翻译模型是否已安装（状态来自模型 store） */
 const modelReady = computed(() => catalog.current.value?.status === 'ready')
-/** 能否触发：有文字，且本地模式下模型已就绪（翻译中始终可点以取消） */
-const canGo = computed(() => busy.value || (!!input.value.trim() && modelReady.value && !tooFewLangs.value))
-/** 主按钮文案 */
-const goText = computed(() => (busy.value ? '取消翻译' : '翻译'))
+/** 图片翻译区实例（拍照/相册/翻译在图片模式下由它执行） */
+const photo = ref<InstanceType<typeof PhotoTranslate> | null>(null)
+/** 是否处于图片模式（已选了图） */
+const imageMode = computed(() => !!photo.value?.hasImages)
+/** 图片是否正在处理 */
+const photoBusy = computed(() => !!photo.value?.busy)
+/** 是否有事在忙（文字或图片） */
+const working = computed(() => busy.value || photoBusy.value)
+/** 主按钮能否点：图片模式要有图、两个模型就绪且不在处理（处理中禁用）；文字模式有文字且模型就绪（翻译中可点以取消） */
+const canGo = computed(() => {
+  if (imageMode.value) return !photoBusy.value && !!photo.value?.modelsReady && !tooFewLangs.value
+  return busy.value || (!!input.value.trim() && modelReady.value && !tooFewLangs.value)
+})
+/** 主按钮文案：文字翻译中变「取消翻译」，其余都是「翻译」 */
+const goText = computed(() => (busy.value && !imageMode.value ? '取消翻译' : '翻译'))
+/** 选择器分组：图片模式下加一组文字识别模型 */
+const sections = computed<PickerSection[]>(() => {
+  const list: PickerSection[] = [{ toolId: TOOL_ID, title: '翻译模型' }]
+  if (imageMode.value) list.push({ toolId: OCR_TOOL_ID, title: '文字识别模型' })
+  return list
+})
+/** 底部动作栏：AI 选择器（插槽）、拍照、相册、翻译 */
+const actions = computed<BottomActionItem[]>(() => [
+  { key: ACT_PICKER },
+  { key: ACT_CAMERA, text: '拍照', icon: 'photograph-o', disabled: working.value },
+  { key: ACT_ALBUM, text: '相册', icon: 'photo-o', disabled: working.value },
+  { key: ACT_GO, text: goText.value, kind: 'button', disabled: !canGo.value },
+])
+/** 顶部「无可用模型」提示是否显示：文字模式看翻译模型，图片模式看翻译+识别两个 */
+const showMissing = computed(() => (imageMode.value ? !!photo.value?.showMissing : catalogReady.value && !modelReady.value))
 
 /** 当前提供者的翻译约束（语言清单、能否 auto），由原生报价给出 */
 const constraints = computed(() => catalog.current.value?.constraints)
@@ -104,7 +140,7 @@ watch(input, () => {
 onDeactivated(cancel)
 // 切换模型：有输入且能翻译就取消旧请求并用新模型立刻重翻，不等用户再点
 watch(choice, () => {
-  if (!input.value.trim() || modelReady.value === false || tooFewLangs.value) return
+  if (imageMode.value || !input.value.trim() || modelReady.value === false || tooFewLangs.value) return
   cancel()
   void translate()
 })
@@ -117,10 +153,18 @@ function cancel(): void {
   busy.value = false
 }
 
-/** 主按钮：翻译中则取消，否则开始翻译 */
+/** 主按钮：图片模式跑图片翻译；文字模式翻译中则取消，否则开始翻译 */
 function go(): void {
+  if (imageMode.value) return void photo.value?.run()
   if (busy.value) return cancel()
   void translate()
+}
+
+/** 动作栏点击分发 */
+function onAction(key: string): void {
+  if (key === ACT_CAMERA) void photo.value?.fromCamera()
+  else if (key === ACT_ALBUM) void photo.value?.fromAlbum()
+  else if (key === ACT_GO) go()
 }
 
 /** 用本地模型翻译 */
@@ -200,9 +244,10 @@ function swap(): void {
   detected.value = []
 }
 
-/** 清空输入和输出：取消进行中的翻译，清掉输入、译文、错误提示和「没人接手」的备选入口 */
+/** 清空输入和输出（含图片）：取消进行中的翻译，清掉输入、译文、错误提示和「没人接手」的备选入口 */
 function clearAll(): void {
   cancel()
+  photo.value?.clear()
   input.value = ''
   result.value = ''
   errMsg.value = ''
@@ -222,7 +267,7 @@ async function copy(text: string): Promise<void> {
 <template>
   <div class="tool-page">
     <!-- 无可用模型：放在页面最顶部，右侧箭头，点击去 AI 中心 -->
-    <van-notice-bar v-if="catalogReady && !modelReady" mode="link" wrapable :scrollable="false" left-icon="info-o" @click="goAiCenter">{{ MSG_NO_MODEL }}</van-notice-bar>
+    <van-notice-bar v-if="showMissing" mode="link" wrapable :scrollable="false" left-icon="info-o" @click="goAiCenter">{{ MSG_NO_MODEL }}</van-notice-bar>
 
     <!-- 上：源语言行（卡片外），右侧清空按钮 -->
     <div class="tr-row">
@@ -235,19 +280,21 @@ async function copy(text: string): Promise<void> {
           </button>
         </template>
       </language-picker>
-      <button type="button" class="tr-copy" aria-label="清空输入和输出" :disabled="!input && !result && !errMsg" @click="clearAll">
+      <button type="button" class="tr-copy" aria-label="清空输入和输出" :disabled="working || (!input && !result && !errMsg && !imageMode)" @click="clearAll">
         <van-icon name="delete-o" />
         <span>清空</span>
       </button>
     </div>
-    <div class="tool-card">
+    <!-- 文字模式：输入框；图片模式：换成图片（扫描、叠译文都在里面） -->
+    <div v-show="!imageMode" class="tool-card">
       <van-field v-model="input" type="textarea" rows="4" autosize placeholder="粘贴或输入要翻译的文字" :maxlength="TEXT_MAX" show-word-limit />
-      <van-button class="tr-go" type="primary" block round :disabled="!canGo" @click="go">{{ goText }}</van-button>
+    </div>
+    <div v-show="imageMode" class="tool-card">
+      <photo-translate ref="photo" :pair="pair" @use-qwen="warmup.occupy(PROVIDER_QWEN)" />
     </div>
 
-    <!-- 中：左边模型选择，右边交换（无修饰的按钮），整体缩小 1/3 -->
+    <!-- 中：交换按钮（靠右，无修饰） -->
     <div class="tr-mid">
-      <model-picker :tool-id="TOOL_ID" />
       <button type="button" class="tr-swap" aria-label="交换源语言与目标语言" @click="swap">
         <van-icon name="exchange" class="tr-swap__icon" />
       </button>
@@ -264,12 +311,12 @@ async function copy(text: string): Promise<void> {
           </button>
         </template>
       </language-picker>
-      <button type="button" class="tr-copy" aria-label="复制译文" :disabled="!result" @click="copy(result)">
+      <button type="button" class="tr-copy" aria-label="复制译文" :disabled="imageMode ? !photo?.hasText : !result" @click="copy(imageMode ? photo?.translatedText ?? '' : result)">
         <van-icon name="records-o" />
         <span>复制</span>
       </button>
     </div>
-    <div class="tool-card">
+    <div v-show="!imageMode" class="tool-card">
       <div class="tr-out" dir="auto">
         <van-loading v-if="busy" size="20px">翻译中，请稍候…</van-loading>
         <p v-else-if="errMsg" class="tr-out__err">{{ errMsg }}</p>
@@ -282,8 +329,12 @@ async function copy(text: string): Promise<void> {
       </div>
     </div>
 
-    <!-- 拍照翻译：拍照/相册取图，OCR 后逐块翻译，译文叠在图上 -->
-    <photo-translate :pair="pair" @use-qwen="warmup.occupy(PROVIDER_QWEN)" />
+    <!-- 底部动作栏：左 AI（翻译模型 + 图片模式下的识别模型），中拍照、相册，右主按钮「翻译」 -->
+    <bottom-actions :items="actions" @select="onAction">
+      <template #item-picker>
+        <model-picker :sections="sections" />
+      </template>
+    </bottom-actions>
   </div>
 </template>
 
@@ -322,27 +373,16 @@ async function copy(text: string): Promise<void> {
   color: var(--c-primary);
 }
 
-.tr-go {
-  margin-top: $space-3;
-}
-
-// 中段：模型选择（默认 AI 图标按钮）在左，交换按钮靠右
-// 中段：一行，左模型选择、右交换；按钮整体缩小 1/3（zoom 同时缩小点击区）
+// 中段：交换按钮靠右；按钮缩小 1/3（zoom 同时缩小点击区）
 .tr-mid {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   padding: 0 $space-2;
 }
 
-.tr-mid :deep(.van-button),
 .tr-swap {
   zoom: 0.667;
-}
-
-// 模型选择器的触发按钮宽度加倍（缩放前 40px → 80px）
-.tr-mid :deep(.van-button) {
-  width: 80px;
 }
 
 // 交换按钮：无修饰（无背景、无边框），只留主色图标
