@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 做个决定：转盘形态。选项存本地；先抽出结果再让转盘转到对应扇区
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { prefersReducedMotion } from '@/shared/motion'
 import { parseOptions } from '@/shared/options'
@@ -111,7 +112,7 @@ onBeforeUnmount(() => clearTimeout(timer))
 
 <template>
   <div class="tool-page">
-    <div class="tool-card wheel-card">
+    <tool-group class="wheel-card">
       <div class="stage">
         <div class="pointer" />
         <div class="wheel" :style="wheelStyle">
@@ -121,15 +122,16 @@ onBeforeUnmount(() => clearTimeout(timer))
         </div>
       </div>
       <p class="wheel-card__result" aria-live="polite">{{ spinning ? '转转转…' : chosen ? `就决定是：${chosen}` : '点下面的按钮开转' }}</p>
-    </div>
+    </tool-group>
 
-    <van-button type="primary" block round :disabled="!canSpin" @click="spin">转！</van-button>
     <p v-if="tip" class="tool-hint">{{ tip }}</p>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">选项（每行一个，也可用逗号分隔）</h3>
+    <tool-group title="选项（每行一个，也可用逗号分隔）">
       <van-field v-model="text" type="textarea" rows="3" autosize :disabled="spinning" />
-    </div>
+    </tool-group>
+
+    <!-- 底部动作栏：主按钮转 -->
+    <bottom-actions main main-text="转！" :disabled="{ main: !canSpin }" @main="spin" />
   </div>
 </template>
 

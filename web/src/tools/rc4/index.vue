@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // RC4 加解密：密钥 + 文本，输出 Base64 或十六进制；RC4 已不安全，仅用于兼容与学习
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, ref } from 'vue'
 import { showFailToast, showSuccessToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
@@ -43,33 +44,33 @@ async function copy(): Promise<void> {
   <div class="tool-page">
     <p class="tool-hint">RC4 已不安全，仅用于兼容旧系统与学习，别拿它保护重要数据。</p>
 
-    <div class="tool-card">
+    <tool-group>
       <van-radio-group v-model="mode" direction="horizontal">
         <van-radio name="encrypt">加密</van-radio>
         <van-radio name="decrypt">解密</van-radio>
       </van-radio-group>
-      <h3 class="tool-card__title rc4-gap">密文编码</h3>
+      <h3 class="tool-group__title rc4-gap">密文编码</h3>
       <van-radio-group v-model="enc" direction="horizontal">
         <van-radio name="base64">Base64</van-radio>
         <van-radio name="hex">十六进制</van-radio>
       </van-radio-group>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">密钥（UTF-8 文本）</h3>
+    <tool-group title="密钥（UTF-8 文本）">
       <van-field v-model="key" clearable autocomplete="off" :spellcheck="false" placeholder="例如 Key" />
-      <h3 class="tool-card__title rc4-gap">{{ mode === 'encrypt' ? '明文' : '密文' }}</h3>
+      <h3 class="tool-group__title rc4-gap">{{ mode === 'encrypt' ? '明文' : '密文' }}</h3>
       <van-field v-model="input" type="textarea" rows="3" autosize clearable :spellcheck="false" :error-message="error" placeholder="在这里输入" />
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">{{ mode === 'encrypt' ? '密文' : '明文' }}</h3>
+    <tool-group :title="`${mode === 'encrypt' ? '密文' : '明文'}`">
       <p class="rc4-out">{{ output || '（结果显示在这里）' }}</p>
       <div class="rc4-btns">
-        <van-button size="small" plain :disabled="!output" @click="copy">复制</van-button>
         <van-button size="small" plain :disabled="!output" @click="swap">结果换到输入</van-button>
       </div>
-    </div>
+    </tool-group>
+
+    <!-- 底部动作栏：加解密是实时的，主操作就是复制结果 -->
+    <bottom-actions main main-text="复制结果" :disabled="{ main: !output }" @main="copy" />
   </div>
 </template>
 

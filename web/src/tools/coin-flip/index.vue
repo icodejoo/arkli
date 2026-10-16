@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 抛硬币：点一下抛一次，可连抛并统计；先定结果再播动画
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { prefersReducedMotion } from '@/shared/motion'
 import { countSides, flipCoin, flipCoins, loadFlag, MAX_FLIPS, saveFlag, SIDE_LABEL, SOUND_KEY, VIBRATE_KEY, VIBRATE_LAND, VIBRATE_START, type CoinSide } from './logic'
@@ -110,7 +111,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card coin-stage">
+    <tool-group class="coin-stage">
       <div class="coin-scene" :class="{ 'coin-scene--fly': flipping }">
         <div class="coin-shadow" aria-hidden="true"></div>
         <div class="coin-wrap">
@@ -137,16 +138,15 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <p class="coin-stage__text" aria-live="polite">{{ flipping ? '抛起来了…' : history.length ? SIDE_LABEL[side] : '点硬币开抛' }}</p>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">连抛次数</h3>
+    <tool-group title="连抛次数">
       <van-radio-group v-model="batch" direction="horizontal" :disabled="flipping">
         <van-radio v-for="n in BATCH_OPTIONS" :key="n" :name="n">{{ n }} 次</van-radio>
       </van-radio-group>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
+    <tool-group>
       <van-cell-group :border="false">
         <van-cell title="震动反馈" center>
           <template #right-icon><van-switch v-model="vibrateOn" size="20" /></template>
@@ -155,17 +155,17 @@ onBeforeUnmount(() => {
           <template #right-icon><van-switch v-model="soundOn" size="20" /></template>
         </van-cell>
       </van-cell-group>
-    </div>
+    </tool-group>
 
-    <van-button type="primary" block round :disabled="flipping" @click="toss">抛！</van-button>
-
-    <div v-if="history.length" class="tool-card">
-      <h3 class="tool-card__title">共 {{ history.length }} 次：正面 {{ stats.heads }}，反面 {{ stats.tails }}</h3>
+    <tool-group v-if="history.length" :title="`共 ${history.length} 次：正面 ${stats.heads}，反面 ${stats.tails}`">
       <p class="trail">
         <span v-for="(h, i) in recent" :key="i" class="dot" :class="`dot--${h}`">{{ h === 'heads' ? '正' : '反' }}</span>
       </p>
       <van-button size="small" plain block @click="reset">清空记录</van-button>
-    </div>
+    </tool-group>
+
+    <!-- 底部动作栏：主按钮抛硬币（点硬币也行） -->
+    <bottom-actions main main-text="抛！" :disabled="{ main: flipping }" @main="toss" />
   </div>
 </template>
 

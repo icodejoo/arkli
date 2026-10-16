@@ -16,6 +16,8 @@ import {
   patternLayout,
   srgbToLab,
   usageStats,
+  percentText,
+  usageText,
   validatePalette,
 } from './logic'
 
@@ -209,5 +211,46 @@ describe('validatePalette / 内置调色板', () => {
       ],
     })
     expect(errs).toHaveLength(2)
+  })
+})
+
+describe('usageText', () => {
+  it('一色一行，格式 色号 名称 #色值', () => {
+    const rows = [
+      { index: 0, code: 'A01', name: '白', hex: '#ffffff', count: 3 },
+      { index: 1, code: 'A02', name: '黑', hex: '#000000', count: 12 },
+    ]
+    expect(usageText(rows)).toBe('A01 白 #ffffff\nA02 黑 #000000')
+  })
+  it('空数据得到空串', () => {
+    expect(usageText([])).toBe('')
+  })
+})
+
+describe('调色板档位', () => {
+  it('24 / 48 / 72 / 96 / 144 色，由少到多', () => {
+    expect(PALETTES.map((p) => p.colors.length)).toEqual([24, 48, 72, 96, 144])
+  })
+  it('每套内色号、色值都不重复', () => {
+    for (const p of PALETTES) {
+      expect(new Set(p.colors.map((c) => c.code)).size).toBe(p.colors.length)
+      expect(new Set(p.colors.map((c) => c.hex)).size).toBe(p.colors.length)
+    }
+  })
+  it('大档位包含 48 色基础色（色号一致）', () => {
+    const base = GENERIC_PALETTE.colors.map((c) => c.code)
+    for (const p of PALETTES.slice(2)) expect(p.colors.slice(0, 48).map((c) => c.code)).toEqual(base)
+  })
+})
+
+describe('percentText', () => {
+  it('保留一位小数', () => {
+    expect(percentText(1, 8)).toBe('12.5%')
+    expect(percentText(1, 3)).toBe('33.3%')
+  })
+  it('极小占比与零值', () => {
+    expect(percentText(1, 5000)).toBe('<0.1%')
+    expect(percentText(0, 10)).toBe('0%')
+    expect(percentText(3, 0)).toBe('0%')
   })
 })

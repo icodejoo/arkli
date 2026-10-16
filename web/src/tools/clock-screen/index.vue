@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 时间屏幕：大字时钟（数字/翻页），可显示秒、日期、农历，全屏时尽量保持常亮
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { showToast } from 'vant'
 import { burnInOffset, clockParts, formatDateLine, lunarText, startSecondTicker, type LunarLib } from './logic'
@@ -122,8 +123,7 @@ onUnmounted(() => {
       <van-button v-if="full" class="clock__close" size="small" round plain @click="exitFull">退出</van-button>
     </div>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">样式</h3>
+    <tool-group title="样式">
       <van-radio-group v-model="style" direction="horizontal">
         <van-radio name="digital">数字</van-radio>
         <van-radio name="flip">翻页</van-radio>
@@ -134,10 +134,12 @@ onUnmounted(() => {
         <van-cell title="24 小时制" center><template #value><van-switch v-model="hour24" size="22" /></template></van-cell>
         <van-cell title="显示农历" center><template #value><van-switch v-model="showLunar" size="22" /></template></van-cell>
       </van-cell-group>
-    </div>
+    </tool-group>
 
-    <van-button type="primary" block round @click="enterFull">全屏显示</van-button>
     <p class="tool-hint">全屏时会尝试保持屏幕常亮，并让文字每分钟轻微位移，减轻烧屏。横屏效果更好，请先在系统里打开自动旋转。</p>
+
+    <!-- 底部动作栏：主按钮全屏显示（全屏层 z-index 3000，会盖住这条栏） -->
+    <bottom-actions main main-text="全屏显示" @main="enterFull" />
   </div>
 </template>
 

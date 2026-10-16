@@ -43,7 +43,7 @@ function pickCat(id: string | number): void {
       <van-tab v-for="c in CATEGORIES" :key="c.id" :name="c.id" :title="c.name" />
     </van-tabs>
 
-    <div class="tool-card">
+    <tool-group>
       <van-field
         v-model="text"
         label="数值"
@@ -55,9 +55,9 @@ function pickCat(id: string | number): void {
         :error-message="errorMsg"
       />
       <p v-if="cat.note && !errorMsg" class="tool-hint note">{{ cat.note }}</p>
-    </div>
+    </tool-group>
 
-    <van-cell-group class="tool-group">
+    <tool-group>
       <van-cell
         v-for="r in rows"
         :key="r.id"
@@ -67,7 +67,7 @@ function pickCat(id: string | number): void {
         is-link
         @click="fromId = r.id"
       />
-    </van-cell-group>
+    </tool-group>
     <p class="tool-hint">点任意一行，改以该单位作为输入。</p>
   </div>
 </template>

@@ -17,8 +17,15 @@ const FREE_STYLE = '不限，自由发挥，常见吉祥或应景内容即可'
 /** 对联里允许出现的标点（与原生对联输入一致） */
 const PUNCT = '，。、；：！？,.;:!?'
 
+/** 挽联的类型名（白底黑字、不贴福字，随机语料池与大模型类型共用） */
+export const MOURNING_CATEGORY = '挽联'
+
+/** 默认类型名（不限主题；类型表里排第一） */
+export const DEFAULT_CATEGORY = '通用'
+
 /** 类型：名字与给模型看的一句话说明（定义同 scripts/couplet/README.md 的 16 类） */
 export const CATEGORY_HINTS: ReadonlyArray<{ name: string; hint: string }> = [
+  { name: DEFAULT_CATEGORY, hint: '不限主题' },
   { name: '春节', hint: '春联，新年、除夕、迎春纳福' },
   { name: '节庆', hint: '春节以外的节日：元宵、清明、端午、七夕、中秋、重阳、国庆等' },
   { name: '婚庆', hint: '新婚嫁娶、良缘佳偶' },
@@ -33,8 +40,7 @@ export const CATEGORY_HINTS: ReadonlyArray<{ name: string; hint: string }> = [
   { name: '情感', hint: '爱情相思、亲情友情、思乡怀人' },
   { name: '文墨', hint: '诗词书画琴棋茶酒、文人雅趣' },
   { name: '怀古', hint: '咏史怀古、历史人物典故、古迹' },
-  { name: '挽联', hint: '哀悼逝者、追思先人，语气庄重肃穆' },
-  { name: '通用', hint: '不限主题' },
+  { name: MOURNING_CATEGORY, hint: '哀悼逝者、追思先人，语气庄重肃穆' },
 ]
 
 /** 一次生成的请求 */
@@ -84,7 +90,7 @@ export function hanCount(s: string): number {
  * @example buildPrompt({ demand: '程序员加班', wantBanner: true, bannerLen: 4, category: '通用' })
  */
 export function buildPrompt(req: LlmRequest, lastIssue?: string): string {
-  const cat = CATEGORY_HINTS.find((c) => c.name === req.category) ?? CATEGORY_HINTS[CATEGORY_HINTS.length - 1]
+  const cat = CATEGORY_HINTS.find((c) => c.name === req.category) ?? CATEGORY_HINTS[0]
   const demand = req.demand.trim() || FREE_STYLE
   const fmt = ['上联：……', '下联：……']
   if (req.wantBanner) fmt.push(`横批：……（正好 ${req.bannerLen} 个汉字）`)
@@ -188,6 +194,83 @@ export async function generateCouplet(req: LlmRequest, run: RunPrompt): Promise<
     const couplet: Couplet = { ...parsed, banner: req.wantBanner ? parsed.banner : '' }
     issue = validateReply(couplet, req) ?? undefined
     if (!issue) return { ok: true, couplet, attempts: attempt }
+  }
+  return { ok: false, reason: issue ?? '', raw, attempts: MAX_ATTEMPTS }
+}
+
+/** 出上联的字数选项：不限 */
+export const UPPER_LEN_ANY = 0
+/** 出上联的字数候选（汉字数） */
+export const UPPER_LENS: readonly number[] = Array.from({ length: 9 }, (_, i) => i + 4)
+
+/** 出上联的请求 */
+export interface UpperRequest {
+  /** 用户的要求，可空 */
+  demand: string
+  /** 类型名，取 {@link CATEGORY_HINTS} 的 name */
+  category: string
+  /** 上联汉字数；{@link UPPER_LEN_ANY} 为不限 */
+  len: number
+}
+
+/** 出上联的结果：成功给上联，失败给原因与最后一次原文 */
+export type UpperResult = { ok: true; up: string; attempts: number } | { ok: false; reason: string; raw: string; attempts: number }
+
+/**
+ * 拼“只出上联”的提示词。
+ *
+ * @param req 请求
+ * @param lastIssue 上一次不合格的原因；给了就追加纠正要求
+ * @returns 提示词文本
+ * @example buildUpperPrompt({ demand: '', category: '春节', len: 7 })
+ */
+export function buildUpperPrompt(req: UpperRequest, lastIssue?: string): string {
+  const cat = CATEGORY_HINTS.find((c) => c.name === req.category) ?? CATEGORY_HINTS[0]
+  const lines = [
+    '请你只出一句对联的上联，留给别人来对下联，不要写下联。',
+    `用户要求：${req.demand.trim() || FREE_STYLE}`,
+    `类型：${cat.name}（${cat.hint}）`,
+    `规则：${req.len ? `上联正好 ${req.len} 个汉字；` : ''}便于对仗（词性分明、结构清楚），末字仄声；不要照抄用户的话；只用汉字和逗号句号。`,
+    '输出格式（只输出这一行，不要解释，不要加序号）：',
+    '上联：……',
+  ]
+  if (lastIssue) lines.push(`上一次的问题：${lastIssue}。这次请严格按规则重写。`)
+  return lines.join('\n')
+}
+
+/**
+ * 校验模型出的上联。
+ *
+ * @param up 上联原文
+ * @param len 要求的汉字数，{@link UPPER_LEN_ANY} 不限
+ * @returns 不合格的原因；合格返回 null
+ */
+export function validateUpperReply(up: string, len: number): string | null {
+  if (!up) return '没有写出上联'
+  if (![...up].every((ch) => /\p{Script=Han}/u.test(ch) || PUNCT.includes(ch))) return '上联里有汉字和标点之外的字符'
+  const n = hanCount(up)
+  if (n < LINE_MIN || n > LINE_MAX) return `上联的字数不合适（${n} 字）`
+  if (len && n !== len) return `上联 ${n} 字，要求 ${len} 字`
+  return null
+}
+
+/**
+ * 让模型出一句上联：调模型 → 解析 → 校验，不合格带原因重试，最多 {@link MAX_ATTEMPTS} 次。
+ * 模型没按格式写“上联：”时，退而取第一行非空文字。模型调用抛错直接向上抛。
+ *
+ * @param req 请求
+ * @param run 调模型的函数
+ * @returns 成功或失败
+ * @example const r = await generateUpper({ demand: '', category: '通用', len: 7 }, run)
+ */
+export async function generateUpper(req: UpperRequest, run: RunPrompt): Promise<UpperResult> {
+  let issue: string | undefined
+  let raw = ''
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    raw = await run(buildUpperPrompt(req, issue), attempt)
+    const up = parseReply(raw).up || cleanValue(raw.split(/\r?\n/).find((l) => l.trim()) ?? '')
+    issue = validateUpperReply(up, req.len) ?? undefined
+    if (!issue) return { ok: true, up, attempts: attempt }
   }
   return { ok: false, reason: issue ?? '', raw, attempts: MAX_ATTEMPTS }
 }

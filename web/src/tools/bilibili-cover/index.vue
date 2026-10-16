@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // B 站封面获取：输入 BV / av / 视频链接 / b23.tv 短链，预览并保存封面
+import BottomActions from '@/shared/BottomActions.vue'
 import { onBeforeUnmount, ref } from 'vue'
 import { showFailToast, showSuccessToast } from 'vant'
 import { isNativeAvailable } from '@/native/bridge'
@@ -86,31 +87,27 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="tool-page">
-    <div v-if="!inApp" class="tool-card">
+    <tool-group v-if="!inApp">
       <p class="tool-hint">需要在 App 内使用：请求由 App 原生发出，浏览器里没法直接联网。</p>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">视频</h3>
+    <tool-group title="视频">
       <van-field v-model="input" type="textarea" rows="2" autosize clearable placeholder="BV 号、av 号、视频链接，或 b23.tv 短链" :disabled="!inApp" />
-      <van-button type="primary" block class="bc-btn" :disabled="!inApp" @click="run">{{ loading ? '获取中，点此取消' : '获取封面' }}</van-button>
       <p v-if="error" class="tool-hint bc-error">{{ error }}</p>
       <p class="tool-hint">封面来自 B 站公开接口，版权归原作者，请合理使用。</p>
-    </div>
+    </tool-group>
 
-    <div v-if="info && previewUrl" class="tool-card">
-      <h3 class="tool-card__title">{{ info.title || '封面' }}</h3>
+    <tool-group v-if="info && previewUrl" :title="`${info.title || '封面'}`">
       <p v-if="info.owner" class="tool-hint">UP 主：{{ info.owner }}</p>
       <img :src="previewUrl" class="bc-img" alt="视频封面" />
-      <van-button type="primary" plain block class="bc-btn" @click="save">保存封面</van-button>
-    </div>
+    </tool-group>
+
+    <!-- 底部动作栏：保存封面，主按钮获取封面（获取中变成取消） -->
+    <bottom-actions :actions="{ save: { disabled: !previewUrl, text: '保存封面' } }" main :main-text="loading ? '取消' : '获取封面'" :main-type="loading ? 'danger' : 'primary'" :disabled="{ main: !inApp }" @main="run" @save="save" />
   </div>
 </template>
 
 <style lang="scss" scoped>
-.bc-btn {
-  margin-top: $space-2;
-}
 .bc-error {
   color: var(--c-error);
 }

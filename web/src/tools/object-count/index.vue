@@ -1,9 +1,11 @@
 <script setup lang="ts">
 // 对象计数：纯 JS 实现（灰度 → Otsu → 连通域 → 面积过滤），点击画面可手动加/删计数点
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { showToast } from 'vant'
 import { fitMaxEdge } from '@/shared/image-calc'
-import { createCanvas, drawScaled, loadBitmap, pickImages, releaseCanvas, type PickedImage } from '@/shared/image-io'
+import { createCanvas, drawScaled, loadBitmap, EDIT_BASIC, pickImages, releaseCanvas, type PickedImage } from '@/shared/image-io'
+import { shootPhoto } from '@/shared/shootPhoto'
 import {
   binarize,
   defaultMinArea,
@@ -84,16 +86,14 @@ function reset(): void {
   size.value = { w: 0, h: 0 }
 }
 
-/** 选图并缩小到最长边 ≤ MAX_EDGE，再算灰度与 Otsu */
-async function choose(): Promise<void> {
+/** 采用新图：缩小到最长边 ≤ MAX_EDGE，再算灰度与 Otsu */
+async function adopt(img: PickedImage): Promise<void> {
   try {
-    const got = await pickImages({ onFailed: (f) => showToast(`读取失败：${f[0].message}`) })
-    if (!got.length) return
     loading.value = true
     image.value?.release()
-    image.value = got[0]
+    image.value = img
     reset()
-    const bmp = await loadBitmap(got[0])
+    const bmp = await loadBitmap(img)
     const fit = fitMaxEdge(bmp.width, bmp.height, MAX_EDGE)
     const scaled = drawScaled(bmp, fit.width, fit.height, '#ffffff')
     bmp.close()
@@ -114,6 +114,22 @@ async function choose(): Promise<void> {
   } finally {
     loading.value = false
   }
+}
+
+/** 相册选图 */
+async function choose(): Promise<void> {
+  try {
+    const got = await pickImages({ edit: EDIT_BASIC, onFailed: (f) => showToast(`读取失败：${f[0].message}`) })
+    if (got.length) await adopt(got[0])
+  } catch (e) {
+    showToast((e as { message?: string }).message ?? '选图失败')
+  }
+}
+
+/** 拍照 */
+async function shoot(): Promise<void> {
+  const got = await shootPhoto()
+  if (got) await adopt(got)
 }
 
 /** 按当前参数重新检测，并清掉手动修正 */
@@ -198,15 +214,13 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
-      <h3 class="tool-card__title">选择图片</h3>
+    <tool-group title="选择图片">
       <canvas v-show="base" ref="canvas" class="stage" @click="onTap" />
-      <van-button block plain round :loading="loading" @click="choose">{{ image ? '换一张' : '选择图片' }}</van-button>
+      <p v-if="!image" class="tool-hint">点底部「相册」或「拍照」选一张图。</p>
       <p class="tool-hint">相互粘连的物体会被算成一个，可以点画面手动补点；点已有的标记则删除它。</p>
-    </div>
+    </tool-group>
 
-    <div v-if="base" class="tool-card">
-      <h3 class="tool-card__title">共 {{ markers.length }} 个</h3>
+    <tool-group v-if="base" :title="`共 ${markers.length} 个`">
       <van-cell-group :border="false">
         <van-cell title="物体颜色" center>
           <template #value>
@@ -233,7 +247,10 @@ onBeforeUnmount(() => {
         <van-button size="small" plain round :disabled="!edited" @click="clearEdits">清除手动修正</van-button>
       </div>
       <p class="tool-hint">调整颜色、阈值、面积后会重新检测，手动修正会被清掉；建议先调参数，最后再手动补点。</p>
-    </div>
+    </tool-group>
+
+    <!-- 底部动作栏：选图后自动检测，没有单独的开始按钮；右边主按钮是拍照 -->
+    <bottom-actions album main main-text="拍照" main-type="danger" :disabled="{ album: loading, main: loading }" @album="choose" @main="shoot" />
   </div>
 </template>
 

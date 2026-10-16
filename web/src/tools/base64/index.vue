@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // Base64 编解码：输入变化实时转换，出错只在输出区给红字提示
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, ref, watch } from 'vue'
 import { showFailToast, showSuccessToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
@@ -75,8 +76,7 @@ function clear(): void {
       <van-tab title="解码" name="decode" />
     </van-tabs>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">输入</h3>
+    <tool-group title="输入">
       <van-field
         v-model="input"
         type="textarea"
@@ -89,9 +89,9 @@ function clear(): void {
         <van-button size="small" plain icon="records-o" @click="paste">粘贴</van-button>
         <van-button size="small" plain icon="delete-o" @click="clear">清空</van-button>
       </div>
-    </div>
+    </tool-group>
 
-    <van-cell-group v-if="mode === 'encode'" inset class="b64-opts">
+    <van-cell-group v-if="mode === 'encode'" class="b64-opts">
       <van-cell title="URL 安全字符集" center>
         <template #right-icon><van-switch v-model="urlSafe" size="22" /></template>
       </van-cell>
@@ -100,15 +100,14 @@ function clear(): void {
       </van-cell>
     </van-cell-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">结果</h3>
+    <tool-group title="结果">
       <van-field :model-value="output" type="textarea" rows="4" autosize readonly placeholder="结果会显示在这里" :error-message="error" />
-    </div>
+    </tool-group>
 
-    <div class="tool-actions">
-      <van-button type="primary" :disabled="!output" @click="copy">复制结果</van-button>
-      <van-button plain :disabled="!output" @click="swap">结果作为输入</van-button>
-    </div>
+    <van-button plain block round :disabled="!output" @click="swap">结果作为输入</van-button>
+
+    <!-- 底部动作栏：编码 / 解码是实时的，主操作就是复制结果 -->
+    <bottom-actions main main-text="复制结果" :disabled="{ main: !output }" @main="copy" />
   </div>
 </template>
 

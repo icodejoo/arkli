@@ -219,46 +219,28 @@ $page-fade-duration: 0.18s; // 底栏 tab 之间淡入淡出的时长
   gap: var(--tool-gap);
 }
 
-// 卡片：承载一组输入或选项
-.tool-card {
-  padding: $space-4;
-  background: var(--c-surface);
+// 工具页统一容器（<tool-group>，即 van-cell-group，有标题时外面包一层无样式 div）。里面可放 van-cell / van-field，也可放 canvas、按钮等自由内容
+.tool-group {
+  margin: 0;
+  overflow: hidden;
   border-radius: var(--tool-card-radius);
 
-  // 卡片里直接放 van-cell-group / van-field 时去掉自带的边距
-  > .van-cell-group,
-  > .van-field {
-    margin: 0;
+  // 非 cell / field 的自由内容：补上白底和与 cell 一致的左右内边距；连续多块时只保留一份上间距
+  > :not(.van-cell):not(.van-field):not(.van-cell-group):not(.van-cell-group__title) {
+    box-sizing: border-box;
+    padding: $space-3 $space-4;
+    background: var(--c-surface);
   }
 
-  // 卡片自带 16px 内边距，里面的 cell/field 不再叠加左右 padding；分隔线也跟着贴边
-  .van-cell,
-  .van-field {
-    padding-left: 0;
-    padding-right: 0;
-
-    &::after {
-      left: 0;
-      right: 0;
-    }
-  }
-
-  // 分组自带的上下发丝线在卡片里多余
-  .van-cell-group::after {
-    display: none;
+  > :not(.van-cell):not(.van-field):not(.van-cell-group):not(.van-cell-group__title)
+    + :not(.van-cell):not(.van-field):not(.van-cell-group):not(.van-cell-group__title) {
+    padding-top: 0;
   }
 
   // 多行文本域上下留白压一压
   .van-field--min-height .van-field__control {
     min-height: 44px;
   }
-}
-
-// 卡片外的带标题 cell-group：与卡片同圆角、同宽；标题字号与卡片标题一致
-.tool-group {
-  margin: 0;
-  overflow: hidden;
-  border-radius: var(--tool-card-radius);
 }
 
 .tool-page .van-cell-group__title {
@@ -268,14 +250,21 @@ $page-fade-duration: 0.18s; // 底栏 tab 之间淡入淡出的时长
   line-height: 1.5;
 }
 
-// 卡片式 tabs 标签条：去掉默认 16px 左右内缩，与 .tool-card 对齐
+// 横向单选 / 复选组折行时 Vant 只给了 margin-right、没有行距，上下会贴在一起；全站统一补行距
+.van-radio-group--horizontal,
+.van-checkbox-group--horizontal {
+  row-gap: $space-2;
+}
+
+// 卡片式 tabs 标签条：去掉默认 16px 左右内缩，与 .tool-group 对齐
 .tool-page .van-tabs__nav--card {
   margin: 0;
 }
 
-// 卡片小标题
-.tool-card__title {
-  margin: 0 0 $space-3;
+// 容器内的小标题（段内分节）
+.tool-group__title {
+  margin: 0;
+  padding: $space-3 $space-4 $space-2;
   font-size: 13px;
   font-weight: 500;
   color: var(--c-text-muted);

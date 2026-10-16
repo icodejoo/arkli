@@ -40,6 +40,7 @@ internal object MnnNative {
      * @param topK 温度采样的候选数，贪心时忽略
      * @return 生成文本的 UTF-8 字节，末尾可能是被截断的半个字
      * @throws IllegalStateException 句柄无效或推理失败
+     * @throws java.util.concurrent.CancellationException 被 [nativeCancel] 打断（它本身是 IllegalStateException 的子类，捕获时要先放行）
      */
     @JvmStatic
     external fun nativeGenerate(
@@ -50,6 +51,13 @@ internal object MnnNative {
         temperature: Float,
         topK: Int,
     ): ByteArray
+
+    /**
+     * 打断正在进行的 [nativeGenerate]：在下一个 token 写出时生效（预填充阶段不可打断），
+     * 被打断的 [nativeGenerate] 抛 `CancellationException`。可在任意线程调用，没有生成在跑时无副作用。
+     */
+    @JvmStatic
+    external fun nativeCancel()
 
     /**
      * 释放会话，句柄为 0 时什么也不做。

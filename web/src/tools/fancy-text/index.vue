@@ -23,18 +23,17 @@ async function copy(s: string): Promise<void> {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
+    <tool-group>
       <van-field v-model="text" type="textarea" rows="2" autosize placeholder="输入英文或数字" clearable />
       <p class="tool-hint">英文、数字有效；中文等没有对应样式的字符会原样保留。</p>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">点一条即可复制</h3>
+    <tool-group title="点一条即可复制">
       <div v-for="r in results" :key="r.id" class="ft-row" role="button" @click="copy(r.text)">
         <span class="ft-row__label">{{ r.label }}</span>
         <span class="ft-row__text">{{ r.text || '—' }}</span>
       </div>
-    </div>
+    </tool-group>
   </div>
 </template>
 

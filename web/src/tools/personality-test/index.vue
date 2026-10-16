@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 十六型人格倾向测试：一次一题的五级量表，答完给出类型、各维度倾向，可复制结果文字
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, ref } from 'vue'
 import { showFailToast, showSuccessToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
@@ -30,6 +31,13 @@ function choose(value: number): void {
   else finished.value = true
 }
 
+/** 前进：当前题已答则进入下一题，最后一题则提交看结果；没答不动 */
+function next(): void {
+  if (!answers.value[current.value]) return
+  if (current.value < TOTAL - 1) current.value++
+  else finished.value = true
+}
+
 /** 回到上一题 */
 function prev(): void {
   if (current.value > 0) current.value--
@@ -53,7 +61,7 @@ async function copyResult(): Promise<void> {
 <template>
   <div class="tool-page">
     <template v-if="!result">
-      <div class="tool-card">
+      <tool-group>
         <van-progress :percentage="percent" :show-pivot="false" />
         <p class="tool-hint">第 {{ current + 1 }} / {{ TOTAL }} 题 · {{ DIM_INFO[question.dim].title }}</p>
         <p class="pt-q">{{ question.text }}</p>
@@ -68,20 +76,17 @@ async function copyResult(): Promise<void> {
             {{ s.label }}
           </van-button>
         </div>
-        <van-button v-if="current > 0" size="small" plain class="pt-prev" @click="prev">上一题</van-button>
-      </div>
+      </tool-group>
       <p class="tool-hint">仅供娱乐，不构成心理评估。按第一感觉答就好，没有对错。</p>
     </template>
 
     <template v-else>
-      <div class="tool-card">
-        <h3 class="tool-card__title">{{ result.code }} · {{ result.type.name }}</h3>
+      <tool-group :title="`${result.code} · ${result.type.name}`">
         <p>{{ result.type.desc }}</p>
         <p class="tool-hint">优点：{{ result.type.pros.join('；') }}</p>
         <p class="tool-hint">短板：{{ result.type.cons.join('；') }}</p>
-      </div>
-      <div class="tool-card">
-        <h3 class="tool-card__title">四个维度的倾向</h3>
+      </tool-group>
+      <tool-group title="四个维度的倾向">
         <div v-for="d in result.dims" :key="d.dim" class="pt-dim">
           <div class="pt-dim__row">
             <span>{{ DIM_INFO[d.dim].firstLabel }} {{ d.percentFirst }}%</span>
@@ -92,13 +97,20 @@ async function copyResult(): Promise<void> {
           <p v-if="d.tie" class="tool-hint">两端正好各半，结果按 {{ DIM_INFO[d.dim].second }} 端记，仅作参考。</p>
           <p v-else-if="d.borderline" class="tool-hint">这一项很接近中间，换个状态再测，结果可能不同。</p>
         </div>
-      </div>
-      <div class="tool-actions">
-        <van-button type="primary" @click="copyResult">复制结果文字</van-button>
-        <van-button @click="restart">重新测试</van-button>
-      </div>
+      </tool-group>
       <p class="tool-hint">仅供娱乐，不构成心理评估。</p>
     </template>
+
+    <!-- 底部动作栏：答题态主按钮下一题 / 提交（点选项会自动前进，这里用于回看上一题后继续），上一题放插槽；结果态主按钮重新测试，复制结果放插槽 -->
+    <bottom-actions
+      main
+      :main-text="result ? '重新测试' : current === TOTAL - 1 ? '提交' : '下一题'"
+      :disabled="{ main: !result && !answers[current] }"
+      @main="result ? restart() : next()"
+    >
+      <van-action-bar-icon v-if="result" icon="description-o" text="复制结果" @click="copyResult" />
+      <van-action-bar-icon v-else icon="arrow-left" text="上一题" :disabled="current === 0" @click="prev" />
+    </bottom-actions>
   </div>
 </template>
 
@@ -114,9 +126,6 @@ async function copyResult(): Promise<void> {
   display: flex;
   flex-direction: column;
   gap: $space-2;
-}
-.pt-prev {
-  margin-top: $space-3;
 }
 .pt-dim {
   margin-bottom: $space-3;

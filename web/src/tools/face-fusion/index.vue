@@ -1,11 +1,12 @@
 <script setup lang="ts">
 // 人脸融合：选两张人脸照片 + 融合比例 → 本地模型融合 → 结果展示/保存
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, ref, shallowRef } from 'vue'
 import { showToast } from 'vant'
 import ImageResultList from '@/shared/ImageResultList.vue'
 import { useImageResults } from '@/shared/useImageResults'
 import { outputName } from '@/shared/image-calc'
-import { pickImages, type PickedImage } from '@/shared/image-io'
+import { EDIT_BASIC, pickImages, type PickedImage } from '@/shared/image-io'
 import { aiFuse, AiNotReadyError, fetchAiResult } from '@/native/ai'
 import AiGapNotice from '@/tools/_ai/AiGapNotice.vue'
 import { useAiModel } from '@/tools/_ai/useAiModel'
@@ -42,7 +43,7 @@ const problem = computed(() => validateFuse(imageA.value && { url: imageA.value.
 /** 为某一槽位选图 */
 async function choose(slot: 'a' | 'b'): Promise<void> {
   try {
-    const got = await pickImages({ onFailed: (f) => showToast(`读取失败：${f[0].message}`) })
+    const got = await pickImages({ edit: EDIT_BASIC, onFailed: (f) => showToast(`读取失败：${f[0].message}`) })
     if (!got.length) return
     const ref_ = slot === 'a' ? imageA : imageB
     ref_.value?.release()
@@ -90,8 +91,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
-      <h3 class="tool-card__title">选择两张人脸照片</h3>
+    <tool-group title="选择两张人脸照片">
       <div class="pair">
         <div class="slot">
           <img v-if="imageA" class="slot__img" :src="imageA.url" alt="图 A" />
@@ -105,26 +105,24 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <p class="tool-hint">正脸、光线均匀、五官清楚的照片效果更好。</p>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
+    <tool-group>
       <van-cell title="融合比例" :value="ratioText(ratio)" />
       <div class="is-slider"><van-slider v-model="sliderValue" :min="0" :max="SLIDER_MAX" :step="RATIO_STEP * SLIDER_MAX" /></div>
       <p class="tool-hint">越往右越像图 B。</p>
-    </div>
+    </tool-group>
 
     <ai-gap-notice v-if="checked && !ready" feature="人脸融合" purpose="检测两张脸并按比例合成" retry :loading="checking" @retry="refresh" />
 
-    <van-button type="primary" block round :loading="busy" :disabled="!!problem || !ready" @click="run">
-      {{ busy ? '融合中，请稍等…' : '开始融合' }}
-    </van-button>
     <p v-if="problem" class="tool-hint">{{ problem }}</p>
 
-    <div v-if="results.length" class="tool-card">
-      <h3 class="tool-card__title">结果（点击预览）</h3>
+    <tool-group v-if="results.length" title="结果（点击预览）">
       <image-result-list :results="results" />
-      <van-button type="primary" plain block round :loading="saving" @click="saveAll">保存</van-button>
-    </div>
+    </tool-group>
+
+    <!-- 底部动作栏：两个槽位各自选图，这里只放保存与主按钮开始融合 -->
+    <bottom-actions :actions="{ save: { disabled: !results.length || saving } }" main :main-text="busy ? '融合中' : '开始融合'" :disabled="{ main: busy || !!problem || !ready }" @main="run" @save="saveAll" />
   </div>
 </template>
 

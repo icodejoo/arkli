@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // Bridge 探针：调用 native.hello、native.ping 与 rust.core.version，展示结果或错误
+import BottomActions from '@/shared/BottomActions.vue'
 import { onMounted, ref } from 'vue'
 import { call } from '@/native/bridge'
 import type { BridgeError } from '@/native/protocol'
@@ -55,7 +56,8 @@ onMounted(run)
         <span class="row__text">{{ it.text }}</span>
       </li>
     </ul>
-    <button class="btn" type="button" @click="run">重新探测</button>
+    <!-- 底部动作栏：主按钮重新探测 -->
+    <bottom-actions main main-text="重新探测" @main="run" />
   </section>
 </template>
 
@@ -100,15 +102,5 @@ onMounted(run)
   &--error &__text {
     color: var(--c-error);
   }
-}
-
-.btn {
-  padding: $space-2 $space-4;
-  border: 0;
-  border-radius: $radius;
-  background: var(--c-primary);
-  color: var(--c-on-primary);
-  font-size: 15px;
-  cursor: pointer;
 }
 </style>

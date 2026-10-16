@@ -5,8 +5,15 @@ import com.let188.arkli.bridge.BridgeException
 import com.let188.arkli.model.ModelManifestParser
 import com.let188.arkli.model.ModelStateInfo
 import com.let188.arkli.net.NetPolicy
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -19,6 +26,9 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 /** 本地翻译服务与提供者：就绪判断、懒加载、重载、结果组装、可用性判定、随包清单 */
 class TranslateServiceTest {
@@ -29,6 +39,7 @@ class TranslateServiceTest {
     /** 记录调用的引擎替身 */
     private class FakeBackend : TranslateBackend {
         val calls = mutableListOf<String>()
+        val cancelCount = AtomicInteger()
         var lastBeams = -1
         override fun load(modelDir: String) { calls += "load" }
         override fun unload() { calls += "unload" }
@@ -36,6 +47,27 @@ class TranslateServiceTest {
             lastBeams = numBeams
             calls += "translate:$src>$tgt"
             return TranslateOutcome("译:$text", 7)
+        }
+        override fun cancel() { cancelCount.incrementAndGet() }
+    }
+
+    /** 会阻塞的引擎替身：translate 一直等到 cancel 被调用，再像 Rust 那样抛 CancellationException */
+    private class BlockingBackend : TranslateBackend {
+        val calls = mutableListOf<String>()
+        val started = CountDownLatch(1)
+        private val cancelled = CountDownLatch(1)
+        val cancelCount = AtomicInteger()
+        override fun load(modelDir: String) { calls += "load" }
+        override fun unload() { calls += "unload" }
+        override fun translate(text: String, src: String, tgt: String, numBeams: Int): TranslateOutcome {
+            calls += "translate"
+            started.countDown()
+            if (!cancelled.await(5, TimeUnit.SECONDS)) error("超时没等到取消")
+            throw CancellationException("翻译已取消")
+        }
+        override fun cancel() {
+            cancelCount.incrementAndGet()
+            cancelled.countDown()
         }
     }
 
@@ -91,6 +123,31 @@ class TranslateServiceTest {
     }
 
     @Test
+    fun normalFinish_neverCallsCancel() {
+        val dir = tmp.newFolder("m")
+        fillModel(dir)
+        val b = FakeBackend()
+        runBlocking { TranslateService(env(dir), b).translate(req) }
+        assertEquals(0, b.cancelCount.get())
+    }
+
+    @Test
+    fun cancellingTheCoroutine_interruptsTheBackend_andKeepsTheSession() {
+        val dir = tmp.newFolder("m")
+        fillModel(dir)
+        val b = BlockingBackend()
+        val s = TranslateService(env(dir), b)
+        runBlocking {
+            val job = async(Dispatchers.Default, start = CoroutineStart.UNDISPATCHED) { s.translate(req) }
+            withTimeout(5_000) { while (b.started.count > 0L) delay(10) }
+            job.cancelAndJoin()
+        }
+        assertEquals(1, b.cancelCount.get())
+        // 取消不是故障：会话保留，没有卸载
+        assertEquals(listOf("load", "translate"), b.calls)
+    }
+
+    @Test
     fun translate_auto_passesThroughDetectedAndUnrecognized() {
         val dir = tmp.newFolder("m")
         fillModel(dir)
@@ -99,6 +156,7 @@ class TranslateServiceTest {
             override fun unload() {}
             override fun translate(text: String, src: String, tgt: String, numBeams: Int) =
                 TranslateOutcome("out", 3, listOf("fr", "zh-CN"), true)
+            override fun cancel() {}
         }
         val s = TranslateService(env(dir), backend)
         val auto = runBlocking { s.translate(AiTranslateRequest("x", "auto", "en", null)) }
@@ -180,6 +238,7 @@ class TranslateServiceTest {
                 job.cancel() // 模拟加载进行中被取消
             }
             override fun unload() { calls += "unload" }
+            override fun cancel() {}
             override fun translate(text: String, src: String, tgt: String, numBeams: Int) = TranslateOutcome("x", 1)
         }
         val s = TranslateService(env(dir), b)

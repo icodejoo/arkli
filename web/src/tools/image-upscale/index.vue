@@ -1,9 +1,11 @@
 <script setup lang="ts">
 // 图像分辨率提升：选图 → 2×/4× → 本地超分 → 前后对比滑块 → 保存
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, ref, shallowRef } from 'vue'
 import { showFailToast, showSuccessToast, showToast } from 'vant'
 import { outputName } from '@/shared/image-calc'
-import { pickImages, saveBlob, type PickedImage } from '@/shared/image-io'
+import { shootPhoto } from '@/shared/shootPhoto'
+import { EDIT_BASIC, pickImages, saveBlob, type PickedImage } from '@/shared/image-io'
 import { aiUpscale, AiNotReadyError, fetchAiResult } from '@/native/ai'
 import AiGapNotice from '@/tools/_ai/AiGapNotice.vue'
 import { useAiModel } from '@/tools/_ai/useAiModel'
@@ -44,18 +46,28 @@ function clearResult(): void {
   split.value = DEFAULT_SPLIT
 }
 
-/** 选图 */
+/** 采用新图：释放旧图、清掉旧结果，倍数超限时回落到 2× */
+function adopt(img: PickedImage): void {
+  image.value?.release()
+  image.value = img
+  clearResult()
+  if (scale.value > maxAllowedScale(img.width, img.height)) scale.value = 2
+}
+
+/** 相册选图 */
 async function choose(): Promise<void> {
   try {
-    const got = await pickImages({ onFailed: (f) => showToast(`读取失败：${f[0].message}`) })
-    if (!got.length) return
-    image.value?.release()
-    image.value = got[0]
-    clearResult()
-    if (scale.value > maxAllowedScale(got[0].width, got[0].height)) scale.value = 2
+    const got = await pickImages({ edit: EDIT_BASIC, onFailed: (f) => showToast(`读取失败：${f[0].message}`) })
+    if (got.length) adopt(got[0])
   } catch (e) {
     showToast((e as { message?: string }).message ?? '选图失败')
   }
+}
+
+/** 拍照 */
+async function shoot(): Promise<void> {
+  const got = await shootPhoto()
+  if (got) adopt(got)
 }
 
 /** 开始放大 */
@@ -109,8 +121,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
-      <h3 class="tool-card__title">选择图片</h3>
+    <tool-group title="选择图片">
       <img v-if="image && !result" class="preview" :src="image.url" alt="原图" />
       <div
         v-if="result && image"
@@ -126,7 +137,7 @@ onBeforeUnmount(() => {
         <div class="compare__bar" :style="{ left: handleLeft }"><span class="compare__knob">⇆</span></div>
       </div>
       <p v-if="image" class="tool-hint">原图 {{ image.width }}×{{ image.height }}</p>
-      <van-button block plain round :disabled="busy" @click="choose">{{ image ? '换一张' : '选择图片' }}</van-button>
+      <p v-else class="tool-hint">点底部「相册」或「拍照」选一张图。</p>
       <van-cell title="放大倍数" center>
         <template #value>
           <van-radio-group v-model="scale" direction="horizontal" class="is-radios">
@@ -136,19 +147,16 @@ onBeforeUnmount(() => {
         </template>
       </van-cell>
       <p v-if="estimate" class="tool-hint" :class="{ 'is-warn': estimate.tooBig }">{{ estimateText(estimate) }}</p>
-    </div>
+    </tool-group>
 
     <ai-gap-notice v-if="checked && !ready" feature="图像超分" purpose="把小图放大并补回细节" size="约 4.7MB" retry :loading="checking" @retry="refresh" />
 
-    <van-button type="primary" block round :loading="busy" :disabled="!image || !ready || !!estimate?.tooBig" @click="run">
-      {{ busy ? '处理中，请稍等…' : '开始放大' }}
-    </van-button>
-
-    <div v-if="result" class="tool-card">
-      <h3 class="tool-card__title">结果 {{ result.width }}×{{ result.height }}</h3>
+    <tool-group v-if="result" :title="`结果 ${result.width}×${result.height}`">
       <p class="tool-hint">左右拖动对比前后效果。</p>
-      <van-button type="primary" plain block round :loading="saving" @click="save">保存</van-button>
-    </div>
+    </tool-group>
+
+    <!-- 底部动作栏：相册 / 拍照选图，保存结果，主按钮开始放大 -->
+    <bottom-actions :actions="{ save: { disabled: !result || saving } }" album photo main :main-text="busy ? '放大中' : '开始放大'" :disabled="{ album: busy, photo: busy, main: busy || !image || !ready || !!estimate?.tooBig }" @album="choose" @photo="shoot" @main="run" @save="save" />
   </div>
 </template>
 

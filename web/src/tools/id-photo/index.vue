@@ -1,12 +1,14 @@
 <script setup lang="ts">
 // 证件照：选图 → 选规格 → 拖动/缩放裁剪框 → 换底色（AI 抠图 或 纯色背景抠图兜底）→ 导出
+import BottomActions from '@/shared/BottomActions.vue'
 import ColorPicker from '@/shared/ColorPicker.vue'
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { showFailToast, showToast } from 'vant'
 import ImageResultList from '@/shared/ImageResultList.vue'
 import { useImageResults } from '@/shared/useImageResults'
+import { shootPhoto } from '@/shared/shootPhoto'
 import { FORMAT_MIME, fitMaxEdge, outputName } from '@/shared/image-calc'
-import { canvasToBlob, createCanvas, drawScaled, loadBitmap, pickImages, releaseCanvas, type PickedImage } from '@/shared/image-io'
+import { canvasToBlob, createCanvas, drawScaled, loadBitmap, EDIT_BASIC, pickImages, releaseCanvas, type PickedImage } from '@/shared/image-io'
 import { aiMatte, AiNotReadyError, fetchAiResult } from '@/native/ai'
 import AiGapNotice from '@/tools/_ai/AiGapNotice.vue'
 import { useAiModel } from '@/tools/_ai/useAiModel'
@@ -135,19 +137,17 @@ function freeBitmaps(): void {
   sample.value = null
 }
 
-/** 选图并解码，同时生成取色用的缩小图 */
-async function choose(): Promise<void> {
+/** 采用新图并解码，同时生成取色用的缩小图 */
+async function adopt(img: PickedImage): Promise<void> {
   try {
-    const got = await pickImages({ onFailed: (f) => showToast(`读取失败：${f[0].message}`) })
-    if (!got.length) return
     loading.value = true
     clear()
     freeBitmaps()
     image.value?.release()
-    image.value = got[0]
+    image.value = img
     key.value = null
     picking.value = false
-    const bmp = await loadBitmap(got[0])
+    const bmp = await loadBitmap(img)
     bitmap.value = bmp
     const fit = fitMaxEdge(bmp.width, bmp.height, SAMPLE_EDGE)
     const small = drawScaled(bmp, fit.width, fit.height)
@@ -159,6 +159,22 @@ async function choose(): Promise<void> {
   } finally {
     loading.value = false
   }
+}
+
+/** 相册选图 */
+async function choose(): Promise<void> {
+  try {
+    const got = await pickImages({ edit: EDIT_BASIC, onFailed: (f) => showToast(`读取失败：${f[0].message}`) })
+    if (got.length) await adopt(got[0])
+  } catch (e) {
+    showFailToast(aiErrorText(e))
+  }
+}
+
+/** 拍照 */
+async function shoot(): Promise<void> {
+  const got = await shootPhoto()
+  if (got) await adopt(got)
 }
 
 /** 活动指针，用于平移/双指缩放 */
@@ -296,8 +312,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
-      <h3 class="tool-card__title">选择照片</h3>
+    <tool-group title="选择照片">
       <div
         v-if="image"
         ref="stage"
@@ -312,11 +327,10 @@ onBeforeUnmount(() => {
         <div class="stage__frame" :style="frameStyle" />
       </div>
       <p v-if="image" class="tool-hint">{{ picking ? '请点一下照片上的背景处取色' : '拖动裁剪框定位，双指捏合或拖下面的滑杆调大小' }}</p>
-      <van-button block plain round :loading="loading" :disabled="busy" @click="choose">{{ image ? '换一张' : '选择照片' }}</van-button>
-    </div>
+      <p v-else class="tool-hint">点底部「相册」或「拍照」选一张人像照片。</p>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">规格（300dpi，单位像素）</h3>
+    <tool-group title="规格（300dpi，单位像素）">
       <van-radio-group v-model="specId" class="spec-list">
         <van-radio v-for="s in ID_SPECS" :key="s.id" :name="s.id">{{ s.name }}</van-radio>
         <van-radio :name="CUSTOM_ID">自定义</van-radio>
@@ -327,10 +341,9 @@ onBeforeUnmount(() => {
       </div>
       <van-cell title="裁剪框大小" :value="`${fracPercent}%`" />
       <div class="is-slider"><van-slider v-model="fracPercent" :min="FRAC_MIN * 100" :max="FRAC_MAX * 100" :disabled="!image" /></div>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">背景</h3>
+    <tool-group title="背景">
       <van-radio-group v-model="matting" direction="horizontal" class="mode-list">
         <van-radio name="none">保持原背景</van-radio>
         <van-radio name="chroma">纯色背景抠图</van-radio>
@@ -379,19 +392,16 @@ onBeforeUnmount(() => {
           </van-radio-group>
         </template>
       </van-cell>
-    </div>
+    </tool-group>
 
     <ai-gap-notice v-if="checked && !ready" feature="AI 抠图" purpose="自动分离人像与背景，适合复杂背景" size="约 25MB" retry :loading="checking" @retry="refresh" />
 
-    <van-button type="primary" block round :loading="busy" :disabled="!canRun" @click="run">
-      {{ busy ? '生成中…' : '生成证件照' }}
-    </van-button>
-
-    <div v-if="results.length" class="tool-card">
-      <h3 class="tool-card__title">结果（点击预览）</h3>
+    <tool-group v-if="results.length" title="结果（点击预览）">
       <image-result-list :results="results" />
-      <van-button type="primary" plain block round :loading="saving" @click="saveAll">保存</van-button>
-    </div>
+    </tool-group>
+
+    <!-- 底部动作栏：相册 / 拍照选图，保存结果，主按钮生成证件照 -->
+    <bottom-actions :actions="{ save: { disabled: !results.length || saving } }" album photo main :main-text="busy ? '生成中' : '生成证件照'" :disabled="{ album: busy || loading, photo: busy || loading, main: busy || !canRun }" @album="choose" @photo="shoot" @main="run" @save="saveAll" />
   </div>
 </template>
 

@@ -2,6 +2,7 @@
 // 图片拼接：纵/横拼，间距、背景色、对齐、统一宽/高，多图可排序。
 // App 内走原生 native.image.stitch（成品留在缓存，页面只显示缩略图）并支持压缩、覆盖原图；
 // 桌面浏览器没有宿主时退回 Canvas，作为兜底。
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, ref, shallowRef } from 'vue'
 import { showConfirmDialog, showFailToast, showSuccessToast, showToast } from 'vant'
 import ColorPicker from '@/shared/ColorPicker.vue'
@@ -9,6 +10,7 @@ import ImageThumbList from '@/shared/ImageThumbList.vue'
 import ImageResultList from '@/shared/ImageResultList.vue'
 import NativeResultList, { type NativeRow } from '@/shared/NativeResultList.vue'
 import { useImageResults } from '@/shared/useImageResults'
+import { shootPhoto } from '@/shared/shootPhoto'
 import { changeText, exceedsCanvas, FORMAT_MIME, stitchLayout, type StitchAlign, type StitchDirection } from '@/shared/image-calc'
 import {
   canvasToBlob,
@@ -158,7 +160,7 @@ function clear(): void {
   clearNative()
 }
 
-/** 添加图片 */
+/** 相册添加图片 */
 async function add(): Promise<void> {
   const room = MAX_PICK - images.value.length
   if (room <= 0) {
@@ -177,6 +179,18 @@ async function add(): Promise<void> {
   } catch (e) {
     showToast((e as { message?: string }).message ?? '选图失败')
   }
+}
+
+/** 拍照添加一张 */
+async function shoot(): Promise<void> {
+  if (images.value.length >= MAX_PICK) {
+    showToast(`最多 ${MAX_PICK} 张`)
+    return
+  }
+  const got = await shootPhoto()
+  if (!got) return
+  images.value = images.value.concat(got)
+  clear()
 }
 
 /** 移除第 i 张 */
@@ -348,13 +362,12 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
-      <h3 class="tool-card__title">选择图片（2~{{ MAX_PICK }} 张，可调整顺序）</h3>
+    <tool-group :title="`选择图片（2~${MAX_PICK} 张，可调整顺序）`">
       <image-thumb-list :images="images" sortable @remove="remove" @move="move" />
-      <van-button block plain round :disabled="busy || nativeBusy" @click="add">{{ images.length ? '继续添加' : '选择图片' }}</van-button>
-    </div>
+      <p v-if="!images.length" class="tool-hint">点底部「相册」或「拍照」选图，可以多选。</p>
+    </tool-group>
 
-    <div class="tool-card">
+    <tool-group>
       <van-cell-group :border="false">
         <van-cell title="方向" center>
           <template #value>
@@ -397,23 +410,11 @@ onBeforeUnmount(() => {
         预计输出 {{ layout.width }}×{{ layout.height }}
         <template v-if="tooBig">，超出上限，请减少图片、开启{{ unifyLabel }}或调小间距</template>
       </p>
-    </div>
+    </tool-group>
 
-    <van-button
-      type="primary"
-      block
-      round
-      :loading="busy || nativeBusy"
-      :loading-text="busy ? `处理中 ${progress}` : `${nativeLabel} ${nativeProgress}`"
-      :disabled="images.length < 2 || tooBig"
-      @click="run"
-    >
-      开始拼接
-    </van-button>
-    <van-button v-if="nativeBusy" plain block round @click="cancelNative">取消</van-button>
+    <p v-if="busy || nativeBusy" class="tool-hint">{{ busy ? `处理中 ${progress}` : `${nativeLabel} ${nativeProgress}` }}</p>
 
-    <div v-if="stitched" class="tool-card">
-      <h3 class="tool-card__title">结果（点击预览）</h3>
+    <tool-group v-if="stitched" title="结果（点击预览）">
       <native-result-list :rows="stitchRows" />
       <div class="is-actions">
         <van-button type="primary" plain round :loading="nativeSaving" @click="saveNative(stitched.path, stitched.name, stitched.mime)">
@@ -438,10 +439,9 @@ onBeforeUnmount(() => {
       <p v-else class="tool-hint">PNG 为无损压缩，体积变化有限；想压得更小可把输出格式改成 JPEG。</p>
       <p v-if="pngShrinkHint" class="tool-hint is-warn">{{ pngShrinkHint }}</p>
       <van-button block plain round :loading="nativeBusy" @click="runCompress">压缩</van-button>
-    </div>
+    </tool-group>
 
-    <div v-if="compressed" class="tool-card">
-      <h3 class="tool-card__title">压缩结果（点击预览）</h3>
+    <tool-group v-if="compressed" title="压缩结果（点击预览）">
       <native-result-list :rows="compressRows" />
       <div class="is-actions">
         <van-button type="primary" plain round :loading="nativeSaving" @click="saveNative(compressed.path, compressed.name, compressed.mime)">
@@ -459,13 +459,25 @@ onBeforeUnmount(() => {
         </van-button>
       </div>
       <p v-if="overwriteState.hint" class="tool-hint">{{ overwriteState.hint }}</p>
-    </div>
+    </tool-group>
 
-    <div v-if="results.length" class="tool-card">
-      <h3 class="tool-card__title">结果（点击预览）</h3>
+    <tool-group v-if="results.length" title="结果（点击预览）">
       <image-result-list :results="results" />
       <van-button type="primary" plain block round :loading="saving" @click="saveAll">保存</van-button>
-    </div>
+    </tool-group>
+
+    <!-- 底部动作栏：相册 / 拍照追加图片，主按钮开始拼接（原生任务进行中变成取消）；各路径的保存按钮留在结果区 -->
+    <bottom-actions
+      album
+      photo
+      main
+      :main-text="nativeBusy ? '取消' : busy ? '拼接中' : '开始拼接'"
+      :main-type="nativeBusy ? 'danger' : 'primary'"
+      :disabled="{ album: busy || nativeBusy, photo: busy || nativeBusy, main: busy || (!nativeBusy && (images.length < 2 || tooBig)) }"
+      @album="add"
+      @photo="shoot"
+      @main="nativeBusy ? cancelNative() : run()"
+    />
   </div>
 </template>
 

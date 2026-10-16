@@ -67,7 +67,7 @@ summary: native.model.* 的清单格式、下载器安全设计（白名单、�
 | 威胁 | 做法 |
 |---|---|
 | 页面或注入内容让原生去下任意地址 | 方法只收 `id`，且必须在清单里；多余字段（如 `url`）被忽略；URL 只来自随包清单 |
-| 清单 URL 或重定向指向非预期主机 | `NetPolicy.isAllowedDownload`：https、无 userinfo、端口缺省或 443、主机精确命中 `DOWNLOAD_HOSTS`（`github.com`、`objects.githubusercontent.com`、`release-assets.githubusercontent.com`）。**初始 URL 与每一跳重定向目标都校验**，最多 5 跳，`https→http` 降级一律拒绝。白名单与页面出站的 `ALLOWED_HOSTS`、CSP 的 `connect-src` **分开**，页面自己仍连不上这些主机 |
+| 清单 URL 或重定向指向非预期主机 | `NetPolicy.isAllowedDownload`：https、无 userinfo、端口缺省或 443、主机精确命中 `DOWNLOAD_HOSTS`（`github.com`、`objects.githubusercontent.com`、`release-assets.githubusercontent.com`）。**初始 URL 与每一跳重定向目标都校验**，最多 5 跳，`https→http` 降级一律拒绝。下载白名单与页面出站策略**分开**：页面出站虽放行任意 https，下载器仍只认这几个主机 |
 | 下载内容被替换或损坏 | 完成后对 `.part` 算 sha256，不一致删除 `.part` 并报 `HASH_MISMATCH`；通过才原子改名（`renameTo`，同分区）到目标文件。续传拼出来校验失败，会在同一源上从头再来一次（可能是旧 `.part` 坏了） |
 | 服务器给的长度对不上 | `Content-Length`/`Content-Range` 与清单不符报 `SIZE_MISMATCH`，不重试，换下一源 |
 | 磁盘写满 | 下载前检查可用空间 ≥ **待下载字节的 1.2 倍**（有 `.part` 时只算剩余部分），不够报 `NO_SPACE`，不发任何请求 |

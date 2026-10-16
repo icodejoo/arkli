@@ -155,12 +155,12 @@ fun downloadTo(url: String, dst: File) {
 // ---------------------------------------------------------------------------
 
 /** MNN 运行库 release 的下载前缀 */
-val mnnReleaseBase = "https://github.com/icodejoo/arkli/releases/download/mnn-478c10e-v2/"
+val mnnReleaseBase = "https://github.com/icodejoo/arkli/releases/download/mnn-478c10e-v3/"
 
 /** MNN 运行库的文件名与 sha256 */
 val mnnLibs = mapOf(
     "libMNN.so" to "9cc1ff8b8b039431913a37ad1853dfa51162b41ae8b90927507204397096a353",
-    "libarkli-mnn.so" to "b4c9bf34e2d72867a8b265fcedd5f14435cf1d994a7ee2af0253445c88c09f40",
+    "libarkli-mnn.so" to "ede1c34ed694444463b26649b691088e8b667ea4b662a1a90606c5515c43a747",
     "libsherpa-mnn-jni.so" to "aa79262fa17431bf513c7c4ac9855df02d09c1fe364396c0d8032df652a0c339",
 )
 

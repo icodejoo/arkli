@@ -1,11 +1,13 @@
 <script setup lang="ts">
 // 黑白上色：选一张黑白照片 → 本地模型上色 → 结果展示/保存
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, ref, shallowRef } from 'vue'
 import { showToast } from 'vant'
 import ImageResultList from '@/shared/ImageResultList.vue'
 import { useImageResults } from '@/shared/useImageResults'
 import { fitMaxEdge, outputName } from '@/shared/image-calc'
-import { drawScaled, loadBitmap, pickImages, releaseCanvas, type PickedImage } from '@/shared/image-io'
+import { drawScaled, loadBitmap, EDIT_BASIC, pickImages, releaseCanvas, type PickedImage } from '@/shared/image-io'
+import { shootPhoto } from '@/shared/shootPhoto'
 import { aiColorize, AiNotReadyError, fetchAiResult } from '@/native/ai'
 import AiGapNotice from '@/tools/_ai/AiGapNotice.vue'
 import { useAiModel } from '@/tools/_ai/useAiModel'
@@ -45,19 +47,29 @@ async function probe(img: PickedImage): Promise<void> {
   }
 }
 
-/** 选图 */
+/** 采用新图：释放旧图、清掉旧结果并探测是否已有颜色 */
+function adopt(img: PickedImage): void {
+  image.value?.release()
+  image.value = img
+  colorful.value = false
+  clear()
+  void probe(img)
+}
+
+/** 相册选图 */
 async function choose(): Promise<void> {
   try {
-    const got = await pickImages({ onFailed: (f) => showToast(`读取失败：${f[0].message}`) })
-    if (!got.length) return
-    image.value?.release()
-    image.value = got[0]
-    colorful.value = false
-    clear()
-    void probe(got[0])
+    const got = await pickImages({ edit: EDIT_BASIC, onFailed: (f) => showToast(`读取失败：${f[0].message}`) })
+    if (got.length) adopt(got[0])
   } catch (e) {
     showToast((e as { message?: string }).message ?? '选图失败')
   }
+}
+
+/** 拍照 */
+async function shoot(): Promise<void> {
+  const got = await shootPhoto()
+  if (got) adopt(got)
 }
 
 /** 开始上色 */
@@ -93,25 +105,21 @@ onBeforeUnmount(() => image.value?.release())
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
-      <h3 class="tool-card__title">选择黑白照片</h3>
+    <tool-group title="选择黑白照片">
       <img v-if="image" class="preview" :src="image.url" alt="待上色照片" />
-      <van-button block plain round :disabled="busy" @click="choose">{{ image ? '换一张' : '选择图片' }}</van-button>
+      <p v-else class="tool-hint">点底部「相册」或「拍照」选一张黑白照片。</p>
       <p v-if="colorful" class="tool-hint">这张图看起来已经有颜色了，上色可能没什么变化。</p>
       <p class="tool-hint">上色是模型的「合理猜测」，衣服、肤色等不一定和实物一致。</p>
-    </div>
+    </tool-group>
 
     <ai-gap-notice v-if="checked && !ready" feature="黑白上色" purpose="给黑白照片自动填色" retry :loading="checking" @retry="refresh" />
 
-    <van-button type="primary" block round :loading="busy" :disabled="!!problem || !ready" @click="run">
-      {{ busy ? '上色中，请稍等…' : '开始上色' }}
-    </van-button>
-
-    <div v-if="results.length" class="tool-card">
-      <h3 class="tool-card__title">结果（点击预览）</h3>
+    <tool-group v-if="results.length" title="结果（点击预览）">
       <image-result-list :results="results" />
-      <van-button type="primary" plain block round :loading="saving" @click="saveAll">保存</van-button>
-    </div>
+    </tool-group>
+
+    <!-- 底部动作栏：相册 / 拍照选图，保存结果，主按钮开始上色 -->
+    <bottom-actions :actions="{ save: { disabled: !results.length || saving } }" album photo main :main-text="busy ? '上色中' : '开始上色'" :disabled="{ album: busy, photo: busy, main: busy || !!problem || !image || !ready }" @album="choose" @photo="shoot" @main="run" @save="saveAll" />
   </div>
 </template>
 

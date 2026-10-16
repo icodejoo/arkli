@@ -1,12 +1,14 @@
 <script setup lang="ts">
 // 表情包制作：在图片或纯色底上加字（经典上下字 + 可拖动文字层），导出 PNG/JPEG，或抖动/闪烁 GIF
+import BottomActions from '@/shared/BottomActions.vue'
 import ColorPicker from '@/shared/ColorPicker.vue'
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { showToast } from 'vant'
 import ImageResultList from '@/shared/ImageResultList.vue'
 import { useImageResults } from '@/shared/useImageResults'
+import { shootPhoto } from '@/shared/shootPhoto'
 import { fitMaxEdge, FORMAT_MIME, type Size } from '@/shared/image-calc'
-import { canvasToBlob, createCanvas, drawScaled, loadBitmap, pickImages, releaseCanvas } from '@/shared/image-io'
+import { canvasToBlob, createCanvas, drawScaled, loadBitmap, EDIT_FULL, pickImages, releaseCanvas, type PickedImage } from '@/shared/image-io'
 import { GifWriter } from '../gif-tool/gif-encoder'
 import { animFrames, CLASSIC_BASE_PCT, hitLayer, moveLayer, ratioSize, type MemePreset, type TextLayer } from './logic'
 import { drawMeme, makeMeasure, type MemeScene } from './render'
@@ -121,12 +123,9 @@ function redraw(): void {
 watch([layers, selectedId, topText, bottomText, classicPct, bgColor, baseMode, baseCanvas, ratioKey], redraw, { deep: true })
 onMounted(redraw)
 
-/** 选择底图：解码后缩到工作尺寸，原位图立刻关闭 */
-async function pickBase(): Promise<void> {
+/** 采用底图：解码后缩到工作尺寸，原位图立刻关闭 */
+async function adoptBase(img: PickedImage): Promise<void> {
   try {
-    const got = await pickImages({ multiple: false, max: 1 })
-    if (!got.length) return
-    const img = got[0]
     let bmp: ImageBitmap | null = null
     try {
       bmp = await loadBitmap(img)
@@ -143,6 +142,22 @@ async function pickBase(): Promise<void> {
   } catch (e) {
     showToast((e as { message?: string }).message ?? '读取图片失败')
   }
+}
+
+/** 相册选底图 */
+async function pickBase(): Promise<void> {
+  try {
+    const got = await pickImages({ edit: EDIT_FULL, multiple: false, max: 1 })
+    if (got.length) await adoptBase(got[0])
+  } catch (e) {
+    showToast((e as { message?: string }).message ?? '读取图片失败')
+  }
+}
+
+/** 拍照当底图 */
+async function shoot(): Promise<void> {
+  const got = await shootPhoto()
+  if (got) await adoptBase(got)
 }
 
 /** 添加一个文字层并选中，位置略错开 */
@@ -255,8 +270,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
-      <h3 class="tool-card__title">底图</h3>
+    <tool-group title="底图">
       <van-cell-group :border="false">
         <van-cell title="来源" center>
           <template #value>
@@ -277,10 +291,10 @@ onBeforeUnmount(() => {
           <template #value><color-picker v-model="bgColor" label="底色" /></template>
         </van-cell>
       </van-cell-group>
-      <van-button block plain round @click="pickBase">{{ baseCanvas ? '换一张图片' : '选择图片' }}</van-button>
-    </div>
+      <p class="tool-hint">底图可以用底部「相册」或「拍照」换成自己的图片，不选就用纯色底。</p>
+    </tool-group>
 
-    <div class="tool-card">
+    <tool-group>
       <canvas
         ref="cv"
         class="meme__canvas"
@@ -291,18 +305,16 @@ onBeforeUnmount(() => {
         @pointercancel="onUp"
       />
       <p class="tool-hint">{{ work.width }}×{{ work.height }}，文字层可直接在图上拖动</p>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">上下字幕</h3>
+    <tool-group title="上下字幕">
       <van-field v-model="topText" label="上方" placeholder="顶部文字，太长自动缩小、换行" clearable />
       <van-field v-model="bottomText" label="下方" placeholder="底部文字" clearable />
       <van-cell title="字号" :value="`${classicPct}%`" />
       <div class="is-slider"><van-slider v-model="classicPct" :min="CLASSIC_PCT_MIN" :max="CLASSIC_PCT_MAX" /></div>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">自由文字</h3>
+    <tool-group title="自由文字">
       <div class="chips">
         <van-button
           v-for="(l, i) in layers"
@@ -330,10 +342,9 @@ onBeforeUnmount(() => {
         </van-cell>
         <van-button size="small" plain type="danger" @click="removeSelected">删除这段文字</van-button>
       </template>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">导出</h3>
+    <tool-group title="导出">
       <van-cell-group :border="false">
         <van-cell title="动效" center>
           <template #value>
@@ -360,17 +371,14 @@ onBeforeUnmount(() => {
           </template>
         </van-cell>
       </van-cell-group>
-    </div>
+    </tool-group>
 
-    <van-button type="primary" block round :loading="busy" @click="run">
-      {{ busy ? `生成中 ${gifText || progress}` : preset === 'none' ? '生成图片' : '生成 GIF' }}
-    </van-button>
-
-    <div v-if="results.length" class="tool-card">
-      <h3 class="tool-card__title">结果（点击预览）</h3>
+    <tool-group v-if="results.length" title="结果（点击预览）">
       <image-result-list :results="results" />
-      <van-button type="primary" plain block round :loading="saving" @click="saveAll">保存</van-button>
-    </div>
+    </tool-group>
+
+    <!-- 底部动作栏：相册 / 拍照换底图，保存结果，主按钮生成 -->
+    <bottom-actions :actions="{ save: { disabled: !results.length || saving } }" album photo main :main-text="busy ? `生成中 ${gifText || progress}` : preset === 'none' ? '生成图片' : '生成 GIF'" :disabled="{ album: busy, photo: busy, main: busy }" @album="pickBase" @photo="shoot" @main="run" @save="saveAll" />
   </div>
 </template>
 

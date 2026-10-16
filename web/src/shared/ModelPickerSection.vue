@@ -12,9 +12,9 @@ import { AI_CENTER_PATH, MSG_DOWNLOADING, buildItems, handlePick, type PickerIte
 const NOTIFY_MS = 4000
 
 /** 分组所属工具 id、可选的分组标题（单分组时不传）、弹层是否打开（打开时重新探测） */
-const props = defineProps<{ toolId: string; title?: string; open: boolean }>()
-/** 选中了某项 / 弹出了下载提示（后者必须关弹层） */
-const emit = defineEmits<{ picked: []; close: [] }>()
+const props = defineProps<{ toolId: string; title?: string; open: boolean; extra?: PickerItem[] }>()
+/** 选中了某项（选的是额外行时带它的 id）/ 弹出了下载提示（后者必须关弹层） */
+const emit = defineEmits<{ picked: [extraId?: string]; close: [] }>()
 
 /** 路由器 */
 const router = useRouter()
@@ -23,7 +23,8 @@ const catalog = useAiCatalog(props.toolId)
 /** 模型 store：选择器只用它触发下载，状态由推送实时更新 */
 const store = useModelsStore()
 /** 全部行 */
-const items = computed<PickerItem[]>(() => buildItems(catalog.items.value, catalog.choice.value))
+/** 额外行（非模型资源）排在模型行后面 */
+const items = computed<PickerItem[]>(() => [...buildItems(catalog.items.value, catalog.choice.value), ...(props.extra ?? [])])
 
 watch(
   () => props.open,
@@ -50,8 +51,9 @@ function notifyDownloading(): void {
 async function onPick(item: PickerItem): Promise<void> {
   await handlePick(item, {
     select: (id) => {
-      catalog.set(id)
-      emit('picked')
+      const isExtra = props.extra?.some((e) => e.id === id)
+      if (!isExtra) catalog.set(id)
+      emit('picked', isExtra ? id : undefined)
     },
     download: async (id) => {
       try {

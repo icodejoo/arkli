@@ -86,7 +86,7 @@ async function doReset(): Promise<void> {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
+    <tool-group>
       <van-cell-group :border="false">
         <van-cell title="人数" center>
           <template #value>
@@ -99,21 +99,15 @@ async function doReset(): Promise<void> {
           <template #right-icon><van-switch v-model="keepOn" size="20" /></template>
         </van-cell>
       </van-cell-group>
-      <h3 class="tool-card__title sb-gap">每次加减</h3>
+      <h3 class="tool-group__title sb-gap">每次加减</h3>
       <div class="sb-step">
         <van-button v-for="n in STEP_PRESETS" :key="n" size="small" :type="state.step === n ? 'primary' : 'default'" @click="step = n">{{ n }}</van-button>
         <van-stepper v-model="step" :min="1" :max="MAX_STEP" integer input-width="56px" />
       </div>
-    </div>
+    </tool-group>
 
     <div class="sb-list">
-      <div
-        v-for="i in order"
-        :key="i"
-        class="sb-row tool-card"
-        :class="{ 'sb-row--lead': rankByIndex[i]?.leading }"
-        :style="{ '--sb-color': PLAYER_COLORS[i] }"
-      >
+      <tool-group v-for="i in order" :key="i" inset class="sb-row" :class="{ 'sb-row--lead': rankByIndex[i]?.leading }" :style="{ '--sb-color': PLAYER_COLORS[i] }">
         <span class="sb-rank">{{ rankByIndex[i]?.rank }}</span>
         <input
           class="sb-name"
@@ -126,7 +120,7 @@ async function doReset(): Promise<void> {
         <van-button class="sb-btn" round icon="minus" aria-label="减分" @click="change(i, -1)" />
         <span class="sb-score">{{ state.players[i].score }}</span>
         <van-button class="sb-btn" round type="primary" icon="plus" aria-label="加分" @click="change(i, 1)" />
-      </div>
+      </tool-group>
     </div>
 
     <div class="sb-actions">

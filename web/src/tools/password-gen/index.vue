@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 密码生成器：选长度与字符集，一次生成 1~20 个，可逐个复制
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, reactive, ref } from 'vue'
 import { showFailToast, showSuccessToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
@@ -69,7 +70,7 @@ generate()
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
+    <tool-group>
       <van-cell-group :border="false">
         <van-cell v-for="(pw, i) in list" :key="i" center>
           <template #title><code class="pw">{{ pw }}</code></template>
@@ -83,9 +84,9 @@ generate()
         <span class="tool-hint">约 {{ Math.round(bits) }} bit</span>
       </div>
       <van-progress :percentage="strengthPercent" :color="strength.color" :show-pivot="false" stroke-width="6" />
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
+    <tool-group>
       <van-cell-group :border="false">
         <van-cell title="长度" :value="String(opts.length)" />
       </van-cell-group>
@@ -107,9 +108,10 @@ generate()
         </van-cell>
       </van-cell-group>
       <p v-if="error" class="tool-hint pw-error" role="alert">{{ error }}</p>
-    </div>
+    </tool-group>
 
-    <van-button type="primary" block round :disabled="!!error" @click="generate">重新生成</van-button>
+    <!-- 底部动作栏：主按钮重新生成；每条密码右边仍有各自的复制按钮 -->
+    <bottom-actions main main-text="重新生成" :disabled="{ main: !!error }" @main="generate" />
   </div>
 </template>
 

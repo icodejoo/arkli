@@ -24,10 +24,10 @@ watch(keyword, (v) => {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
+    <tool-group>
       <van-field v-model="keyword" clearable placeholder="输入状态码（如 404、40）或关键字（如 超时）" />
       <p v-if="keyword.trim()" class="tool-hint hs-count">共 {{ total }} 条</p>
-    </div>
+    </tool-group>
 
     <p v-if="!groups.length" class="tool-hint">没有找到匹配的状态码。</p>
 

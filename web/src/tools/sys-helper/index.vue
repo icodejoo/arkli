@@ -94,22 +94,19 @@ async function openDev(): Promise<void> {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
-      <h3 class="tool-card__title">先说清楚</h3>
+    <tool-group title="先说清楚">
       <p class="tool-hint">本工具不会直接修改系统设置，只帮你生成命令。命令需要在电脑上通过 USB 调试执行（手机开启 USB 调试并授权这台电脑，且已装好 adb）。</p>
       <van-button v-if="hasNative" size="small" plain type="primary" @click="openDev">打开开发者选项</van-button>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">当前信息（仅供参考）</h3>
+    <tool-group title="当前信息（仅供参考）">
       <van-cell title="屏幕分辨率" :value="`${screenW} × ${screenH}`" />
       <van-cell title="devicePixelRatio" :value="String(dpr)" />
       <van-cell title="推算 densityDpi" :value="String(estDpi)" />
       <p class="tool-hint">按网页像素比推算，接入原生信息后会更准。</p>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">DPI 与分辨率</h3>
+    <tool-group title="DPI 与分辨率">
       <van-field v-model="dpi" type="digit" :label="`DPI（${DPI_MIN}~${DPI_MAX}）`" :error-message="dpiCmd.error" />
       <pre class="sh-cmd">{{ dpiCmd.text }}</pre>
       <van-button size="small" type="primary" :disabled="!dpiCmd.text" @click="copy(dpiCmd.text)">复制命令</van-button>
@@ -120,10 +117,9 @@ async function openDev(): Promise<void> {
       <p class="tool-hint">改得太离谱可能导致界面无法操作，记得保留一条还原命令：</p>
       <pre class="sh-cmd">{{ resetDisplayText }}</pre>
       <van-button size="small" @click="copy(resetDisplayText)">复制还原命令</van-button>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">电量伪装</h3>
+    <tool-group title="电量伪装">
       <p class="tool-hint">只是让系统显示假电量，真实电池不变；用完请执行 reset。</p>
       <van-field v-model="level" type="digit" :label="`电量（${BATTERY_MIN}~${BATTERY_MAX}）`" :error-message="batCmd.error" />
       <van-radio-group v-model="status" direction="horizontal" class="sh-gap">
@@ -136,10 +132,9 @@ async function openDev(): Promise<void> {
       <van-button size="small" type="primary" :disabled="!batCmd.text" @click="copy(batCmd.text)">复制命令</van-button>
       <pre class="sh-cmd">{{ BATTERY_RESET_COMMAND }}</pre>
       <van-button size="small" @click="copy(BATTERY_RESET_COMMAND)">复制还原命令</van-button>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">动画速度</h3>
+    <tool-group title="动画速度">
       <p class="tool-hint">倍数越大动画越慢，「关」即 0；系统默认是 1。</p>
       <van-radio-group v-model="scale" direction="horizontal" class="sh-gap">
         <van-radio v-for="p in ANIM_PRESETS" :key="p.value" :name="p.value">{{ p.label }}</van-radio>
@@ -147,19 +142,17 @@ async function openDev(): Promise<void> {
       <van-field v-model="scale" type="number" :label="`自定义（${ANIM_MIN}~${ANIM_MAX}）`" :error-message="animCmd.error" />
       <pre class="sh-cmd">{{ animCmd.text }}</pre>
       <van-button size="small" type="primary" :disabled="!animCmd.text" @click="copy(animCmd.text)">复制命令</van-button>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">高级重启</h3>
+    <tool-group title="高级重启">
       <p class="tool-hint">在电脑上执行，需要 USB 调试已授权。</p>
       <van-cell v-for="r in REBOOT_ITEMS" :key="r.adb" :title="r.label" :label="`${r.adb}　${r.note}`" is-link @click="copy(r.adb)" />
       <p class="tool-hint">{{ ROOT_REBOOT_NOTE }}</p>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">电量校准</h3>
+    <tool-group title="电量校准">
       <p v-for="t in CALIBRATION_TIPS" :key="t" class="tool-hint">{{ t }}</p>
-    </div>
+    </tool-group>
   </div>
 </template>
 

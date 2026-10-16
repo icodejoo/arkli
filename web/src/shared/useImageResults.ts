@@ -91,9 +91,9 @@ export function useImageResults() {
     return out.length
   }
 
-  /** 保存全部结果：原生存相册 / 浏览器下载，并 toast 反馈 */
-  async function saveAll(): Promise<void> {
-    if (saving.value || results.value.length === 0) return
+  /** 保存全部结果：原生存相册 / 浏览器下载，并 toast 反馈；返回是否保存成功 */
+  async function saveAll(): Promise<boolean> {
+    if (saving.value || results.value.length === 0) return false
     saving.value = true
     try {
       const total = results.value.length
@@ -104,9 +104,11 @@ export function useImageResults() {
         },
       )
       showSuccessToast(res.mode === 'native' ? `已保存 ${res.saved} 张到相册` : `已下载 ${res.saved} 张`)
+      return true
     } catch (e) {
       const msg = (e as { message?: string }).message
       showFailToast(msg ? `保存失败：${msg}` : '保存失败')
+      return false
     } finally {
       saving.value = false
       progress.value = ''

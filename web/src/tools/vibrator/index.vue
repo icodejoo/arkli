@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 震动器：选预设或自己写「震/停」毫秒序列，调强度，开始/停止
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { showToast } from 'vant'
 import { applyIntensity, canVibrate, chunkPattern, createPlayer, formatPattern, MAX_TOTAL_MS, MIN_INTENSITY, parsePattern, PRESETS, stopVibrate, totalDuration, vibratePattern } from './logic'
@@ -93,12 +94,11 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="tool-page">
-    <div v-if="!supported" class="tool-card">
+    <tool-group v-if="!supported">
       <p class="tool-hint vib__warn">{{ TIP_UNSUPPORTED }}</p>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">节奏</h3>
+    <tool-group title="节奏">
       <div class="vib__chips">
         <van-button v-for="p in PRESETS" :key="p.id" size="small" round :type="selected === p.id ? 'primary' : 'default'" @click="pick(p.id)">{{ p.name }}</van-button>
         <van-button size="small" round :type="selected === 'custom' ? 'primary' : 'default'" @click="selected = 'custom'">自定义</van-button>
@@ -114,22 +114,20 @@ onBeforeUnmount(() => {
       <p class="tool-hint">奇数位是震动，偶数位是停顿，单位毫秒，逗号或空格隔开。总时长最多 {{ MAX_TOTAL_MS / MS_PER_S }} 秒，超出会被截断。</p>
       <p v-if="selected === 'custom' && parsed.truncated" class="tool-hint vib__warn">输入过长，已按上限截断。</p>
       <p class="tool-hint">这一轮约 {{ durationText }}</p>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">强度 {{ intensity }}%</h3>
+    <tool-group :title="`强度 ${intensity}%`">
       <van-slider v-model="intensity" :min="SLIDER_MIN" :max="SLIDER_MAX" :disabled="playing" />
       <p class="tool-hint vib__gap">强度是用「开一下、关一下」的占空比凑出来的近似效果，不同手机的马达响应差别很大，有的几乎感觉不出区别。</p>
       <van-cell title="循环播放" center class="vib__loop">
         <van-switch v-model="loop" size="20" :disabled="playing" />
       </van-cell>
-    </div>
+    </tool-group>
 
-    <div class="tool-actions">
-      <van-button v-if="!playing" block round type="primary" :disabled="!canStart" @click="start">开始震动</van-button>
-      <van-button v-else block round type="danger" @click="stop">停止</van-button>
-    </div>
     <p class="tool-hint">首次震动前需要先点一下页面；系统开了勿扰或关了触感反馈时，部分手机会不震。切到后台会自动停止。</p>
+
+    <!-- 底部动作栏：主按钮开始震动（震动中变成停止） -->
+    <bottom-actions main :main-text="playing ? '停止' : '开始震动'" :main-type="playing ? 'danger' : 'primary'" :disabled="{ main: !playing && !canStart }" @main="playing ? stop() : start()" />
   </div>
 </template>
 

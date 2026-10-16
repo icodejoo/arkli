@@ -1,11 +1,12 @@
 <script setup lang="ts">
 // 二维码识别：App 内用原生取景扫码或识别相册图，显示码种与内容，可复制；网址确认后才打开
+import BottomActions from '@/shared/BottomActions.vue'
 import { ref } from 'vue'
 import { showConfirmDialog, showFailToast, showSuccessToast } from 'vant'
 import { isNativeAvailable } from '@/native/bridge'
 import { decodeQrImage, scanQr, type QrResult } from '@/native/qrcode'
 import { clipboardWrite, openIntent, openSettings } from '@/native/system'
-import { pickImages } from '@/shared/image-io'
+import { EDIT_BASIC, pickImages } from '@/shared/image-io'
 import { displayText, formatLabel, isOpenableUrl, mergeResults } from './logic'
 
 /** 无宿主时的提示 */
@@ -55,7 +56,7 @@ async function onPickImage(): Promise<void> {
   if (busy.value) return
   busy.value = true
   try {
-    const [img] = await pickImages({ multiple: false })
+    const [img] = await pickImages({ edit: EDIT_BASIC, multiple: false })
     if (!img?.path) return
     const found = await decodeQrImage(img.path)
     if (found.length === 0) showFailToast(TIP_EMPTY)
@@ -107,21 +108,17 @@ function onClear(): void {
   <div class="tool-page">
     <van-notice-bar v-if="!hosted" wrapable :scrollable="false" left-icon="info-o">{{ TIP_NO_HOST }}</van-notice-bar>
 
-    <div class="tool-card">
-      <div class="qs-actions">
-        <van-button type="primary" round block :loading="busy" :disabled="!hosted" @click="onScan">扫码</van-button>
-        <van-button plain round block :disabled="!hosted || busy" @click="onPickImage">相册识图</van-button>
-      </div>
+    <tool-group>
       <div v-if="denied" class="qs-denied">
         <p>{{ TIP_DENIED }}</p>
         <van-button size="small" plain round @click="onOpenSettings">打开系统设置</van-button>
       </div>
       <p class="tool-hint">支持二维码与常见条码；一张图里有多个码时会全部列出。</p>
-    </div>
+    </tool-group>
 
-    <div v-if="results.length" class="tool-card">
+    <tool-group v-if="results.length">
       <div class="qs-head">
-        <span class="tool-card__title">识别结果（{{ results.length }}）</span>
+        <span class="tool-group__title">识别结果（{{ results.length }}）</span>
         <van-button size="mini" plain round @click="onClear">清空</van-button>
       </div>
       <div v-for="(r, i) in results" :key="`${r.format}-${i}-${r.bytes}`" class="qs-item">
@@ -132,17 +129,14 @@ function onClear(): void {
           <van-button v-if="isOpenableUrl(r.text)" size="small" type="primary" plain round @click="onOpenUrl(r)">打开网址</van-button>
         </div>
       </div>
-    </div>
+    </tool-group>
+
+    <!-- 底部动作栏：左边相册识图，右边主按钮扫码（取景扫码是原生页，不走拍照项） -->
+    <bottom-actions album main main-text="扫码" :disabled="{ album: !hosted || busy, main: !hosted || busy }" @album="onPickImage" @main="onScan" />
   </div>
 </template>
 
 <style lang="scss" scoped>
-/* 扫码与识图按钮并排 */
-.qs-actions {
-  display: flex;
-  gap: $space-2;
-}
-
 /* 权限被拒的提示 */
 .qs-denied {
   margin-top: $space-3;

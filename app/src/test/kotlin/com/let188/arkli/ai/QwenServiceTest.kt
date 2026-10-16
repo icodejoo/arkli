@@ -4,7 +4,14 @@ import com.let188.arkli.bridge.BridgeErrors
 import com.let188.arkli.bridge.BridgeException
 import com.let188.arkli.model.ModelManifestParser
 import com.let188.arkli.model.ModelStateInfo
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -16,6 +23,9 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 /** 本地文本模型服务与提供者：就绪判断、懒加载、重载、任务分发、可用性判定、随包清单 */
 class QwenServiceTest {
@@ -26,6 +36,7 @@ class QwenServiceTest {
     /** 记录调用的引擎替身 */
     private class FakeBackend(private val reply: String = "  回答  ") : QwenBackend {
         val calls = mutableListOf<String>()
+        val cancelCount = AtomicInteger()
         var lastPrompt = ""
         var lastSystem = ""
         var lastMax = -1
@@ -39,6 +50,27 @@ class QwenServiceTest {
             lastMax = maxNewTokens
             calls += "generate"
             return reply
+        }
+        override fun cancel() { cancelCount.incrementAndGet() }
+    }
+
+    /** 会阻塞的引擎替身：generate 一直等到 cancel 被调用，再像 JNI 那样抛 CancellationException */
+    private class BlockingBackend : QwenBackend {
+        val calls = mutableListOf<String>()
+        val started = CountDownLatch(1)
+        private val cancelled = CountDownLatch(1)
+        val cancelCount = AtomicInteger()
+        override fun load(configPath: String) { calls += "load" }
+        override fun unload() { calls += "unload" }
+        override fun generate(system: String, prompt: String, maxNewTokens: Int, sampling: Sampling): String {
+            calls += "generate"
+            started.countDown()
+            if (!cancelled.await(5, TimeUnit.SECONDS)) error("超时没等到取消")
+            throw CancellationException("文本生成已取消")
+        }
+        override fun cancel() {
+            cancelCount.incrementAndGet()
+            cancelled.countDown()
         }
     }
 
@@ -105,6 +137,47 @@ class QwenServiceTest {
     }
 
     @Test
+    fun normalFinish_neverCallsCancel() {
+        val dir = tmp.newFolder("m")
+        fillModel(dir)
+        val b = FakeBackend()
+        val s = QwenService(env(dir), b)
+        runBlocking { s.run(AiTask.SUMMARIZE, "文") }
+        runBlocking { s.translate("你好", "zh-CN", "en") }
+        assertEquals(0, b.cancelCount.get())
+    }
+
+    @Test
+    fun cancellingTheCoroutine_interruptsTheBackend_andKeepsTheSession() {
+        val dir = tmp.newFolder("m")
+        fillModel(dir)
+        val b = BlockingBackend()
+        val s = QwenService(env(dir), b)
+        runBlocking {
+            val job = async(Dispatchers.Default, start = CoroutineStart.UNDISPATCHED) { s.run(AiTask.SUMMARIZE, "文") }
+            withTimeout(5_000) { while (b.started.count > 0L) delay(10) }
+            job.cancelAndJoin()
+        }
+        assertEquals(1, b.cancelCount.get())
+        // 取消不算引擎故障：会话保留，没有卸载
+        assertEquals(listOf("load", "generate"), b.calls)
+    }
+
+    @Test
+    fun cancellingTranslate_alsoInterruptsTheBackend() {
+        val dir = tmp.newFolder("m")
+        fillModel(dir)
+        val b = BlockingBackend()
+        val s = QwenService(env(dir), b)
+        runBlocking {
+            val job = async(Dispatchers.Default, start = CoroutineStart.UNDISPATCHED) { s.translate("你好", "zh-CN", "en") }
+            withTimeout(5_000) { while (b.started.count > 0L) delay(10) }
+            job.cancelAndJoin()
+        }
+        assertEquals(1, b.cancelCount.get())
+    }
+
+    @Test
     fun generateInternalError_discardsSession_nextCallReloads() {
         val dir = tmp.newFolder("m")
         fillModel(dir)
@@ -113,6 +186,7 @@ class QwenServiceTest {
             var fail = true
             override fun load(configPath: String) { calls += "load" }
             override fun unload() { calls += "unload" }
+            override fun cancel() {}
             override fun generate(system: String, prompt: String, maxNewTokens: Int, sampling: Sampling): String {
                 calls += "generate"
                 if (fail) {

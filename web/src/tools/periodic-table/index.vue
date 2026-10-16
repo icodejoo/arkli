@@ -62,12 +62,12 @@ const detail = computed(() => {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
+    <tool-group>
       <van-field v-model="keyword" clearable placeholder="搜序号、符号、中文或英文名" />
       <p v-if="keyword.trim()" class="tool-hint pt-hint">命中 {{ hitCount }} 个，高亮显示</p>
-    </div>
+    </tool-group>
 
-    <div class="tool-card pt-wrap">
+    <tool-group class="pt-wrap">
       <div class="pt-grid">
         <button
           v-for="e in ELEMENTS"
@@ -88,17 +88,16 @@ const detail = computed(() => {
         <div class="pt-mark" :style="{ gridRow: String(LANTHANIDE_ROW), gridColumn: '1 / 3' }">镧系</div>
         <div class="pt-mark" :style="{ gridRow: String(ACTINIDE_ROW), gridColumn: '1 / 3' }">锕系</div>
       </div>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">图例</h3>
+    <tool-group title="图例">
       <div class="pt-legend">
         <span v-for="c in categories" :key="c" class="pt-legend__item">
           <i class="pt-legend__dot" :class="`pt-cell--${c}`" />{{ CATEGORY_LABELS[c] }}
         </span>
       </div>
       <p class="tool-hint pt-hint">原子质量带方括号的是质量数（没有标准原子量）。104 号以后的元素性质多为理论预测。</p>
-    </div>
+    </tool-group>
 
     <van-popup v-model:show="showDetail" round position="bottom" closeable>
       <div v-if="current && detail" class="pt-detail">

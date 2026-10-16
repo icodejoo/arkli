@@ -167,7 +167,7 @@ onBeforeUnmount(() => {
   <div class="tool-page">
     <van-notice-bar v-if="!hosted" wrapable :scrollable="false" left-icon="info-o">{{ TIP_NO_HOST }}</van-notice-bar>
 
-    <div class="tool-card">
+    <tool-group>
       <van-search v-model="query" placeholder="搜索应用名或包名" shape="round" :disabled="!hosted" />
       <div class="am-bar">
         <van-button v-for="o in SORT_OPTIONS" :key="o.key" size="small" round :type="sortKey === o.key ? 'primary' : 'default'" @click="sortKey = o.key">
@@ -178,13 +178,13 @@ onBeforeUnmount(() => {
           <van-switch v-model="showSystem" size="20" />
         </label>
       </div>
-    </div>
+    </tool-group>
 
     <van-loading v-if="loading" class="am-loading" vertical>读取中…</van-loading>
     <template v-else-if="hosted">
       <p class="tool-hint am-summary">{{ summary }}</p>
       <van-empty v-if="shown.length === 0" description="没有符合条件的应用" />
-      <van-cell-group v-else class="tool-group" :border="false">
+      <tool-group v-else :border="false">
         <van-cell
           v-for="a in shown"
           :key="a.pkg"
@@ -200,7 +200,7 @@ onBeforeUnmount(() => {
             <span v-else class="am-icon am-icon--ph">{{ a.label.slice(0, 1) }}</span>
           </template>
         </van-cell>
-      </van-cell-group>
+      </tool-group>
       <p class="tool-hint">{{ TIP_SCOPE }}</p>
     </template>
 

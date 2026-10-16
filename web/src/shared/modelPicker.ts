@@ -164,6 +164,33 @@ export async function handlePick(item: PickerItem, deps: PickDeps): Promise<Pick
   return action
 }
 
+/** 非模型资源行（如语料库数据包）的展示信息 */
+export interface ExtraRowInfo {
+  /** 行 id（选中时回传给页面，不能与目录项 key 重名） */
+  id: string
+  /** 要下载的清单 id */
+  modelId: string
+  /** 标题 */
+  title: string
+  /** 作用说明 */
+  desc: string
+}
+
+/**
+ * 把一个清单资源（如对联语料库）做成选择器的一行：状态同模型行，已安装且被页面选中时为「选中」。
+ *
+ * @param info 行信息
+ * @param st 清单状态，还没拿到快照传 undefined（按未接入）
+ * @param selected 页面当前是否选了它
+ * @returns 一行
+ * @example buildExtraItem({ id: 'corpus', modelId: 'couplet-corpus', title: '语料库', desc: '73 万副' }, st, true).status // 'selected'
+ */
+export function buildExtraItem(info: ExtraRowInfo, st: (Pick<ModelStatus, 'totalBytes' | 'downloadedBytes'> & { state: ModelStateName }) | undefined, selected: boolean): PickerItem {
+  const base = stateToStatus(st?.state)
+  const status: ItemStatus = base === 'ready' && selected ? 'selected' : base
+  return { id: info.id, modelId: info.modelId, layer: 'L1', title: info.title, desc: buildDesc(info.desc, status, st), status, progress: progressOf(st) }
+}
+
 /** 精简的存储接口，便于测试注入 */
 export type ChoiceStorage = Pick<Storage, 'getItem' | 'setItem'>
 

@@ -188,6 +188,16 @@ export function aggregateText(items: PhotoItemResult[]): string {
 }
 
 /**
+ * 单张图的仅译文文本（只复制译文用），每块一行。
+ *
+ * @param item 单张图结果
+ * @returns 译文文本
+ */
+export function itemTranslated(item: PhotoItemResult): string {
+  return item.blocks.filter((b) => b.tgt).map((b) => b.tgt).join(PAIR_SEP)
+}
+
+/**
  * 仅译文的聚合文本（复制译文用），每块一行。
  *
  * @param items 多图结果

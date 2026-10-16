@@ -96,8 +96,7 @@ function more(): void {
       <van-tab title="组合贷" name="combo" />
     </van-tabs>
 
-    <div v-if="kind !== 'fund'" class="tool-card">
-      <h3 class="tool-card__title">{{ kind === 'combo' ? '商业贷款部分' : '商业贷款' }}</h3>
+    <tool-group v-if="kind !== 'fund'" :title="`${kind === 'combo' ? '商业贷款部分' : '商业贷款'}`">
       <van-field v-model="biz.wan" type="number" label="贷款金额" placeholder="万元" input-align="right">
         <template #button>万元</template>
       </van-field>
@@ -107,10 +106,9 @@ function more(): void {
       <van-field v-model="biz.years" type="digit" :label="`年限（≤${MAX_YEARS}）`" input-align="right">
         <template #button>年</template>
       </van-field>
-    </div>
+    </tool-group>
 
-    <div v-if="kind !== 'biz'" class="tool-card">
-      <h3 class="tool-card__title">{{ kind === 'combo' ? '公积金部分' : '公积金贷款' }}</h3>
+    <tool-group v-if="kind !== 'biz'" :title="`${kind === 'combo' ? '公积金部分' : '公积金贷款'}`">
       <van-field v-model="fund.wan" type="number" label="贷款金额" placeholder="万元" input-align="right">
         <template #button>万元</template>
       </van-field>
@@ -120,24 +118,22 @@ function more(): void {
       <van-field v-model="fund.years" type="digit" :label="`年限（≤${MAX_YEARS}）`" input-align="right">
         <template #button>年</template>
       </van-field>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">还款方式</h3>
+    <tool-group title="还款方式">
       <van-radio-group v-model="method" direction="horizontal">
         <van-radio name="equal-payment">等额本息</van-radio>
         <van-radio name="equal-principal">等额本金</van-radio>
       </van-radio-group>
       <p class="tool-hint mt">利率请按自己的合同填写，这里不内置 LPR。</p>
-    </div>
+    </tool-group>
 
-    <div v-if="outcome.error" class="tool-card">
+    <tool-group v-if="outcome.error">
       <p class="tool-hint err">{{ outcome.error }}</p>
-    </div>
+    </tool-group>
 
     <template v-if="outcome.result">
-      <div class="tool-card">
-        <h3 class="tool-card__title">结果</h3>
+      <tool-group title="结果">
         <van-cell
           v-if="method === 'equal-payment'"
           title="每月还款"
@@ -154,10 +150,9 @@ function more(): void {
           组合贷两笔期限不同时，较短的一笔还清后月供会下降。
         </p>
         <p class="tool-hint mt">逐月利息四舍五入到分，最后一期并入尾差，本金合计精确等于贷款额。</p>
-      </div>
+      </tool-group>
 
-      <div class="tool-card">
-        <h3 class="tool-card__title">逐月还款表（{{ totalRows }} 期）</h3>
+      <tool-group :title="`逐月还款表（${totalRows} 期）`">
         <van-button size="small" plain @click="toggleTable">{{ showTable ? '收起' : '展开' }}</van-button>
         <div v-if="showTable" class="mt">
           <div class="mg-row mg-row--head">
@@ -174,7 +169,7 @@ function more(): void {
             再显示 {{ Math.min(PAGE_SIZE, totalRows - shown) }} 期
           </van-button>
         </div>
-      </div>
+      </tool-group>
     </template>
   </div>
 </template>

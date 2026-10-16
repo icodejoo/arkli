@@ -55,4 +55,27 @@ class PickerPolicyTest {
         assertTrue(PickerConst.RESULT_CAMERA >= android.app.Activity.RESULT_FIRST_USER)
         assertTrue(PickerConst.RESULT_CAMERA != PickerConst.RESULT_DENIED)
     }
+
+    /** 缺省走默认基础模式，空数组关闭，非空取合法值，全非法回默认 */
+    @Test
+    fun resolveEditModes() {
+        assertEquals(listOf("crop", "rotate", "shape", "lasso"), PickerPolicy.resolveEditModes(null))
+        assertEquals(emptyList<String>(), PickerPolicy.resolveEditModes(JSONArray("[]")))
+        assertEquals(listOf("crop", "lasso"), PickerPolicy.resolveEditModes(JSONArray("[\"crop\",\"x\",\"lasso\",\"crop\"]")))
+        assertEquals(listOf("crop", "rotate", "shape", "lasso"), PickerPolicy.resolveEditModes(JSONArray("[\"x\"]")))
+    }
+
+    /** edit 参数只保留合法值、去重、保序；null 与非字符串都当空 */
+    @Test
+    fun parseEditModesFilters() {
+        assertEquals(listOf("rotate", "crop"), PickerPolicy.parseEditModes(JSONArray("[\"rotate\",\"brush\",\"crop\",\"rotate\"]")))
+        assertEquals(emptyList<String>(), PickerPolicy.parseEditModes(null))
+        assertEquals(emptyList<String>(), PickerPolicy.parseEditModes(JSONArray("[1,2]")))
+    }
+
+    /** shape、lasso 是合法编辑模式，保序去重 */
+    @Test
+    fun parseEditModesAcceptsShapeAndLasso() {
+        assertEquals(listOf("lasso", "shape", "crop"), PickerPolicy.parseEditModes(JSONArray("[\"lasso\",\"shape\",\"lasso\",\"crop\"]")))
+    }
 }

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 文字转语音：调系统语音引擎朗读，可调语速音调；也能合成为 wav 再分享。超长文本自动分段依次读
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { showFailToast, showToast } from 'vant'
 import { isNativeAvailable } from '@/native/bridge'
@@ -184,11 +185,11 @@ onBeforeUnmount(() => {
   <div class="tool-page">
     <van-notice-bar v-if="guide" wrapable :scrollable="false" left-icon="warning-o">{{ guide }}</van-notice-bar>
 
-    <div class="tool-card">
+    <tool-group>
       <van-field v-model="text" type="textarea" rows="5" autosize placeholder="输入要朗读的文字" :maxlength="PAGE_MAX_TEXT" show-word-limit />
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
+    <tool-group>
       <van-cell-group :border="false">
         <van-cell title="语言" center>
           <template #value>
@@ -208,16 +209,9 @@ onBeforeUnmount(() => {
           </template>
         </van-cell>
       </van-cell-group>
-    </div>
+    </tool-group>
 
-    <div class="tts-actions">
-      <van-button v-if="!speaking" type="primary" block round :disabled="!canSpeak" @click="onSpeak">朗读</van-button>
-      <van-button v-else type="danger" block round @click="onStop">停止{{ progress ? `（${progress}）` : '' }}</van-button>
-      <van-button plain block round :loading="saving" :disabled="!hosted || !canSpeak" @click="onSave">保存为音频</van-button>
-    </div>
-
-    <div v-if="saved.length" class="tool-card">
-      <h3 class="tool-card__title">已生成的音频</h3>
+    <tool-group v-if="saved.length" title="已生成的音频">
       <van-cell-group :border="false">
         <van-cell v-for="f in saved" :key="f.path" :title="f.name" center>
           <template #right-icon>
@@ -225,19 +219,15 @@ onBeforeUnmount(() => {
           </template>
         </van-cell>
       </van-cell-group>
-    </div>
+    </tool-group>
     <p class="tool-hint">用系统自带的语音引擎，不联网。保存为音频只在 Arkli 应用里可用，长文本会分成几段文件。</p>
+
+    <!-- 底部动作栏：保存为音频，主按钮朗读（朗读中变成停止） -->
+    <bottom-actions :actions="{ save: { disabled: !hosted || !canSpeak || saving, text: '存音频' } }" main :main-text="speaking ? `停止${progress ? `（${progress}）` : ''}` : '朗读'" :main-type="speaking ? 'danger' : 'primary'" :disabled="{ main: !speaking && !canSpeak }" @main="speaking ? onStop() : onSpeak()" @save="onSave" />
   </div>
 </template>
 
 <style lang="scss" scoped>
-/* 朗读与保存两个按钮上下排 */
-.tts-actions {
-  display: flex;
-  flex-direction: column;
-  gap: $space-2;
-}
-
 /* 语言下拉，贴合主题 */
 .tts-select {
   padding: 4px 8px;

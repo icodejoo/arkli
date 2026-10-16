@@ -80,6 +80,20 @@ class ImagePickerActivity : ComponentActivity() {
     /** 要选的媒体种类 */
     private var media = PickerMedia.IMAGE
 
+    /** 预览页允许的编辑模式，空表示不显示编辑按钮 */
+    private var editModes: List<String> = emptyList()
+
+    /** 选中与已编辑状态（Compose 可观察） */
+    private var state by mutableStateOf(PickState<Long, Uri>())
+
+    /** 缩略图缓存，按 key 存；编辑、还原时要清掉该 key 的旧图 */
+    private val thumbCache = object : LruCache<Long, ImageBitmap>((Runtime.getRuntime().maxMemory() / PickerConst.CACHE_HEAP_DIVISOR).toInt()) {
+        override fun sizeOf(key: Long, value: ImageBitmap): Int = value.width * value.height * BYTES_PER_PIXEL
+    }
+
+    /** 正在编辑的图的 key，编辑页返回时用 */
+    private var editingKey: Long? = null
+
     /** 是否已获得相册权限 */
     private var granted by mutableStateOf(false)
 
@@ -88,12 +102,22 @@ class ImagePickerActivity : ComponentActivity() {
         if (res.values.all { it }) granted = true else deny()
     }
 
+    /** 编辑页：返回新地址则替换该图；取消（null）不改变任何状态 */
+    private val editReq = registerForActivityResult(ImageEditContract()) { uri ->
+        val key = editingKey ?: return@registerForActivityResult
+        editingKey = null
+        if (uri != null) thumbCache.remove(key)
+        state = state.applyEdit(key, uri, maxCount)
+    }
+
     /** 创建界面：先确认权限，再显示网格 */
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         maxCount = intent.getIntExtra(PickerConst.EXTRA_MAX, PickerConst.DEFAULT_MAX).coerceAtLeast(1)
         showCamera = intent.getBooleanExtra(PickerConst.EXTRA_CAMERA, false)
         media = runCatching { PickerMedia.valueOf(intent.getStringExtra(PickerConst.EXTRA_MEDIA).orEmpty()) }.getOrDefault(PickerMedia.IMAGE)
+        editModes = (intent.getStringArrayListExtra(PickerConst.EXTRA_PICK_EDIT_MODES) ?: ArrayList(PickerPolicy.DEFAULT_EDIT_MODES))
+            .takeIf { media != PickerMedia.VIDEO }.orEmpty()
         val perms = readPermissions()
         if (perms.all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }) granted = true else permReq.launch(perms)
         setContent { if (granted) PickerScreen() }
@@ -129,7 +153,8 @@ class ImagePickerActivity : ComponentActivity() {
         val muted = fg.copy(alpha = MUTED_ALPHA)
         val resolver = contentResolver
         var images by remember { mutableStateOf<List<MediaImage>?>(null) }
-        var selected by remember { mutableStateOf(emptyList<Long>()) }
+        val selected = state.selected
+        val cache = thumbCache
         // 全屏浏览：当前看的图在「纯图片列表」里的下标，null 表示没在浏览
         var previewAt by remember { mutableStateOf<Int?>(null) }
         // 点多选框：切换选中；单选时点另一项直接换，再点同一项取消
@@ -137,7 +162,17 @@ class ImagePickerActivity : ComponentActivity() {
             val next = if (maxCount == 1) (if (selected == listOf(img.key)) emptyList() else listOf(img.key))
             else PickSelection.toggle(selected, img.key, maxCount)
             if (next == null) Toast.makeText(this@ImagePickerActivity, "最多选 $maxCount 个", Toast.LENGTH_SHORT).show()
-            else selected = next
+            else state = state.copy(selected = next)
+        }
+        // 点预览里的编辑：以当前图（编辑过的取编辑后的）为输入拉起编辑页
+        val onEdit: (MediaImage) -> Unit = { img ->
+            editingKey = img.key
+            editReq.launch(ImageEditParams(state.current(img.key, img.uri), editModes))
+        }
+        // 点预览里的还原：清缓存并恢复原图
+        val onRestore: (MediaImage) -> Unit = { img ->
+            cache.remove(img.key)
+            state = state.restore(img.key)
         }
         val noun = when (media) {
             PickerMedia.IMAGE -> "图片"
@@ -145,11 +180,6 @@ class ImagePickerActivity : ComponentActivity() {
             PickerMedia.IMAGE_VIDEO -> "图片或视频"
         }
         LaunchedEffect(Unit) { images = withContext(Dispatchers.IO) { MediaImages.list(resolver, media) } }
-        val cache = remember {
-            object : LruCache<Long, ImageBitmap>((Runtime.getRuntime().maxMemory() / PickerConst.CACHE_HEAP_DIVISOR).toInt()) {
-                override fun sizeOf(key: Long, value: ImageBitmap): Int = value.width * value.height * BYTES_PER_PIXEL
-            }
-        }
         Box(Modifier.fillMaxSize().background(bg)) {
         Column(Modifier.fillMaxSize()) {
             Row(
@@ -161,7 +191,7 @@ class ImagePickerActivity : ComponentActivity() {
                 Label("选择$noun ${selected.size}/$maxCount", fg, bold = true)
                 GlyphButton(Glyph.CHECK, "完成", if (selected.isEmpty()) muted else ACCENT, enabled = selected.isNotEmpty()) {
                     val byId = images.orEmpty().associateBy { it.key }
-                    finishWith(selected.mapNotNull { byId[it]?.uri })
+                    finishWith(state.resolve { byId[it]?.uri })
                 }
             }
             val list = images
@@ -182,6 +212,7 @@ class ImagePickerActivity : ComponentActivity() {
                             img,
                             PickSelection.orderOf(selected, img.key),
                             cache,
+                            state.edited[img.key],
                             // 点图片本身：图片全屏浏览，视频交给系统播放器；只有点多选框才选中
                             onOpen = {
                                 if (img.video) playVideo(img.uri) else previewAt = list.filter { !it.video }.indexOfFirst { it.key == img.key }
@@ -199,7 +230,7 @@ class ImagePickerActivity : ComponentActivity() {
         val photos = images.orEmpty().filter { !it.video }
         if (at != null && at in photos.indices) {
             BackHandler { previewAt = null }
-            PreviewOverlay(photos, at, selected, toggle) { previewAt = null }
+            PreviewOverlay(photos, at, state, toggle, onEdit, onRestore) { previewAt = null }
         }
         }
     }
@@ -218,19 +249,28 @@ class ImagePickerActivity : ComponentActivity() {
      *
      * @param photos 可浏览的图片（不含视频）
      * @param start 起始下标
-     * @param selected 已选 key，按点选顺序
+     * @param st 选中与已编辑状态
      * @param onToggle 切换某张图的选中状态
+     * @param onEdit 点编辑按钮；编辑过的图以编辑后的结果继续编辑
+     * @param onRestore 点还原按钮，恢复原图
      * @param onClose 关闭浏览
      */
     @Composable
-    private fun PreviewOverlay(photos: List<MediaImage>, start: Int, selected: List<Long>, onToggle: (MediaImage) -> Unit, onClose: () -> Unit) {
+    private fun PreviewOverlay(photos: List<MediaImage>, start: Int,
+        st: PickState<Long, Uri>,
+        onToggle: (MediaImage) -> Unit,
+        onEdit: (MediaImage) -> Unit,
+        onRestore: (MediaImage) -> Unit,
+        onClose: () -> Unit,
+    ) {
         val pager = rememberPagerState(initialPage = start) { photos.size }
         val resolver = contentResolver
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             HorizontalPager(pager, Modifier.fillMaxSize(), key = { photos[it].key }) { page ->
                 val img = photos[page]
-                val bmp by produceState<ImageBitmap?>(null, img.key) {
-                    value = withContext(Dispatchers.IO) { MediaImages.thumbnail(resolver, img.uri, PickerConst.PREVIEW_PX)?.asImageBitmap() }
+                val shown = st.current(img.key, img.uri)
+                val bmp by produceState<ImageBitmap?>(null, shown) {
+                    value = withContext(Dispatchers.IO) { MediaImages.thumbnail(resolver, shown, PickerConst.PREVIEW_PX)?.asImageBitmap() }
                 }
                 Box(
                     Modifier.fillMaxSize().clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClose),
@@ -247,9 +287,20 @@ class ImagePickerActivity : ComponentActivity() {
                 Label("${pager.currentPage + 1}/${photos.size}", Color.White, Modifier.padding(start = 12.dp), bold = true)
                 val cur = photos[pager.currentPage]
                 // 点多选框：切换选中后直接关闭全屏，回到网格
-                SelectBox(PickSelection.orderOf(selected, cur.key)) {
+                SelectBox(PickSelection.orderOf(st.selected, cur.key)) {
                     onToggle(cur)
                     onClose()
+                }
+            }
+            // 底部：还原（编辑过时）与编辑（允许编辑时）
+            if (editModes.isNotEmpty()) {
+                Row(
+                    Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    val cur = photos[pager.currentPage]
+                    if (cur.key in st.edited) GlyphButton(Glyph.RESTORE, "还原", Color.White, Modifier.background(BADGE_IDLE, CircleShape)) { onRestore(cur) }
+                    GlyphButton(Glyph.EDIT, "编辑", Color.White, Modifier.background(BADGE_IDLE, CircleShape)) { onEdit(cur) }
                 }
             }
         }
@@ -264,12 +315,13 @@ class ImagePickerActivity : ComponentActivity() {
 
     /** 一格缩略图：右上角圆圈，选中时填色并显示序号 */
     @Composable
-    private fun Cell(img: MediaImage, order: Int, cache: LruCache<Long, ImageBitmap>, onOpen: () -> Unit, onToggle: () -> Unit) {
+    private fun Cell(img: MediaImage, order: Int, cache: LruCache<Long, ImageBitmap>, editedUri: Uri?, onOpen: () -> Unit, onToggle: () -> Unit) {
         val resolver = contentResolver
-        val thumb by produceState(cache.get(img.key), img.key) {
+        val shownUri = editedUri ?: img.uri
+        val thumb by produceState(cache.get(img.key), shownUri) {
             if (value == null) {
                 value = withContext(Dispatchers.IO) {
-                    MediaImages.thumbnail(resolver, img.uri, PickerConst.THUMB_PX, img.video)?.asImageBitmap()
+                    MediaImages.thumbnail(resolver, shownUri, PickerConst.THUMB_PX, img.video)?.asImageBitmap()
                 }?.also { cache.put(img.key, it) }
             }
         }
@@ -279,6 +331,13 @@ class ImagePickerActivity : ComponentActivity() {
                 BasicText(
                     durationText(img.durationMs),
                     Modifier.align(Alignment.BottomStart).padding(6.dp).background(BADGE_IDLE, RoundedCornerShape(4.dp)).padding(horizontal = 4.dp),
+                    TextStyle(color = Color.White, fontSize = 11.sp),
+                )
+            }
+            if (editedUri != null) {
+                BasicText(
+                    "已编辑",
+                    Modifier.align(Alignment.BottomEnd).padding(6.dp).background(ACCENT, RoundedCornerShape(4.dp)).padding(horizontal = 4.dp),
                     TextStyle(color = Color.White, fontSize = 11.sp),
                 )
             }

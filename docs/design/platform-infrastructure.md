@@ -45,6 +45,7 @@ summary: 六份工具设计共同依赖的底层能力：bridge 协议 v2、统�
 - 几十 MB 以上别硬走消息通道，走回环 HTTP 或不透明句柄。
 - `shouldInterceptRequest` 看不到 POST body，也没有 Content-Length，不能靠拦截器收上传。
 
+
 ## 二、统一方法表
 
 命名沿用 `域.模块.动作`。各份设计里的重复或近似命名已合并。
@@ -76,21 +77,45 @@ summary: 六份工具设计共同依赖的底层能力：bridge 协议 v2、统�
 | `native.task.status` / `cancel` | 视频、AI、下载 | 事件 `task.progress` / `task.done` / `task.error`，进度节流不超过 10Hz |
 | `rust.*` | 计算类 | 同步短任务直接返回；长任务走 task |
 
+## 选图页内的编辑
+
+编辑入口在自带选图页 `ImagePickerActivity` 的全屏预览里：底部居中一个铅笔按钮，点它拉起 `ImageEditActivity`（单选多选都支持，每张图各自编辑）。视频不显示；拍照流程不经过。
+
+- **模式**：`native.file.pick` 的 `edit` 是“这次选图允许的编辑模式”，`["crop","rotate","shape","lasso"]` 的子集。不传默认全部 `["crop","rotate","shape","lasso"]`（所有图片选择都有编辑按钮）；传 `[]` 关闭按钮；传 EDIT_BASIC 可只留裁剪与旋转。解析在 `PickerPolicy.resolveEditModes`，非空但全是非法值按默认处理。
+- **替换规则**：状态在 `EditedMap.kt` 的 `PickState`（纯逻辑，有单测）：记 `原图 key → 编辑后 URI`。编辑完成后该图在选中顺序里的位置不变；没选中的图编辑完自动选中（已满则只记映射不选）；重复编辑取最新，且以编辑后的图为输入继续编辑；编辑页取消不改变任何状态。
+- **还原**：预览里编辑过的图多一个回退箭头按钮，点它丢掉映射恢复原图，选中状态不变。
+- **显示**：网格缩略图与预览都显示编辑后的图，缩略图右下角有“已编辑”角标；换了 URI 就清该图的缩略图缓存。
+- **最终返回**：点完成时 `PickState.resolve` 按选中顺序输出，已编辑的用编辑后 URI（缓存里的 file:// 临时文件，PickHandler 的 file 分支照常拷进 `pick/`）。
+- **sourceHandle**：`keepSource` 的 `sourceHandle` 用来 `native.file.overwrite` 写回相册原图，所以 file:// 的项（编辑后的图）一律不给 `sourceHandle`，免得覆盖写错对象。编辑页没动就点完成时返回的仍是原图的 content URI，此时照常给。
+
+- 缩放与框：双指缩放/平移只作用于图片，裁剪框固定在屏幕上不动（框仍存图像归一化坐标，每次手势按屏幕位置重算），缩放下限为适配比例的 0.25 倍。框完全由用户拖动控制，只受三条约束：不拖出画布可见区、最小边长、固定比例；**框允许超出图片**。图可随便拖，但至少留 48dp 在画布内。画布左右留 24dp 内边距并在屏幕左右边缘设系统手势排除带，系统返回键/手势在此页被吞掉，只能点顶栏取消/完成退出。
+- 能做什么：双指缩放平移；裁剪框拖四边四角，比例有自由、1:1、4:3、16:9、3:4、9:16；左转 90°、左右翻转、上下翻转；撤销（最多 20 步，更早的折进基础状态）、重置。`crop` 只开裁剪，`rotate` 只开旋转翻转。
+- 怎么算：操作栈 `EditOps` 累积成一个状态（转几个 90°、是否镜像、归一化裁剪框），纯逻辑都在 `EditMath.kt`，JVM 单测覆盖。预览用短边约 1200px 的降采样图。
+- 怎么导出：点完成才按原图分辨率重放，最长边不超过 4096（超了按 2 的幂采样），直接从原图取裁剪区域并同时旋转翻转，矩形写成 JPEG（质量同 `FileConst.JPEG_QUALITY`），EXIF 先摆正再编辑，所以结果不带方向。透明图垫白底。框超出图片时在透明画布上合成（超出部分透明），框最长边同样封顶 4096。文件放 `cache/arkli/pick/edit/`，由 PickHandler 照常拷进 `pick/`。
+- 形状（`shape`）：比例行下多一行形状——矩形（默认）、圆形（锁 1:1，比例按钮灰掉）、椭圆、圆角、心形、星形（五角）、六边形。形状只换遮罩轮廓，框的拖拽缩放还是矩形那套，圆形之外沿用当前比例。轮廓与“点在不在形状内”都是 `EditShapes.kt` 里的纯函数，预览按轮廓镂空压暗，导出时在裁出的图上用 `Canvas` + `SRC_IN` 抠出形状。
+- 手绘（`lasso`）：点“手绘”后裁剪框隐藏，单指画一圈，松手自动闭合；点太近的不收，收尾做 RDP 抽稀（容差 2.5px，最多 240 点），围出面积太小（误触）直接丢掉。画的过程中双指仍可缩放平移，且会放弃当前这一笔。画好后轮廓内保留、外部透明，导出裁到轮廓外接框；“重画”清掉旧轮廓重新画。
+- 套索与旋转翻转的先后：套索点存在“当前变换后画面”的归一化坐标里，之后再旋转或翻转，点跟着一起变换（和裁剪框同一套逻辑），所以顺序随便，不锁定；导出时把外接框还原回原图坐标取区域。套索与预设形状互斥：画套索会把形状复位成矩形，选形状或拖裁剪框会清掉套索。形状不随旋转转向（心形始终正立，转的只是外接框）。
+- 输出格式：矩形且框完全在图内输出 JPEG；带形状、套索，或裁剪框有任何部分超出图片（超出部分透明）一律输出带 alpha 的 PNG，文件名 `.png`，PickHandler 按扩展名认成 `image/png`，不转 JPEG。允许模式不含 `shape`/`lasso` 时对应入口不显示。
+- 取消：编辑页取消只是回到预览，选图页状态不变；没改动点完成直接返回原图。导出在协程里跑，阶段间检查取消。
+- 已知限制：编辑页临时导出文件留在 `pick/edit/`，随缓存目录清理，不单独删。
+- 第二批（画笔、马赛克）往 `EditOp` 追加子类型即可。
+
 ## 三、安全
 - **通道来源**：`WebMessageListener` 的 `allowedOriginRules` 只放 `https://appassets.androidplatform.net`，bridge 不会注入到其他来源的 frame。
-- **页面出站只开白名单（2026-10-13 用户选定折中方案 B）**：一旦加 INTERNET，必须在 `shouldInterceptRequest` 里拦掉所有"非 appassets 域且不在白名单"的请求，CSP 为 `default-src 'self'; connect-src 'self' <白名单域名>; img-src 'self' blob: data:`。
+- **页面出站（2026-10-16 起改为放行任意 https，下面是 10-13 白名单方案的原始记录，已被取代）**：2026-10-16 用户决定不再限制页面出站（为让对联页加载 Google Fonts 在线字体）：`isAllowedOutbound` 只要求 https、无 userinfo；CSP 的 `connect-src` / `img-src` / `media-src` / `style-src` / `font-src` 都加 `https:`；明文 http 仍拒绝；**`script-src 'self'` 不变，不加载远程脚本**；`ALLOWED_HOSTS` 已删除。原生模型下载器的 `DOWNLOAD_HOSTS` 白名单不受影响。以下为旧方案记录：
+  - **原方案**：一旦加 INTERNET，必须在 `shouldInterceptRequest` 里拦掉所有"非 appassets 域且不在白名单"的请求，CSP 为 `default-src 'self'; connect-src 'self' <白名单域名>; img-src 'self' blob: data:`。
   - **走原生**（`native.net.*`、`native.pack.*`）：ping、DNS、端口、Whois、任意网址请求（网址探查、网页源码、短链还原）、模型与数据包下载。浏览器做不了或会被跨域拦住。
   - **页面直接请求**：只放行少数**明确支持 CORS** 的 JSON 接口，目前只有汇率（Frankfurter 为主、ExchangeRate-API 为备）；落地前要逐个实测 CORS 头，不支持的退回原生。
-  - 白名单写死在 CSP 和拦截规则里，改域名要发版。
+  - （旧）白名单写死在 CSP 和拦截规则里，改域名要发版。
   - **已实现（待办 4 最小切片，2026-10-13）**：
     - 白名单单一事实来源是 `net/NetPolicy.kt` 的 `ALLOWED_HOSTS`，目前只有 `api.wikimedia.org`（历史上的今天，实测 `access-control-allow-origin: *`）。判定为精确主机名匹配（忽略大小写）：必须 https、无 userinfo、端口缺省或 443；子域伪装、`@` 技巧、IP 字面量、punycode、尾点主机均拒绝，有单测。
-    - 拦截规则（`shouldInterceptRequest`）：appassets 域 https 走原有 `/files/` 接管与 loader；命中白名单返回 null，让 WebView 自己发，CORS 由浏览器处理；其余返回空 403 并记 warn 日志（只含协议、主机、路径，不含查询串）。`shouldOverrideUrlLoading` 仍只允许 appassets 域。
-    - CSP：只给 appassets 域的 HTML 响应加头，由 `NetPolicy.contentSecurityPolicy()` 生成：`default-src 'self'; connect-src 'self' https://api.wikimedia.org; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; frame-src 'none'; object-src 'none'; base-uri 'self'`。
+    - 拦截规则（`shouldInterceptRequest`）：appassets 域 https 走原有 `/files/` 接管与 loader；其他 https 返回 null（旧：命中白名单才返回），让 WebView 自己发，CORS 由浏览器处理；其余（明文 http 等）返回空 403 并记 warn 日志（只含协议、主机、路径，不含查询串）。`shouldOverrideUrlLoading` 仍只允许 appassets 域。
+    - CSP：只给 appassets 域的 HTML 响应加头，由 `NetPolicy.contentSecurityPolicy()` 生成：`default-src 'self'; connect-src 'self' https:; img-src 'self' data: blob: https:; media-src 'self' blob: https:; style-src 'self' 'unsafe-inline' https:; script-src 'self'; font-src 'self' data: https:; frame-src 'none'; object-src 'none'; base-uri 'self'`（现行）。
     - 首帧暗色脚本由内联改为外置 `web/public/theme-init.js`（`script-src 'self'` 不允许内联脚本）。
     - 清单加 `INTERNET`；主 App 用 `res/xml/network_security_config.xml`，全局 `cleartextTrafficPermitted=false`。spike 的 `spike_network_security_config.xml` 没有被任何清单引用，是遗留文件，发版前与 SpikeActivity 一起移除。
     - debug 验证：广播 `--es cmd nettest`，结果在 logcat 的 `DBGNET` 行。
   - **未实现**：`native.pack.*`（词典与数据包）、汇率接口、回环 HTTP（含 CSP 的回环地址）、Worker 的 `connect-src 'none'`。
-  - **已知噪音**：Vant 图标字体 CSS 里 data: woff2 之后还有一条 `at.alicdn.com` 的 woff 回退，会被 `font-src` 拒绝并在 console 报一条 CSP 违规，不影响显示（先用内嵌字体）。
+  - **已知噪音**：Vant 图标字体 CSS 里 data: woff2 之后还有一条 `at.alicdn.com` 的 woff 回退，（2026-10-16 起 `font-src` 放行 https，这条噪音随之消失。）
   - JS 解释器所在的 Worker 单独加 `connect-src 'none'`，禁止出站。
 - **JS 解释器工具**：必须跑在 Web Worker 里，不能放 iframe。spike 实测：新通道的 `ArkliNative` 只注入主页面和 `srcdoc` iframe（`srcdoc` 继承父来源，所以也拿得到），`data:`、sandbox、跨源 frame 和 Worker 里都没有；旧的 `@JavascriptInterface` 方案会注入所有 frame（Worker 除外），跨源 frame 的调用确实到了原生。
 - **回环服务的安全**：只绑 `127.0.0.1`，每次上传一次性随机 token；network security config 只放行 `127.0.0.1` 明文，不全局放开；CSP 的 `connect-src` 要加上回环地址与端口。
@@ -108,7 +133,7 @@ summary: 六份工具设计共同依赖的底层能力：bridge 协议 v2、统�
 - **加速包（NPU）**：本期不做，manifest 里的 `kind` 预留 `accel` 以便以后扩展。
 - **落地状态（2026-10-14）**：**模型部分已落地**，命名为 `native.model.*`，设计与验证见 [模型下载管理](model-download.md)。与上面规划的差异：
   - 清单是**随包的 `assets/ai/models.json`**（信任锚就是 APK 签名），**没有 Ed25519 签名、`kind`、`minAppVersion`**；`urls` 放在每个文件上；目标目录是 `filesDir/models/<id>/`，不是 `packs/<id>/<version>/`。
-  - 下载器已做：`HttpURLConnection` + Range 续传、多源回退、逐跳校验重定向（主机白名单 `NetPolicy.DOWNLOAD_HOSTS`，与页面出站白名单分开）、空间检查（1.2 倍）、sha256 校验、原子落盘、取消保留 `.part`、重试与退避、同一模型单任务。
+  - 下载器已做：`HttpURLConnection` + Range 续传、多源回退、逐跳校验重定向（主机白名单 `NetPolicy.DOWNLOAD_HOSTS`，与页面出站策略分开）、空间检查（1.2 倍）、sha256 校验、原子落盘、取消保留 `.part`、重试与退避、同一模型单任务。
   - 进度走“`ensure` 立即返回 + 轮询 `status`”，**没有 `pack.progress` 事件**（事件推送是会话级的，页面关闭后会丢，而下载要跨会话存活）。
   - **未做**：词典与数据包（`kind=data`、`native.pack.*`、PathHandler 暴露 `/files/packs/**`）、清单签名与远程更新、多连接分片、前台服务、`accel` 加速包。
 

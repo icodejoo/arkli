@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 掷骰子：选个数与面数，六面骰画点阵，其余面数直接显示数字
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { prefersReducedMotion } from '@/shared/motion'
 import { loadFlag, saveFlag, SOUND_KEY, VIBRATE_KEY, VIBRATE_LAND, VIBRATE_START } from '../coin-flip/logic'
@@ -88,7 +89,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
+    <tool-group>
       <div class="dice" :class="{ 'dice--rolling': rolling }" aria-live="polite">
         <template v-if="shown.length">
           <div v-for="(v, i) in shown" :key="i" class="die" :class="{ 'die--num': sides !== 6 }">
@@ -101,9 +102,9 @@ onBeforeUnmount(() => {
         <p v-else class="tool-hint">点下面的按钮掷骰子</p>
       </div>
       <p v-if="result && !rolling && result.values.length > 1" class="dice-sum">合计 {{ result.sum }}</p>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
+    <tool-group>
       <van-cell-group :border="false">
         <van-cell title="骰子个数" center>
           <template #value>
@@ -111,13 +112,13 @@ onBeforeUnmount(() => {
           </template>
         </van-cell>
       </van-cell-group>
-      <h3 class="tool-card__title dice-sides-title">面数</h3>
+      <h3 class="tool-group__title dice-sides-title">面数</h3>
       <van-radio-group v-model="sides" direction="horizontal" :disabled="rolling">
         <van-radio v-for="s in SIDES_OPTIONS" :key="s" :name="s">{{ s }} 面</van-radio>
       </van-radio-group>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
+    <tool-group>
       <van-cell-group :border="false">
         <van-cell title="震动反馈" center>
           <template #right-icon><van-switch v-model="vibrateOn" size="20" /></template>
@@ -126,9 +127,10 @@ onBeforeUnmount(() => {
           <template #right-icon><van-switch v-model="soundOn" size="20" /></template>
         </van-cell>
       </van-cell-group>
-    </div>
+    </tool-group>
 
-    <van-button type="primary" block round :disabled="rolling" @click="roll">掷！</van-button>
+    <!-- 底部动作栏：主按钮掷骰子 -->
+    <bottom-actions main main-text="掷！" :disabled="{ main: rolling }" @main="roll" />
   </div>
 </template>
 

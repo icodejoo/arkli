@@ -36,7 +36,7 @@ function clear(): void {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
+    <tool-group>
       <van-field label="我是">
         <template #input>
           <van-radio-group v-model="me" direction="horizontal">
@@ -45,10 +45,10 @@ function clear(): void {
           </van-radio-group>
         </template>
       </van-field>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <p class="tool-card__title">关系链（最多 {{ MAX_CHAIN }} 步）</p>
+    <tool-group>
+      <p class="tool-group__title">关系链（最多 {{ MAX_CHAIN }} 步）</p>
       <div class="chain">
         <van-tag type="primary" plain size="large">我</van-tag>
         <template v-for="(s, i) in chain" :key="i">
@@ -57,7 +57,7 @@ function clear(): void {
         </template>
       </div>
       <p v-if="!chain.length" class="tool-hint gap">点下面的按钮，一步步拼出关系，如「爸爸 → 哥哥 → 儿子」。</p>
-    </div>
+    </tool-group>
 
     <div v-if="result" class="tool-result" :class="{ 'tool-result--error': !result.ok }">
       <template v-if="!result.ok">{{ result.error }}</template>
@@ -68,13 +68,13 @@ function clear(): void {
       </template>
     </div>
 
-    <div class="tool-card">
+    <tool-group>
       <div class="grid">
         <van-button v-for="s in STEP_ORDER" :key="s" plain type="primary" size="small" :disabled="full" @click="add(s)">
           {{ STEP_LABEL[s] }}
         </van-button>
       </div>
-    </div>
+    </tool-group>
 
     <div class="tool-actions">
       <van-button icon="revoke" :disabled="!chain.length" @click="undo">回退</van-button>

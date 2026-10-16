@@ -93,6 +93,12 @@ internal enum class Glyph(@DrawableRes val res: Int, val size: Dp) {
     /** 完成/确认：勾 */
     CHECK(R.drawable.ic_check, 24.dp),
 
+    /** 编辑：铅笔 */
+    EDIT(R.drawable.ic_edit, 24.dp),
+
+    /** 还原：回退箭头 */
+    RESTORE(R.drawable.ic_restore, 24.dp),
+
     /** 翻转镜头：画布 48，边长 32.5dp（原 21.67dp 的 1.5 倍） */
     FLIP(R.drawable.ic_camera_flip, 32.5.dp),
 }

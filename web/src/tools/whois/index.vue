@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // Whois 查询：优先 RDAP 结构化结果，查不到再显示 Whois 原文
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { showFailToast, showSuccessToast } from 'vant'
 import { isNativeAvailable } from '@/native/bridge'
@@ -81,22 +82,17 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="tool-page">
-    <div v-if="!inApp" class="tool-card">
+    <tool-group v-if="!inApp">
       <p class="tool-hint">需要在 App 内使用：查询由 App 原生发出，浏览器里没法直接联网。</p>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">域名</h3>
+    <tool-group title="域名">
       <van-field v-model="input" clearable placeholder="example.com，也可以粘贴完整网址" :disabled="!inApp" @keyup.enter="run" />
-      <van-button type="primary" block class="wh-btn" :disabled="!inApp" @click="run">
-        {{ loading ? '查询中，点此取消' : '查询' }}
-      </van-button>
       <p v-if="error" class="tool-hint wh-error">{{ error }}</p>
       <p class="tool-hint">先查 RDAP（rdap.org），查不到再走 43 端口的 Whois 原文。很多注册局已隐去个人信息，查不到联系人是正常的。</p>
-    </div>
+    </tool-group>
 
-    <div v-if="result" class="tool-card">
-      <h3 class="tool-card__title">{{ result.kind === 'rdap' ? 'RDAP 结果' : `Whois 原文（${result.server}）` }}</h3>
+    <tool-group v-if="result" :title="`${result.kind === 'rdap' ? 'RDAP 结果' : `Whois 原文（${result.server}）`}`">
       <template v-if="result.kind === 'rdap'">
         <div v-for="[k, v] in rows" :key="k" class="wh-row">
           <span class="wh-k">{{ k }}</span>
@@ -107,15 +103,14 @@ onBeforeUnmount(() => {
         <pre class="wh-raw">{{ result.text }}</pre>
         <p v-if="result.truncated" class="tool-hint">原文超过 64KB，已截断。</p>
       </template>
-      <van-button size="small" plain class="wh-copy" @click="copyAll">复制</van-button>
-    </div>
+    </tool-group>
+
+    <!-- 底部动作栏：复制结果，主按钮查询（查询中变成取消） -->
+    <bottom-actions :actions="{ copy: { disabled: !result } }" main :main-text="loading ? '取消' : '查询'" :main-type="loading ? 'danger' : 'primary'" :disabled="{ main: !inApp }" @main="run" @copy="copyAll" />
   </div>
 </template>
 
 <style lang="scss" scoped>
-.wh-btn {
-  margin-top: $space-2;
-}
 .wh-error {
   color: var(--c-error);
 }
@@ -143,8 +138,5 @@ onBeforeUnmount(() => {
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-all;
-}
-.wh-copy {
-  margin-top: $space-2;
 }
 </style>

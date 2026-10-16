@@ -22,6 +22,7 @@ use tokenizers::Tokenizer;
 use super::beam::{top_k_log_softmax, Advance, BeamSearch, Candidate};
 use super::detect::{classify_segments, is_auto, summarize, SegLang};
 use super::error::{ErrorKind, TranslateError};
+use crate::task::CancelToken;
 use super::manifest::{
     Manifest, ManifestError, DEFAULT_LENGTH_PENALTY, DEFAULT_MAX_NEW_TOKENS, DEFAULT_MIN_LENGTH_RATIO,
     DEFAULT_NO_REPEAT_NGRAM, DEFAULT_NUM_BEAMS, MAX_BEAMS,
@@ -526,6 +527,8 @@ pub struct Engine<R: Seq2SeqRunner> {
     max_input_tokens: usize,
     /// 模型 ID。
     model_id: String,
+    /// 本次翻译的取消令牌，每个解码步与每个片段前检查；默认永不取消。
+    cancel: CancelToken,
 }
 
 impl<R: Seq2SeqRunner> Engine<R> {
@@ -558,6 +561,7 @@ impl<R: Seq2SeqRunner> Engine<R> {
             model_id: manifest.id.clone(),
             manifest,
             plans: HashMap::new(),
+            cancel: CancelToken::new(),
         };
         engine.self_check()?;
         Ok(engine)
@@ -574,7 +578,21 @@ impl<R: Seq2SeqRunner> Engine<R> {
             model_id: manifest.id.clone(),
             manifest,
             plans: HashMap::new(),
+            cancel: CancelToken::new(),
         }
+    }
+
+    /// 换上本次翻译用的取消令牌（每次翻译前调用，旧令牌的取消状态不会带到新一次）。
+    ///
+    /// # 参数
+    /// - `cancel`：取消令牌；触发后在下一个检查点返回 `Cancelled`。
+    pub fn set_cancel(&mut self, cancel: CancelToken) {
+        self.cancel = cancel;
+    }
+
+    /// 已取消则返回 `Cancelled` 错误，供解码循环用 `?` 提前退出。
+    fn check_cancel(&self) -> Result<(), TranslateError> {
+        self.cancel.check().map_err(|_| TranslateError::new(ErrorKind::Cancelled, "翻译已取消"))
     }
 
     /// 取（必要时计算并缓存）一个语言对的解码计划。
@@ -687,6 +705,7 @@ impl<R: Seq2SeqRunner> Engine<R> {
         // 引号包裹法只对“整段输入恰为一句”的极短文本启用
         let single = segments.len() == 1;
         for (seg, kind) in segments.into_iter().zip(kinds) {
+            self.check_cancel()?;
             let translated = match kind {
                 SegLang::Translate(lang) => {
                     let plan = match &first_plan {
@@ -824,6 +843,7 @@ impl<R: Seq2SeqRunner> Engine<R> {
         // 每条存活束的下一步输入 token；不足 width 的行用第 0 行补齐
         let mut current: Vec<i64> = vec![gp.start; width];
         for step in 0..max_new {
+            self.check_cancel()?;
             let logits = self.runner.step(&mut session, step, &current, step > 0)?;
 
             let cands: Vec<Vec<Candidate>> = match logits {
@@ -878,6 +898,7 @@ impl<R: Seq2SeqRunner> Engine<R> {
         let mut generated: Vec<u32> = Vec::new();
         let mut current = gp.start;
         for step in 0..max_new {
+            self.check_cancel()?;
             let logits = self.runner.step(&mut session, step, &[current], step > 0)?;
             let next = match logits {
                 // 首个生成位强制为目标语言码
@@ -1317,6 +1338,45 @@ mod tests {
             let lens: Vec<i64> = recs.iter().map(|r| r.past_shape[2]).collect();
             assert_eq!(lens, vec![0, 1, 2, 3, 4]);
             assert!(recs.iter().all(|r| r.cross_key == recs[0].cross_key));
+        }
+
+        /// 已取消的令牌：贪心与束搜索都在第一步前返回 Cancelled，一次解码器调用都不发生；换新令牌后结果正常。
+        #[test]
+        fn cancelled_token_stops_before_first_step() {
+            for beams in [1usize, 2] {
+                let (mut e, log) = engine(beams, vec![0, 3, 4, EOS]);
+                let run = |e: &mut Engine<MnnRunner<MockGraph>>| {
+                    if beams > 1 { e.generate_beam(&[4, 3, 2], 8, beams, 5) } else { e.generate(&[4, 3, 2], 8, 5) }
+                };
+                let t = CancelToken::new();
+                t.cancel();
+                e.set_cancel(t);
+                assert_eq!(run(&mut e).unwrap_err().kind, ErrorKind::Cancelled);
+                assert!(log.lock().unwrap().is_empty());
+                e.set_cancel(CancelToken::new());
+                assert!(!run(&mut e).unwrap().is_empty());
+            }
+        }
+
+        /// 解码中途取消：第 2 次解码器调用时触发，循环在下一步前停下，不再多调。
+        #[test]
+        fn cancel_mid_decode_stops_next_step() {
+            let log = Arc::new(Mutex::new(Vec::new()));
+            let t = CancelToken::new();
+            let t2 = t.clone();
+            let runner = mock_runner(
+                Box::new(move |_, call| {
+                    if call == 1 {
+                        t2.cancel();
+                    }
+                    3
+                }),
+                log.clone(),
+            );
+            let mut e = Engine::for_test(manifest_with(GenerationOverride::default()), params(1), tiny_m2m_tokenizer(), runner);
+            e.set_cancel(t);
+            assert_eq!(e.generate(&[4, 3, 2], 16, 5).unwrap_err().kind, ErrorKind::Cancelled);
+            assert_eq!(log.lock().unwrap().len(), 2);
         }
 
         /// 预算耗尽也会停：强制位 + 两个生成 token。

@@ -60,15 +60,13 @@ async function copy(text: string): Promise<void> {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
-      <h3 class="tool-card__title">网段</h3>
+    <tool-group title="网段">
       <van-field v-model="input" clearable placeholder="192.168.1.0/24、10.0.0.5 255.0.0.0 或 2001:db8::/32" />
       <p v-if="outcome.error" class="tool-hint cidr-err">{{ outcome.error }}</p>
       <p v-else class="tool-hint cidr-gap">支持 IP/前缀、IP/掩码、IP 空格 掩码；含冒号按 IPv6 处理。</p>
-    </div>
+    </tool-group>
 
-    <div v-if="v4" class="tool-card">
-      <h3 class="tool-card__title">IPv4 结果（点一行复制）</h3>
+    <tool-group v-if="v4" title="IPv4 结果（点一行复制）">
       <van-cell title="网络地址" :value="v4.network" @click="copy(v4.network)" />
       <van-cell title="广播地址" :value="v4.broadcast" @click="copy(v4.broadcast)" />
       <van-cell title="子网掩码" :value="`${v4.mask}（/${v4.prefix}）`" @click="copy(v4.mask)" />
@@ -81,17 +79,15 @@ async function copy(text: string): Promise<void> {
       <p v-if="v4.prefix >= 31" class="tool-hint cidr-gap">
         {{ v4.prefix === 31 ? '/31 是点对点链路（RFC 3021），两个地址都可用。' : '/32 是单个主机地址。' }}
       </p>
-    </div>
+    </tool-group>
 
-    <div v-if="v4" class="tool-card">
-      <h3 class="tool-card__title">二进制</h3>
+    <tool-group v-if="v4" title="二进制">
       <div class="cidr-bin"><span>IP</span><code>{{ v4.binary.ip }}</code></div>
       <div class="cidr-bin"><span>掩码</span><code>{{ v4.binary.mask }}</code></div>
       <div class="cidr-bin"><span>网络</span><code>{{ v4.binary.network }}</code></div>
-    </div>
+    </tool-group>
 
-    <div v-if="v6" class="tool-card">
-      <h3 class="tool-card__title">IPv6 结果（点一行复制）</h3>
+    <tool-group v-if="v6" title="IPv6 结果（点一行复制）">
       <van-cell title="压缩写法" :value="v6.ip" @click="copy(v6.ip)" />
       <van-cell title="展开写法" :value="v6.expanded" @click="copy(v6.expanded)" />
       <van-cell title="网络前缀" :value="`${v6.network}/${v6.prefix}`" @click="copy(`${v6.network}/${v6.prefix}`)" />
@@ -99,19 +95,17 @@ async function copy(text: string): Promise<void> {
       <van-cell title="结束地址" :value="v6.last" @click="copy(v6.last)" />
       <van-cell title="地址总数" :value="v6.total" />
       <van-cell v-if="v6.mappedIPv4" title="映射的 IPv4" :value="v6.mappedIPv4" />
-    </div>
+    </tool-group>
 
-    <div v-if="v4" class="tool-card">
-      <h3 class="tool-card__title">IP 是否在网段内</h3>
+    <tool-group v-if="v4" title="IP 是否在网段内">
       <van-field v-model="testIp" clearable placeholder="输入要判断的 IPv4" />
       <p v-if="contain.msg" class="tool-hint cidr-err">{{ contain.msg }}</p>
       <p v-else-if="contain.ok !== null" class="tool-hint cidr-gap" :class="contain.ok ? 'cidr-ok' : 'cidr-err'">
         {{ contain.ok ? '在这个网段内' : '不在这个网段内' }}
       </p>
-    </div>
+    </tool-group>
 
-    <div v-if="v4" class="tool-card">
-      <h3 class="tool-card__title">子网划分</h3>
+    <tool-group v-if="v4" title="子网划分">
       <van-field v-model="newPrefix" type="digit" label="拆成 /" input-align="right" />
       <template v-if="split">
         <p v-if="split.error" class="tool-hint cidr-err">{{ split.error }}</p>
@@ -125,7 +119,7 @@ async function copy(text: string): Promise<void> {
           </div>
         </template>
       </template>
-    </div>
+    </tool-group>
   </div>
 </template>
 

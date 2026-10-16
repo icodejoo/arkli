@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 视频转 GIF：原生按帧率取一批 JPEG 帧，页面里用自带编码器合成 GIF，预览后保存
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { showFailToast, showSuccessToast, showToast } from 'vant'
 import { isNativeAvailable } from '@/native/bridge'
@@ -201,20 +202,19 @@ onBeforeUnmount(() => {
     <van-notice-bar v-if="!hosted" wrapable :scrollable="false" left-icon="info-o">{{ TIP_NO_HOST }}</van-notice-bar>
 
     <template v-else>
-      <div class="tool-card">
-        <div class="tool-card__title">1. 选择视频</div>
-        <van-button block round plain type="primary" :disabled="running" @click="onPick">{{ video ? '换一个视频' : '选择视频' }}</van-button>
-        <template v-if="video">
+      <tool-group>
+        <div class="tool-group__title">1. 选择视频</div>
+        <p v-if="!video" class="tool-hint">点底部「相册」选一个视频。</p>
+        <template v-else>
           <p class="vg-name">{{ video.name }}</p>
           <p class="tool-hint">
             {{ formatBytes(video.size) }}<template v-if="totalMs > 0"> · {{ formatDuration(totalMs) }}</template
             ><template v-if="info?.width && info?.height"> · {{ info.width }}×{{ info.height }}</template>
           </p>
         </template>
-      </div>
+      </tool-group>
 
-      <div v-if="video && info && totalMs > 0" class="tool-card">
-        <div class="tool-card__title">2. 调整参数</div>
+      <tool-group v-if="video && info && totalMs> 0" title="2. 调整参数">
 
         <div class="vg-label">起点：{{ (startMs / 1000).toFixed(1) }} 秒</div>
         <div class="vg-slider">
@@ -243,23 +243,23 @@ onBeforeUnmount(() => {
         </p>
         <p v-for="t in tips" :key="t" class="vg-tip">{{ t }}</p>
 
-        <van-button v-if="!running" block round type="primary" class="vg-go" :disabled="!canRun" @click="onConvert">开始转换</van-button>
-        <div v-else class="vg-running">
+        <div v-if="running" class="vg-running">
           <div class="vg-running__main">
             <div class="vg-running__text">{{ stageText }}</div>
             <van-progress :percentage="percent" stroke-width="8" />
           </div>
-          <van-button size="small" plain @click="onCancel">取消</van-button>
         </div>
-      </div>
+      </tool-group>
 
-      <div v-if="gifBlob" class="tool-card">
-        <div class="tool-card__title">3. 预览与保存</div>
+      <tool-group v-if="gifBlob">
+        <div class="tool-group__title">3. 预览与保存</div>
         <div class="vg-preview"><img :src="gifUrl" alt="GIF 预览" /></div>
         <p class="tool-hint">{{ formatBytes(gifBlob.size) }} · {{ plan.width }}×{{ plan.height }}</p>
-        <van-button block round type="primary" :disabled="saving" @click="onSave">保存 GIF</van-button>
-      </div>
+      </tool-group>
     </template>
+
+    <!-- 底部动作栏：相册选视频，保存 GIF，主按钮开始转换（转换中变成取消） -->
+    <bottom-actions :actions="{ save: { disabled: !gifBlob || saving, text: '保存 GIF' } }" v-if="hosted" album main :main-text="running ? '取消' : '开始转换'" :main-type="running ? 'danger' : 'primary'" :disabled="{ album: running, main: !running && !canRun }" @album="onPick" @main="running ? onCancel() : onConvert()" @save="onSave" />
   </div>
 </template>
 
@@ -303,11 +303,6 @@ onBeforeUnmount(() => {
   margin: $space-1 0 0;
   font-size: 13px;
   color: var(--c-warn-text);
-}
-
-/* 开始按钮 */
-.vg-go {
-  margin-top: $space-4;
 }
 
 /* 进度行 */

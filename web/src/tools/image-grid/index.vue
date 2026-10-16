@@ -1,11 +1,13 @@
 <script setup lang="ts">
 // 九宫格切图：选网格规格，可先居中裁成正方形，预览切线后逐张导出
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { showToast } from 'vant'
 import ImageResultList from '@/shared/ImageResultList.vue'
 import { useImageResults } from '@/shared/useImageResults'
+import { shootPhoto } from '@/shared/shootPhoto'
 import { baseName, FORMAT_MIME, gridCells, mimeToExt } from '@/shared/image-calc'
-import { canvasToBlob, createCanvas, ImageTooLargeError, loadBitmap, pickImages, releaseCanvas, type PickedImage } from '@/shared/image-io'
+import { canvasToBlob, createCanvas, ImageTooLargeError, loadBitmap, EDIT_BASIC, pickImages, releaseCanvas, type PickedImage } from '@/shared/image-io'
 
 /** 网格规格：键为 `行x列` */
 const GRID_PRESETS = ['3x3', '2x2', '1x3', '3x1', '2x3', '3x2']
@@ -37,17 +39,27 @@ const overlayStyle = computed(() => ({
   gridTemplateRows: `repeat(${rows.value}, 1fr)`,
 }))
 
-/** 选图（单张） */
+/** 采用新图：释放旧图并清掉旧结果 */
+function adopt(img: PickedImage): void {
+  image.value?.release()
+  image.value = img
+  clear()
+}
+
+/** 相册选图（单张） */
 async function choose(): Promise<void> {
   try {
-    const [got] = await pickImages({ multiple: false, max: 1, onFailed: (f) => showToast(`读取失败：${f[0].message}`) })
-    if (!got) return
-    image.value?.release()
-    image.value = got
-    clear()
+    const [got] = await pickImages({ edit: EDIT_BASIC, multiple: false, max: 1, onFailed: (f) => showToast(`读取失败：${f[0].message}`) })
+    if (got) adopt(got)
   } catch (e) {
     showToast((e as { message?: string }).message ?? '选图失败')
   }
+}
+
+/** 拍照 */
+async function shoot(): Promise<void> {
+  const got = await shootPhoto()
+  if (got) adopt(got)
 }
 
 /** 开始切图：只解码一次，逐格画到小画布再导出 */
@@ -96,8 +108,7 @@ onBeforeUnmount(() => image.value?.release())
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
-      <h3 class="tool-card__title">选择图片</h3>
+    <tool-group title="选择图片">
       <div v-if="image" class="ig-preview" :class="{ 'ig-preview--square': square }">
         <img class="ig-preview__img" :src="image.url" :alt="image.name" />
         <div class="ig-preview__grid" :style="overlayStyle">
@@ -105,10 +116,10 @@ onBeforeUnmount(() => image.value?.release())
         </div>
       </div>
       <p v-if="image" class="tool-hint ig-meta">{{ image.name }} · {{ image.width }}×{{ image.height }}</p>
-      <van-button block plain round :disabled="busy" @click="choose">{{ image ? '换一张' : '选择图片' }}</van-button>
-    </div>
+      <p v-else class="tool-hint">点底部「相册」或「拍照」选一张图。</p>
+    </tool-group>
 
-    <div class="tool-card">
+    <tool-group>
       <van-cell-group :border="false">
         <van-cell title="规格" center>
           <template #value>
@@ -130,17 +141,14 @@ onBeforeUnmount(() => image.value?.release())
         </van-cell>
       </van-cell-group>
       <p class="tool-hint">按行优先编号：_1 在左上。相册按时间排序，发朋友圈时按编号顺序选图即可。</p>
-    </div>
+    </tool-group>
 
-    <van-button type="primary" block round :loading="busy" :disabled="!image" @click="run">
-      {{ busy ? `切图中 ${progress}` : '开始切图' }}
-    </van-button>
-
-    <div v-if="results.length" class="tool-card">
-      <h3 class="tool-card__title">结果（{{ results.length }} 张）</h3>
+    <tool-group v-if="results.length" :title="`结果（${results.length} 张）`">
       <image-result-list :results="results" />
-      <van-button type="primary" plain block round :loading="saving" @click="saveAll">保存全部</van-button>
-    </div>
+    </tool-group>
+
+    <!-- 底部动作栏：相册 / 拍照选图，保存全部结果，主按钮开始切图 -->
+    <bottom-actions :actions="{ save: { disabled: !results.length || saving, text: '保存全部' } }" album photo main :main-text="busy ? `切图中 ${progress}` : '开始切图'" :disabled="{ album: busy, photo: busy, main: busy || !image }" @album="choose" @photo="shoot" @main="run" @save="saveAll" />
   </div>
 </template>
 

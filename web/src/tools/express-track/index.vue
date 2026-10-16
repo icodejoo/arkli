@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 快递单号识别：本地规则判断可能的快递公司，复制单号后跳官网查询（不联网查轨迹）
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onMounted, ref } from 'vue'
 import { showFailToast, showSuccessToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
@@ -67,23 +68,20 @@ async function openOfficial(c: Carrier): Promise<void> {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
+    <tool-group>
       <van-field v-model="input" label="单号" placeholder="粘贴或输入快递单号" clearable @keyup.enter="run" />
-      <van-button type="primary" block round class="ex-btn" @click="run">识别</van-button>
-    </div>
+    </tool-group>
 
-    <div v-if="history.length" class="tool-card">
-      <h3 class="tool-card__title">最近查过</h3>
+    <tool-group v-if="history.length" title="最近查过">
       <div class="ex-history">
         <van-tag v-for="h in history" :key="h" size="large" plain @click="useHistory(h)">{{ h }}</van-tag>
       </div>
-    </div>
+    </tool-group>
 
     <template v-if="touched">
       <div v-if="result.error" class="tool-result tool-result--error">{{ result.error }}</div>
       <template v-else>
-        <div class="tool-card">
-          <h3 class="tool-card__title">可能的快递公司</h3>
+        <tool-group title="可能的快递公司">
           <p v-if="!result.candidates.length" class="tool-hint">
             没有认出来。可能是小众快递或新号段，换个单号试试，或直接到快递公司官网查。
           </p>
@@ -100,22 +98,19 @@ async function openOfficial(c: Carrier): Promise<void> {
               </template>
             </van-cell>
           </van-cell-group>
-        </div>
-        <van-button block round @click="copyNo">复制单号 {{ result.no }}</van-button>
+        </tool-group>
         <p class="tool-hint">
           点「官方查询」会先复制单号，再用外部浏览器打开官网首页，到查询框粘贴即可。纯数字单号容易撞号，结果只是推测。
         </p>
       </template>
     </template>
+
+    <!-- 底部动作栏：复制单号，主按钮识别快递公司 -->
+    <bottom-actions :actions="{ copy: { disabled: !touched || !!result.error, text: '复制单号' } }" main main-text="识别" @main="run" @copy="copyNo" />
   </div>
 </template>
 
 <style lang="scss" scoped>
-/* 识别按钮与输入框留距 */
-.ex-btn {
-  margin-top: $space-3;
-}
-
 /* 最近查询标签区 */
 .ex-history {
   display: flex;

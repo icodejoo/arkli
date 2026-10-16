@@ -8,6 +8,7 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use arkli_ai::mnn::MnnRuntime;
+use arkli_ai::CancelToken;
 use arkli_ai::translate::{model_format, ErrorKind, ModelFormat, TranslateError, Translator};
 
 /// 默认算子线程数（`threads` 传 0 时使用）。
@@ -20,6 +21,8 @@ pub enum TranslateFfiError {
     NotLoaded { reason: String },
     /// 入参不合法（束宽越界、语言对不支持等）
     InvalidInput { reason: String },
+    /// 被取消（期间调用了 `translate_cancel`）
+    Cancelled { reason: String },
     /// 后端出错（找不到 MNN 库、模型缺失或损坏、推理失败、内存不足）
     Backend { reason: String },
 }
@@ -29,6 +32,7 @@ impl std::fmt::Display for TranslateFfiError {
         match self {
             TranslateFfiError::NotLoaded { reason }
             | TranslateFfiError::InvalidInput { reason }
+            | TranslateFfiError::Cancelled { reason }
             | TranslateFfiError::Backend { reason } => write!(f, "{reason}"),
         }
     }
@@ -39,6 +43,7 @@ fn map_translate_err(e: TranslateError) -> TranslateFfiError {
     let reason = e.to_string();
     match e.kind {
         ErrorKind::BadRequest | ErrorKind::UnsupportedPair => TranslateFfiError::InvalidInput { reason },
+        ErrorKind::Cancelled => TranslateFfiError::Cancelled { reason },
         _ => TranslateFfiError::Backend { reason },
     }
 }
@@ -69,6 +74,9 @@ struct State {
 
 /// 全局状态；Mutex 同时保证“一次只跑一个推理”。
 static STATE: Mutex<Option<State>> = Mutex::new(None);
+
+/// 当前（或最近一次）翻译的取消令牌；单独加锁，`translate_cancel` 不必等推理结束。
+static CANCEL: Mutex<Option<CancelToken>> = Mutex::new(None);
 
 /// 取锁并确保状态已初始化后执行闭包（锁中毒时仍取出内部值继续用）。
 fn with_state<T>(f: impl FnOnce(&mut State) -> T) -> T {
@@ -124,16 +132,19 @@ fn load_mnn(s: &mut State, lib: &str, dir: &Path, threads: u32) -> Result<Transl
 ///
 /// 返回：译文、耗时、识别出的语言与是否有无法识别的句子。
 ///
-/// 错误：`NotLoaded`（没调用过 `translate_load`）、`InvalidInput`（束宽越界、语言对不支持）、`Backend`。
+/// 错误：`NotLoaded`（没调用过 `translate_load`）、`InvalidInput`（束宽越界、语言对不支持）、`Cancelled`（期间调用了 `translate_cancel`）、`Backend`。
 #[uniffi::export]
 pub fn translate_run(text: String, src: String, tgt: String, num_beams: u32) -> Result<TranslateResult, TranslateFfiError> {
+    // 每次调用换新令牌（上一次的取消不会残留）；先登记再等状态锁，排队期间取消也能让本次一开始就取消
+    let token = CancelToken::new();
+    *CANCEL.lock().unwrap_or_else(|p| p.into_inner()) = Some(token.clone());
     with_state(|s| {
         let t = s
             .translator
             .as_mut()
             .ok_or_else(|| TranslateFfiError::NotLoaded { reason: "翻译模型未加载".into() })?;
         let beams = (num_beams > 0).then_some(num_beams as usize);
-        let out = t.translate(&text, &src, &tgt, beams).map_err(map_translate_err)?;
+        let out = t.translate_cancellable(&text, &src, &tgt, beams, &token).map_err(map_translate_err)?;
         Ok(TranslateResult {
             text: out.text,
             elapsed_ms: out.elapsed_ms,
@@ -141,6 +152,16 @@ pub fn translate_run(text: String, src: String, tgt: String, num_beams: u32) -> 
             unrecognized: out.unrecognized,
         })
     })
+}
+
+/// 取消正在进行（或排队中）的翻译，在下一个解码步前返回 `Cancelled`。可在任意线程调用，没有翻译在跑时无副作用。
+///
+/// 示例（Kotlin）：协程被取消时在 watcher 里调用 `translateCancel()`。
+#[uniffi::export]
+pub fn translate_cancel() {
+    if let Some(t) = CANCEL.lock().unwrap_or_else(|p| p.into_inner()).as_ref() {
+        t.cancel();
+    }
 }
 
 /// 释放翻译模型（约数百 MB 内存），ORT 环境与 MNN 运行库保留（MNN 格式在三张图释放后自动归还 MNN 内存）。下次翻译前需重新 `translate_load`。
@@ -219,5 +240,23 @@ mod tests {
         assert!(matches!(map_translate_err(unsupported), TranslateFfiError::InvalidInput { .. }));
         let oom = TranslateError { kind: ErrorKind::OutOfMemory, message: "x".into() };
         assert!(matches!(map_translate_err(oom), TranslateFfiError::Backend { .. }));
+    }
+
+    #[test]
+    fn 取消错误映射为取消() {
+        let c = TranslateError { kind: ErrorKind::Cancelled, message: "x".into() };
+        assert!(matches!(map_translate_err(c), TranslateFfiError::Cancelled { .. }));
+    }
+
+    /// 取消入口没有翻译在跑也无副作用；新一次调用换新令牌，不带上次的取消。
+    #[test]
+    fn 取消令牌每次调用重置() {
+        translate_unload();
+        translate_cancel();
+        let _ = translate_run("hi".into(), "en".into(), "fr".into(), 0);
+        let fresh = CANCEL.lock().unwrap().clone().unwrap();
+        assert!(!fresh.is_cancelled());
+        translate_cancel();
+        assert!(fresh.is_cancelled());
     }
 }

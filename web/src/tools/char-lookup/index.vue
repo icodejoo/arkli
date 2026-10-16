@@ -75,7 +75,7 @@ onBeforeUnmount(() => clearTimeout(timer))
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
+    <tool-group>
       <van-field v-model="input" type="textarea" rows="2" autosize placeholder="输入一个或多个汉字，如：长、𠮷" />
       <p v-if="truncated" class="tool-hint">一次最多查 {{ MAX_CHARS }} 个不同的字，多的已忽略。</p>
       <van-radio-group v-model="tone" direction="horizontal" class="cl-tone">
@@ -83,9 +83,9 @@ onBeforeUnmount(() => clearTimeout(timer))
       </van-radio-group>
       <p v-if="loading" class="tool-hint">正在加载拼音词典…</p>
       <p v-if="failed" class="tool-hint">拼音词典加载失败，读音暂时查不了，改改输入再试一次。</p>
-    </div>
+    </tool-group>
 
-    <div v-for="info in list" :key="info.char" class="tool-card cl-card">
+    <tool-group v-for="info in list" :key="info.char" class="cl-card">
       <div class="cl-head">
         <span class="cl-char">{{ info.char }}</span>
         <div class="cl-read">
@@ -102,7 +102,7 @@ onBeforeUnmount(() => clearTimeout(timer))
       </van-cell-group>
       <p v-if="info.range.han && !info.range.basic" class="tool-hint">不在常用的基本区（U+4E00–9FFF），属于扩展区或兼容区，部分字体可能显示成方块。</p>
       <p class="tool-hint cl-gap">部首、笔画、释义需要词典数据包，暂未内置。</p>
-    </div>
+    </tool-group>
 
     <p v-if="!list.length && !loading" class="tool-hint">只查读音与编码，不做简繁转换。</p>
   </div>

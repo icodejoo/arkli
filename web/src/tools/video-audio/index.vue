@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 视频提取音频：选视频，可裁起止时间，把 AAC 音轨直接封装成 .m4a（不重编码，音质无损）
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { showFailToast, showSuccessToast, showToast } from 'vant'
 import { isNativeAvailable } from '@/native/bridge'
@@ -140,10 +141,10 @@ onBeforeUnmount(() => abort?.abort())
     <van-notice-bar v-if="!hosted" wrapable :scrollable="false" left-icon="info-o">{{ TIP_NO_HOST }}</van-notice-bar>
 
     <template v-else>
-      <div class="tool-card">
-        <div class="tool-card__title">1. 选择视频</div>
-        <van-button block round plain type="primary" :disabled="running" @click="onPick">{{ video ? '换一个视频' : '选择视频' }}</van-button>
-        <template v-if="video">
+      <tool-group>
+        <div class="tool-group__title">1. 选择视频</div>
+        <p v-if="!video" class="tool-hint">点底部「相册」选一个视频。</p>
+        <template v-else>
           <p class="va-name">{{ video.name }}</p>
           <p class="tool-hint">{{ summary }}</p>
           <p v-if="audio" class="va-audio" :class="{ 'va-audio--bad': !audio.ok }">
@@ -151,31 +152,27 @@ onBeforeUnmount(() => abort?.abort())
           </p>
         </template>
         <p class="tool-hint">{{ TIP_AAC }}</p>
-      </div>
+      </tool-group>
 
-      <div v-if="video && info && audio?.ok && totalMs > 0" class="tool-card">
-        <div class="tool-card__title">2. 截取时间段（默认整段）</div>
+      <tool-group v-if="video && info && audio?.ok && totalMs> 0" title="2. 截取时间段（默认整段）">
         <p class="va-range">{{ rangeLabel(range) }}</p>
         <div class="va-slider">
           <van-slider v-model="sliderValue" range :min="0" :max="totalMs" :step="step" :disabled="running" @update:model-value="onSlide" />
         </div>
-        <van-button v-if="!running" block round type="primary" class="va-go" :disabled="!canRun" @click="onExtract">提取音频</van-button>
-        <div v-else class="va-running">
+        <div v-if="running" class="va-running">
           <van-progress :percentage="percent" stroke-width="8" />
-          <van-button size="small" plain @click="onCancel">取消</van-button>
         </div>
-      </div>
+      </tool-group>
 
-      <div v-if="result" class="tool-card">
-        <div class="tool-card__title">3. 提取完成</div>
+      <tool-group v-if="result">
+        <div class="tool-group__title">3. 提取完成</div>
         <p class="va-name">{{ result.name }}</p>
         <p class="tool-hint">{{ formatBytes(result.bytes) }} · {{ formatDuration(result.durationMs) }} · m4a（AAC）</p>
-        <div class="va-actions">
-          <van-button round type="primary" :disabled="saving" @click="onSave">保存到手机</van-button>
-          <van-button round plain type="primary" :disabled="saving" @click="onShare">分享</van-button>
-        </div>
-      </div>
+      </tool-group>
     </template>
+
+    <!-- 底部动作栏：相册选视频，保存 / 分享提取结果，主按钮提取音频（提取中变成取消） -->
+    <bottom-actions :actions="{ save: { disabled: !result || saving, text: '保存到手机' }, share: { disabled: !result || saving } }" v-if="hosted" album main :main-text="running ? '取消' : '提取音频'" :main-type="running ? 'danger' : 'primary'" :disabled="{ album: running, main: !running && !canRun }" @album="onPick" @main="running ? onCancel() : onExtract()" @save="onSave" @share="onShare" />
   </div>
 </template>
 
@@ -214,11 +211,6 @@ onBeforeUnmount(() => abort?.abort())
   padding: 0 $space-3;
 }
 
-/* 提取按钮 */
-.va-go {
-  margin-top: $space-4;
-}
-
 /* 进度行 */
 .va-running {
   display: flex;
@@ -227,17 +219,6 @@ onBeforeUnmount(() => abort?.abort())
   margin-top: $space-4;
 
   .van-progress {
-    flex: 1;
-  }
-}
-
-/* 保存与分享并排 */
-.va-actions {
-  display: flex;
-  gap: $space-3;
-  margin-top: $space-3;
-
-  .van-button {
     flex: 1;
   }
 }

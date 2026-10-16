@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 文件夹清理：授权一个文件夹，扫描大文件 / 空文件 / 安装包，勾选后删除（不经回收站，无法恢复）
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { showConfirmDialog, showFailToast, showSuccessToast, showToast } from 'vant'
 import { isNativeAvailable } from '@/native/bridge'
@@ -61,6 +62,15 @@ const isAll = computed(() => allSelected(items.value, selected.value))
 const currentName = computed(() => folders.value.find((f) => f.token === token.value)?.name ?? '')
 /** 忙碌中（扫描或删除） */
 const busy = computed(() => scanning.value || deleting.value)
+
+/** 底部主按钮的阶段：忙碌中取消；扫出结果后删除；其余是扫描 */
+const mainStage = computed<'cancel' | 'delete' | 'scan'>(() => (busy.value ? 'cancel' : scanned.value && items.value.length > 0 ? 'delete' : 'scan'))
+/** 底部主按钮文案 */
+const mainText = computed(() => ({ cancel: '取消', delete: '删除所选', scan: '扫描' })[mainStage.value])
+/** 底部主按钮配色：取消与删除都用危险色 */
+const mainType = computed(() => (mainStage.value === 'scan' ? 'primary' : 'danger'))
+/** 底部主按钮是否禁用：扫描要先选文件夹，删除要先勾选 */
+const mainDisabled = computed(() => (mainStage.value === 'scan' ? !token.value : mainStage.value === 'delete' ? totals.value.count === 0 : false))
 
 /** 取错误文字 */
 function msgOf(e: unknown, fallback: string): string {
@@ -161,6 +171,13 @@ async function onScan(): Promise<void> {
   }
 }
 
+/** 底部主按钮点击：按阶段分发 */
+function onMain(): void {
+  if (mainStage.value === 'cancel') onCancel()
+  else if (mainStage.value === 'delete') void onDelete()
+  else void onScan()
+}
+
 /** 取消当前扫描或删除 */
 function onCancel(): void {
   abort?.abort()
@@ -219,8 +236,8 @@ onBeforeUnmount(() => abort?.abort())
     <van-notice-bar v-if="!hosted" wrapable :scrollable="false" left-icon="info-o">{{ TIP_NO_HOST }}</van-notice-bar>
 
     <template v-else>
-      <div class="tool-card">
-        <div class="tool-card__title">1. 选择文件夹</div>
+      <tool-group>
+        <div class="tool-group__title">1. 选择文件夹</div>
         <van-cell-group v-if="folders.length" :border="false">
           <van-cell v-for="f in folders" :key="f.token" :title="f.name || '（未命名）'" center clickable @click="selectFolder(f.token)">
             <template #icon>
@@ -235,10 +252,10 @@ onBeforeUnmount(() => abort?.abort())
           {{ folders.length ? '再授权一个文件夹' : '选择文件夹' }}
         </van-button>
         <p class="tool-hint">只会访问你在系统选择器里选中的文件夹，不需要存储权限。Android 11 起系统不允许选存储根目录和 Download 本身，请选里面的子文件夹。</p>
-      </div>
+      </tool-group>
 
-      <div class="tool-card">
-        <div class="tool-card__title">2. 选择要找的东西</div>
+      <tool-group>
+        <div class="tool-group__title">2. 选择要找的东西</div>
         <div class="fc-row">
           <van-button v-for="m in MODE_OPTIONS" :key="m.key" size="small" round :type="mode === m.key ? 'primary' : 'default'" :disabled="busy" @click="mode = m.key">
             {{ m.name }}
@@ -253,17 +270,14 @@ onBeforeUnmount(() => abort?.abort())
             </van-button>
           </div>
         </template>
-        <van-button v-if="!scanning" block round type="primary" class="fc-go" :disabled="!token || deleting" @click="onScan">
-          {{ token ? `扫描「${currentName}」` : '先选择文件夹' }}
-        </van-button>
-        <div v-else class="fc-scanning">
+        <p v-if="token && !scanning" class="tool-hint">将扫描「{{ currentName }}」，点底部「扫描」开始。</p>
+        <div v-if="scanning" class="fc-scanning">
           <van-loading size="20">已遍历 {{ progress }} 项…</van-loading>
-          <van-button size="small" plain @click="onCancel">取消</van-button>
         </div>
-      </div>
+      </tool-group>
 
-      <div v-if="scanned" class="tool-card">
-        <div class="tool-card__title">3. 结果</div>
+      <tool-group v-if="scanned">
+        <div class="tool-group__title">3. 结果</div>
         <p class="tool-hint fc-summary">{{ summary }}</p>
         <van-empty v-if="items.length === 0" description="没有找到符合条件的内容" />
         <template v-else>
@@ -291,14 +305,15 @@ onBeforeUnmount(() => abort?.abort())
             再显示 {{ Math.min(PAGE_SIZE, sorted.length - shownCount) }} 条（共 {{ sorted.length }} 条，全选针对全部）
           </van-button>
           <p class="tool-hint fc-danger">{{ TIP_DANGER }}</p>
-          <div class="fc-bar">
-            <div class="fc-bar__text">已选 {{ totals.count }} 项，可释放 {{ formatBytes(totals.bytes) }}</div>
-            <van-button v-if="!deleting" type="danger" round size="small" :disabled="totals.count === 0" @click="onDelete">删除所选</van-button>
-            <van-button v-else plain round size="small" @click="onCancel">删除中…取消</van-button>
-          </div>
+          <p class="fc-total">已选 {{ totals.count }} 项，可释放 {{ formatBytes(totals.bytes) }}<template v-if="deleting">，删除中…</template></p>
         </template>
-      </div>
+      </tool-group>
     </template>
+
+    <!-- 底部动作栏：主按钮扫描；扫描出结果后切成「删除」（danger，点后仍有二次确认弹窗）；扫描 / 删除进行中变成「取消」；重新扫描放插槽 -->
+    <bottom-actions v-if="hosted" main :main-text="mainText" :main-type="mainType" :disabled="{ main: mainDisabled }" @main="onMain">
+      <van-action-bar-icon v-if="scanned && !busy" icon="replay" text="重新扫描" :disabled="!token" @click="onScan" />
+    </bottom-actions>
   </div>
 </template>
 
@@ -321,11 +336,6 @@ onBeforeUnmount(() => abort?.abort())
 /* 选择文件夹按钮 */
 .fc-pick {
   margin-top: $space-3;
-}
-
-/* 开始扫描 */
-.fc-go {
-  margin-top: $space-4;
 }
 
 /* 扫描中的进度行 */
@@ -389,22 +399,9 @@ onBeforeUnmount(() => abort?.abort())
   color: var(--c-error);
 }
 
-/* 底部合计与删除按钮，滚动时吸附在屏幕底部 */
-.fc-bar {
-  position: sticky;
-  bottom: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: $space-3;
-  margin-top: $space-3;
-  padding: $space-3 0;
-  background: var(--c-surface);
-  border-top: 1px solid var(--c-border);
-}
-
-/* 合计文字 */
-.fc-bar__text {
+/* 已选合计 */
+.fc-total {
+  margin: $space-3 0 0;
   font-size: 14px;
   color: var(--c-text);
 }

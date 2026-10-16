@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // JS 运行器：代码放进 Web Worker 执行，捕获 console 输出，超时强杀
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { showToast } from 'vant'
 import { DEFAULT_TIMEOUT_MS, runCode, type LogEntry, type RunHandle, type RunStatus } from './logic'
@@ -94,8 +95,7 @@ function clear(): void {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
-      <h3 class="tool-card__title">代码</h3>
+    <tool-group title="代码">
       <van-field
         v-model="code"
         type="textarea"
@@ -114,17 +114,14 @@ function clear(): void {
         </van-radio-group>
       </div>
       <div class="jr-actions">
-        <van-button v-if="!running" type="primary" size="small" @click="run">运行</van-button>
-        <van-button v-else type="danger" size="small" @click="stop">停止</van-button>
         <van-button size="small" plain :disabled="!logs.length && !last" @click="clear">清空输出</van-button>
       </div>
       <p class="tool-hint jr-note">
         代码只在本机的 Worker 里运行，不会上传。没有 window、document，也碰不到 App 内部接口。
       </p>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">输出（最新在上）</h3>
+    <tool-group title="输出（最新在上）">
       <p v-if="statusText" class="tool-hint jr-status" :class="{ 'jr-status--bad': last && last.status !== 'ok' }">
         {{ statusText }}
       </p>
@@ -133,7 +130,10 @@ function clear(): void {
         <span class="jr-line__t">{{ l.t }}ms</span>
         <pre class="jr-line__text">{{ l.level === 'result' ? '← ' + l.text : l.text }}</pre>
       </div>
-    </div>
+    </tool-group>
+
+    <!-- 底部动作栏：主按钮运行（运行中变成停止） -->
+    <bottom-actions main :main-text="running ? '停止' : '运行'" :main-type="running ? 'danger' : 'primary'" @main="running ? stop() : run()" />
   </div>
 </template>
 

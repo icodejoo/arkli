@@ -293,8 +293,8 @@ applySolar(todaySolar())
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
-      <p class="tool-card__title">阳历</p>
+    <tool-group>
+      <p class="tool-group__title">阳历</p>
       <van-field
         :model-value="solarText"
         label="日期"
@@ -307,10 +307,10 @@ applySolar(todaySolar())
         @click-right-icon="openSolarPicker"
       />
       <p v-if="solarWeek && !solarError" class="tool-hint note">{{ solarWeek }}</p>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <p class="tool-card__title">阴历</p>
+    <tool-group>
+      <p class="tool-group__title">阴历</p>
       <van-field
         :model-value="lunarText"
         label="日期"
@@ -350,7 +350,7 @@ applySolar(todaySolar())
           </div>
         </div>
       </div>
-    </div>
+    </tool-group>
 
     <div class="tool-actions">
       <van-button type="primary" plain @click="goToday">回到今天</van-button>

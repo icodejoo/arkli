@@ -164,14 +164,24 @@ class MainActivity : ComponentActivity(), ActivityHost {
         page?.webView?.evaluateJavascript("location.hash=" + org.json.JSONObject.quote("#$route"), null)
     }
 
-    /** 创建界面并接管返回键 */
-    override fun onCreate(savedInstanceState: Bundle?) {
-        // 边到边：状态栏、导航栏透明（图标深浅随系统深色模式自动切换），WebView 铺满整个屏幕，
-        // 顶部/底部安全区由页面（Vue）读 --safe-* 变量自己留
+    /** 边到边：状态栏、导航栏透明，图标深浅按当前深色模式取（浅色主题黑字，深色主题白字） */
+    private fun applySystemBars() {
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT),
         )
+    }
+
+    /** 系统深浅色切换（本页自己处理 uiMode，不会重建）：重设一遍状态栏，图标颜色才跟得上 */
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applySystemBars()
+    }
+
+    /** 创建界面并接管返回键 */
+    override fun onCreate(savedInstanceState: Bundle?) {
+        // WebView 铺满整个屏幕，顶部/底部安全区由页面（Vue）读 --safe-* 变量自己留
+        applySystemBars()
         super.onCreate(savedInstanceState)
         // 系统启动页一出完就立刻摘掉，不让系统再走一遍自己的退出动画（会和我们的动画叠出闪烁）
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -239,12 +249,14 @@ class MainActivity : ComponentActivity(), ActivityHost {
      * 协程被取消后选择器仍在屏幕上，槽位保留到结果到达（结果被丢弃），免得旧结果送给下一个请求。
      */
     override suspend fun pickMedia(mime: String, multiple: Boolean, max: Int): List<Uri> =
-        pickSlot.await(releaseOnCancel = false) { withContext(Dispatchers.Main) { launchPicker(mime, multiple, max, false) } }
+        pickSlot.await(releaseOnCancel = false) {
+            withContext(Dispatchers.Main) { launchPicker(mime, multiple, max, false, PickerPolicy.DEFAULT_EDIT_MODES) }
+        }
 
     /** 带拍照按钮的选图，见 [ActivityHost.pickMediaOrCamera]；点了拍照时 uris 为空、camera 为 true */
-    override suspend fun pickMediaOrCamera(mime: String, multiple: Boolean, max: Int, camera: Boolean): PickResult {
+    override suspend fun pickMediaOrCamera(mime: String, multiple: Boolean, max: Int, camera: Boolean, edit: List<String>): PickResult {
         cameraHit = false
-        val uris = pickSlot.await(releaseOnCancel = false) { withContext(Dispatchers.Main) { launchPicker(mime, multiple, max, camera) } }
+        val uris = pickSlot.await(releaseOnCancel = false) { withContext(Dispatchers.Main) { launchPicker(mime, multiple, max, camera, edit) } }
         return PickResult(uris, cameraHit)
     }
 
@@ -327,7 +339,7 @@ class MainActivity : ComponentActivity(), ActivityHost {
     }
 
     /** 按 mime 种类拉起对应的选择器，必须在主线程 */
-    private fun launchPicker(mime: String, multiple: Boolean, max: Int, camera: Boolean) {
+    private fun launchPicker(mime: String, multiple: Boolean, max: Int, camera: Boolean, edit: List<String>) {
         // 图片、视频的相册选择一律走自带页（系统选择器在部分机型点一下就返回，也无法加按钮）
         val custom = PickerPolicy.mediaOf(PickKind.of(mime))
         if (custom != null) {
@@ -336,7 +348,7 @@ class MainActivity : ComponentActivity(), ActivityHost {
                 PickerMedia.VIDEO -> ActivityResultContracts.PickVisualMedia.VideoOnly
                 PickerMedia.IMAGE_VIDEO -> ActivityResultContracts.PickVisualMedia.ImageAndVideo
             }
-            pickManyImages.launch(PickerParams(PickerPolicy.resolveMaxCount(multiple, max), camera, custom))
+            pickManyImages.launch(PickerParams(PickerPolicy.resolveMaxCount(multiple, max), camera, custom, edit))
             return
         }
         val media: ActivityResultContracts.PickVisualMedia.VisualMediaType? = when (PickKind.of(mime)) {

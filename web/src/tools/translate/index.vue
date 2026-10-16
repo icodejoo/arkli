@@ -8,7 +8,6 @@ import { useRouter } from 'vue-router'
 import { showFailToast, showSuccessToast } from 'vant'
 import BottomActions from '@/shared/BottomActions.vue'
 import ModelPicker from '@/shared/ModelPicker.vue'
-import type { BottomActionItem } from '@/shared/bottomActions'
 import { copyText } from '@/shared/clipboard'
 import { AI_CENTER_PATH, MSG_NO_MODEL, type PickerSection } from '@/shared/modelPicker'
 import { aiTranslate, isAiCancelled } from '@/native/ai'
@@ -20,6 +19,7 @@ import { allowsAuto, AUTO_CODE, AUTO_LANG, coercePair, LANGS, langName, pickLang
 import { isLatestRun, MSG_NO_PROVIDER, readPair, swapTexts, translateErrorMessage, unrecognizedTip, writePair } from './logic'
 import { useModelWarmup } from './useModelWarmup'
 import PhotoTranslate from './PhotoTranslate.vue'
+import { useOutHeight } from './outHeight'
 import { isPairSupported, MSG_SHORT_TO_QWEN, PROVIDER_QWEN, routeShort } from './shortInput'
 
 /** 本工具 id（与 registry 一致） */
@@ -27,10 +27,6 @@ const TOOL_ID = 'translate'
 /** 文字识别工具 id（图片模式下选择器多一组 OCR 模型） */
 const OCR_TOOL_ID = 'ocr'
 /** 动作项 key */
-const ACT_PICKER = 'picker'
-const ACT_CAMERA = 'camera'
-const ACT_ALBUM = 'album'
-const ACT_GO = 'go'
 /** 路由器：无可用模型时跳 AI 中心 */
 const router = useRouter()
 
@@ -45,6 +41,9 @@ const input = ref('')
 const pair = ref(readPair())
 /** 译文 */
 const result = ref('')
+/** 译文区元素与它的高度（页面高度 - pageY - 操作栏 - 16） */
+const outEl = ref<HTMLElement | null>(null)
+const outHeight = useOutHeight(outEl)
 /** 最近一次翻译识别出的源语言码（auto 时用于显示与交换） */
 const detected = ref<string[]>([])
 /** 红色小字提示（部分字符无法识别），空串表示不显示 */
@@ -83,8 +82,10 @@ const canGo = computed(() => {
   if (imageMode.value) return !photoBusy.value && !!photo.value?.modelsReady && !tooFewLangs.value
   return busy.value || (!!input.value.trim() && modelReady.value && !tooFewLangs.value)
 })
+/** 主按钮是否处于「取消」态：只有文字翻译进行中才可取消 */
+const canCancel = computed(() => busy.value && !imageMode.value)
 /** 主按钮文案：文字翻译中变「取消翻译」，其余都是「翻译」 */
-const goText = computed(() => (busy.value && !imageMode.value ? '取消翻译' : '翻译'))
+const goText = computed(() => (canCancel.value ? '取消翻译' : '翻译'))
 /** 选择器分组：图片模式下加一组文字识别模型 */
 const sections = computed<PickerSection[]>(() => {
   const list: PickerSection[] = [{ toolId: TOOL_ID, title: '翻译模型' }]
@@ -92,12 +93,6 @@ const sections = computed<PickerSection[]>(() => {
   return list
 })
 /** 底部动作栏：AI 选择器（插槽）、拍照、相册、翻译 */
-const actions = computed<BottomActionItem[]>(() => [
-  { key: ACT_PICKER },
-  { key: ACT_CAMERA, text: '拍照', icon: 'photograph-o', disabled: working.value },
-  { key: ACT_ALBUM, text: '相册', icon: 'photo-o', disabled: working.value },
-  { key: ACT_GO, text: goText.value, kind: 'button', disabled: !canGo.value },
-])
 /** 顶部「无可用模型」提示是否显示：文字模式看翻译模型，图片模式看翻译+识别两个 */
 const showMissing = computed(() => (imageMode.value ? !!photo.value?.showMissing : catalogReady.value && !modelReady.value))
 
@@ -161,11 +156,6 @@ function go(): void {
 }
 
 /** 动作栏点击分发 */
-function onAction(key: string): void {
-  if (key === ACT_CAMERA) void photo.value?.fromCamera()
-  else if (key === ACT_ALBUM) void photo.value?.fromAlbum()
-  else if (key === ACT_GO) go()
-}
 
 /** 用本地模型翻译 */
 async function translate(): Promise<void> {
@@ -286,12 +276,12 @@ async function copy(text: string): Promise<void> {
       </button>
     </div>
     <!-- 文字模式：输入框；图片模式：换成图片（扫描、叠译文都在里面） -->
-    <div v-show="!imageMode" class="tool-card">
+    <tool-group v-show="!imageMode">
       <van-field v-model="input" type="textarea" rows="4" autosize placeholder="粘贴或输入要翻译的文字" :maxlength="TEXT_MAX" show-word-limit />
-    </div>
-    <div v-show="imageMode" class="tool-card">
+    </tool-group>
+    <tool-group v-show="imageMode">
       <photo-translate ref="photo" :pair="pair" @use-qwen="warmup.occupy(PROVIDER_QWEN)" />
-    </div>
+    </tool-group>
 
     <!-- 中：交换按钮（靠右，无修饰） -->
     <div class="tr-mid">
@@ -316,9 +306,14 @@ async function copy(text: string): Promise<void> {
         <span>复制</span>
       </button>
     </div>
-    <div v-show="!imageMode" class="tool-card">
-      <div class="tr-out" dir="auto">
-        <van-loading v-if="busy" size="20px">翻译中，请稍候…</van-loading>
+    <tool-group>
+      <div ref="outEl" class="tr-out" dir="auto" :style="{ height: `${outHeight}px` }">
+        <!-- 图片模式：汇总所有图片的译文，保留各自换行 -->
+        <template v-if="imageMode">
+          <p v-if="photo?.translatedText" class="tr-out__text">{{ photo.translatedText }}</p>
+          <p v-else class="tr-out__empty">译文会显示在这里</p>
+        </template>
+        <van-loading v-else-if="busy" size="20px">翻译中，请稍候…</van-loading>
         <p v-else-if="errMsg" class="tr-out__err">{{ errMsg }}</p>
         <template v-else-if="result">
           <p class="tr-out__text">{{ result }}</p>
@@ -327,12 +322,23 @@ async function copy(text: string): Promise<void> {
         </template>
         <p v-else class="tr-out__empty">译文会显示在这里</p>
       </div>
-    </div>
+    </tool-group>
 
     <!-- 底部动作栏：左 AI（翻译模型 + 图片模式下的识别模型），中拍照、相册，右主按钮「翻译」 -->
-    <bottom-actions :items="actions" @select="onAction">
-      <template #item-picker>
-        <model-picker :sections="sections" />
+    <bottom-actions
+      ai
+      album
+      photo
+      main
+      :main-text="goText"
+      :main-type="canCancel ? 'danger' : 'primary'"
+      :disabled="{ album: working, photo: working, main: !canGo }"
+      @album="photo?.fromAlbum()"
+      @photo="photo?.fromCamera()"
+      @main="go"
+    >
+      <template #ai>
+        <model-picker :sections="sections" variant="bar" />
       </template>
     </bottom-actions>
   </div>
@@ -423,7 +429,7 @@ async function copy(text: string): Promise<void> {
 
 // 结果区：文字可选可复制
 .tr-out {
-  min-height: 96px;
+  overflow-y: auto;
   padding-top: $space-2;
   font-size: 16px;
   line-height: 1.6;

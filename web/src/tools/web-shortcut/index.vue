@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 网页转应用：给一个网址在桌面建快捷方式，点一下直接打开
+import BottomActions from '@/shared/BottomActions.vue'
 import { ref, watch } from 'vue'
 import { showFailToast, showSuccessToast, showToast } from 'vant'
 import { isNativeAvailable } from '@/native/bridge'
@@ -56,12 +57,14 @@ async function submit(): Promise<void> {
   <div class="tool-page">
     <van-notice-bar v-if="!hosted" wrapable :scrollable="false" left-icon="info-o">{{ TIP_NO_HOST }}</van-notice-bar>
 
-    <div class="tool-card">
+    <tool-group>
       <van-field v-model="url" label="网址" type="url" placeholder="例如 zhihu.com" clearable />
       <van-field v-model="label" label="名称" placeholder="桌面上显示的名字" :maxlength="MAX_LABEL" clearable @input="labelTouched = true" />
-    </div>
+    </tool-group>
 
-    <van-button type="primary" block round :loading="busy" :disabled="!hosted" @click="submit">添加到桌面</van-button>
     <p class="tool-hint">图标是名称的首字加彩色底。点击快捷方式会用浏览器打开该网址，不是独立的 App。同一网址再次添加会更新原来的。</p>
+
+    <!-- 底部动作栏：主按钮添加到桌面 -->
+    <bottom-actions main main-text="添加到桌面" :disabled="{ main: busy || !hosted }" @main="submit" />
   </div>
 </template>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 番茄时钟：专注 / 短休 / 长休，倒计时按绝对时间算；容器内用原生闹钟，退到后台也会提醒
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { showFailToast, showToast } from 'vant'
 import { isNativeAvailable } from '@/native/bridge'
@@ -204,7 +205,7 @@ onBeforeUnmount(() => {
   <div class="tool-page">
     <van-notice-bar v-if="!hosted" wrapable :scrollable="false" left-icon="info-o">{{ TIP_NO_HOST }}</van-notice-bar>
 
-    <div class="tool-card pm-clock">
+    <tool-group class="pm-clock">
       <van-tag round :color="color" size="large">{{ phaseLabel }}</van-tag>
       <div class="pm-ring">
         <svg viewBox="0 0 200 200" class="pm-ring__svg" aria-hidden="true">
@@ -223,15 +224,12 @@ onBeforeUnmount(() => {
         <span v-for="i in dots" :key="i" class="pm-dot" :class="{ 'pm-dot--on': i <= done }" />
       </div>
       <div class="pm-actions">
-        <van-button v-if="st.status !== 'running'" type="primary" round size="large" @click="onStart">{{ st.status === 'paused' ? '继续' : '开始' }}</van-button>
-        <van-button v-else type="primary" plain round size="large" @click="onPause">暂停</van-button>
         <van-button plain round @click="onResetPhase">重来本阶段</van-button>
         <van-button plain round @click="onSkip">跳过</van-button>
       </div>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">今天已完成 {{ today }} 个专注</h3>
+    <tool-group :title="`今天已完成 ${today} 个专注`">
       <van-cell-group :border="false">
         <van-cell title="专注（分钟）" center>
           <template #value>
@@ -260,8 +258,11 @@ onBeforeUnmount(() => {
         </van-cell>
       </van-cell-group>
       <van-button class="pm-reset" plain block type="danger" size="small" @click="onResetAll">全部重置</van-button>
-    </div>
+    </tool-group>
     <p class="tool-hint">每个阶段结束时用系统闹钟提醒，退到后台或锁屏也会响。设备重启后提醒会失效。</p>
+
+    <!-- 底部动作栏：主按钮开始 / 继续 / 暂停 -->
+    <bottom-actions main :main-text="st.status === 'running' ? '暂停' : st.status === 'paused' ? '继续' : '开始'" :main-type="st.status === 'running' ? 'warning' : 'primary'" @main="st.status === 'running' ? onPause() : onStart()" />
   </div>
 </template>
 

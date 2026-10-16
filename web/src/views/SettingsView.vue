@@ -25,14 +25,13 @@ onMounted(() => {
   <div class="settings">
     <van-nav-bar title="设置" fixed placeholder safe-area-inset-top />
     <main class="settings__body">
-      <div class="tool-card">
-        <h3 class="tool-card__title">缓存</h3>
+      <tool-group title="缓存">
         <p v-if="!native" class="tool-hint">{{ CACHE_ONLY_APP }}</p>
         <template v-else>
           <p class="tool-hint">{{ text }}</p>
           <van-button block plain round :loading="busy" @click="clean">清理缓存</van-button>
         </template>
-      </div>
+      </tool-group>
     </main>
   </div>
 </template>

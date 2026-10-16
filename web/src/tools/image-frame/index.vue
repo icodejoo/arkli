@@ -1,12 +1,14 @@
 <script setup lang="ts">
 // 带壳截图：把截图套进通用手机外壳 / 浏览器窗口 / 纯卡片，Canvas 自绘，不带任何品牌机框
+import BottomActions from '@/shared/BottomActions.vue'
 import ColorPicker from '@/shared/ColorPicker.vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { showToast } from 'vant'
 import ImageResultList from '@/shared/ImageResultList.vue'
 import { useImageResults } from '@/shared/useImageResults'
 import { baseName } from '@/shared/image-calc'
-import { canvasToBlob, createCanvas, drawScaled, loadBitmap, pickImages, releaseCanvas, type PickedImage } from '@/shared/image-io'
+import { shootPhoto } from '@/shared/shootPhoto'
+import { canvasToBlob, createCanvas, drawScaled, loadBitmap, EDIT_FULL, pickImages, releaseCanvas, type PickedImage } from '@/shared/image-io'
 import { BG_PRESETS, DEFAULT_ANGLE, frameLayout, gradientLine, type CutoutKind, type FrameLayout, type FrameStyle } from './logic'
 
 /** 手机机身 / 刘海 / 挖孔颜色 */
@@ -56,17 +58,27 @@ const layout = computed<FrameLayout | null>(() =>
     : null,
 )
 
-/** 选图 */
+/** 采用新图：释放旧图并清掉旧结果 */
+function adopt(img: PickedImage): void {
+  image.value?.release()
+  image.value = img
+  clear()
+}
+
+/** 相册选图 */
 async function choose(): Promise<void> {
   try {
-    const got = await pickImages({ multiple: false, max: 1, onFailed: (f) => showToast(`读取失败：${f[0].message}`) })
-    if (!got.length) return
-    image.value?.release()
-    image.value = got[0]
-    clear()
+    const got = await pickImages({ edit: EDIT_FULL, multiple: false, max: 1, onFailed: (f) => showToast(`读取失败：${f[0].message}`) })
+    if (got.length) adopt(got[0])
   } catch (e) {
     showToast((e as { message?: string }).message ?? '选图失败')
   }
+}
+
+/** 拍照 */
+async function shoot(): Promise<void> {
+  const got = await shootPhoto()
+  if (got) adopt(got)
 }
 
 /** 套用背景预设 */
@@ -195,13 +207,12 @@ onBeforeUnmount(() => image.value?.release())
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
-      <h3 class="tool-card__title">选择截图</h3>
+    <tool-group title="选择截图">
       <img v-if="image" class="thumb" :src="image.url" :alt="image.name" />
-      <van-button block plain round :disabled="busy" @click="choose">{{ image ? '换一张' : '选择截图' }}</van-button>
-    </div>
+      <p v-else class="tool-hint">点底部「相册」或「拍照」选一张截图。</p>
+    </tool-group>
 
-    <div class="tool-card">
+    <tool-group>
       <van-cell-group :border="false">
         <van-cell title="外壳" center>
           <template #value>
@@ -229,10 +240,9 @@ onBeforeUnmount(() => image.value?.release())
         <van-cell title="圆角" :value="`${radiusPct}%`" />
       </van-cell-group>
       <div class="is-slider"><van-slider v-model="radiusPct" :min="0" :max="12" /></div>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">背景</h3>
+    <tool-group title="背景">
       <div class="presets">
         <button
           v-for="(p, i) in BG_PRESETS"
@@ -259,15 +269,14 @@ onBeforeUnmount(() => image.value?.release())
         预计输出 {{ layout.width }}×{{ layout.height }}
         <template v-if="layout.scale < 1">（图片太大，已缩小到 {{ Math.round(layout.scale * 100) }}%）</template>
       </p>
-    </div>
+    </tool-group>
 
-    <van-button type="primary" block round :loading="busy" :disabled="!image" @click="run">{{ busy ? '生成中' : '生成' }}</van-button>
-
-    <div v-if="results.length" class="tool-card">
-      <h3 class="tool-card__title">结果（点击预览）</h3>
+    <tool-group v-if="results.length" title="结果（点击预览）">
       <image-result-list :results="results" />
-      <van-button type="primary" plain block round :loading="saving" @click="saveAll">保存</van-button>
-    </div>
+    </tool-group>
+
+    <!-- 底部动作栏：相册 / 拍照选图，保存结果，主按钮生成 -->
+    <bottom-actions :actions="{ save: { disabled: !results.length || saving } }" album photo main :main-text="busy ? '生成中' : '生成'" :disabled="{ album: busy, photo: busy, main: busy || !image }" @album="choose" @photo="shoot" @main="run" @save="saveAll" />
   </div>
 </template>
 

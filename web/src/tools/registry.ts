@@ -137,6 +137,7 @@ export const tools: ToolMeta[] = [
     name: '对联生成',
     description: '随机抽 73 万副对联不重复，本地模型对下联、按要求写对联，可导出图',
     tags: [TAG_AI],
+    pickerInPage: true,
     // 对下联走 native.ai.couplet；大模型（Qwen）走 native.ai.run 的 prompt；随机用的语料库是数据包，不在模型选择器里
     tasks: [
       { task: 'couplet', entry: AI_METHODS.couplet },

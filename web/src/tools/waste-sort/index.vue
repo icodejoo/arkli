@@ -4,7 +4,6 @@ import { computed, defineAsyncComponent, ref } from "vue";
 import { useRoute } from "vue-router";
 import BottomActions from "@/shared/BottomActions.vue";
 import ModelPicker from "@/shared/ModelPicker.vue";
-import type { BottomActionItem } from "@/shared/bottomActions";
 import { MODE_CAMERA, MODE_QUERY, findTool, hasAiChoices } from "@/tools/registry";
 import { CATS, WASTE_ITEMS } from "./data";
 import { countByCat, getCat, search } from "./logic";
@@ -30,19 +29,6 @@ const classify = ref<{
 const camera = computed(() => route.query[MODE_QUERY] === MODE_CAMERA);
 /** 识别不可用（模型未就绪或正在识别）时禁用拍照/相册 */
 const blocked = computed(() => !classify.value?.ready || !!classify.value?.busy);
-/** 底部动作栏：模型选择器（插槽）、相册、拍照 */
-const actions = computed<BottomActionItem[]>(() => [
-    { key: "picker" },
-    { key: "album", text: "相册", icon: "photo-o", disabled: blocked.value },
-    { key: "photo", text: "拍照", icon: "photograph-o", kind: "button", type: "danger", disabled: blocked.value },
-]);
-
-/** 动作栏点击：相册 / 拍照 */
-function onAction(key: string): void {
-    if (key === "album") classify.value?.fromAlbum();
-    else if (key === "photo") classify.value?.takePhoto();
-}
-
 /** 搜索框内容 */
 const query = ref("");
 /** 免责声明 */
@@ -62,23 +48,23 @@ const counts = computed(() => countByCat());
         <!-- 上半：拍照识别 / 词典查询，随右上角摄像头按钮切换 -->
         <Classify v-if="camera" ref="classify" />
         <template v-else>
-            <div class="tool-card">
+            <tool-group>
                 <van-field
                     v-model="query"
                     label="物品"
                     placeholder="输入物品名，如 电池、奶茶杯"
                     clearable
                 />
-            </div>
+            </tool-group>
 
             <template v-if="typed">
-                <div v-if="!hits.length" class="tool-card">
+                <tool-group v-if="!hits.length">
                     <p class="tool-hint">
                         词典里没找到「{{
                             query.trim()
                         }}」。换个叫法试试；实在分不清，一般投干垃圾，药品电池之类的先问问物业。
                     </p>
-                </div>
+                </tool-group>
                 <ul v-else class="ws-list">
                     <li v-for="h in hits" :key="h.item.name" class="ws-item">
                         <span
@@ -105,10 +91,7 @@ const counts = computed(() => countByCat());
         </template>
 
         <!-- 下半：两种模式共享的说明 -->
-        <div class="tool-card">
-            <h3 class="tool-card__title">
-                四种垃圾怎么投（共 {{ WASTE_ITEMS.length }} 条物品）
-            </h3>
+        <tool-group :title="`四种垃圾怎么投（共 ${WASTE_ITEMS.length} 条物品）`">
             <ul class="ws-legend">
                 <li v-for="c in CATS" :key="c.id">
                     <span
@@ -121,14 +104,14 @@ const counts = computed(() => countByCat());
                     >
                 </li>
             </ul>
-        </div>
+        </tool-group>
 
         <p class="tool-hint">{{ DISCLAIMER }}</p>
 
         <!-- 识别模式：底部动作栏，左边模型选择器，右边相册、拍照 -->
-        <bottom-actions v-if="camera" :items="actions" @select="onAction">
-            <template #item-picker>
-                <model-picker v-if="hasPicker" :tool-id="TOOL_ID" />
+        <bottom-actions v-if="camera" :ai="hasPicker" album main main-text="拍照" main-type="danger" :disabled="{ album: blocked, main: blocked }" @album="classify?.fromAlbum()" @main="classify?.takePhoto()">
+            <template #ai>
+                <model-picker :tool-id="TOOL_ID" />
             </template>
         </bottom-actions>
     </div>

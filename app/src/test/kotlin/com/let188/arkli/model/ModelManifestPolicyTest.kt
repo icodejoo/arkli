@@ -109,9 +109,8 @@ class ModelManifestPolicyTest {
         assertFalse(NetPolicy.isAllowedDownload("https://github.com./x"))
         assertFalse(NetPolicy.isAllowedDownload("ftp://github.com/x"))
         assertFalse(NetPolicy.isAllowedDownload("not a url"))
-        // 页面出站白名单与 CSP 不受影响
-        assertFalse(NetPolicy.isAllowedOutbound("https://github.com/x"))
-        assertFalse(NetPolicy.contentSecurityPolicy().contains("github"))
+        // 页面出站放行任意 https，但脚本仍只允许同源，下载白名单不因此变宽
+        assertFalse(NetPolicy.isAllowedDownload("https://example.com/x"))
     }
 
     @Test

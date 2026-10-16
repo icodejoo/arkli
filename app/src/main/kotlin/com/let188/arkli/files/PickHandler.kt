@@ -1,5 +1,6 @@
 package com.let188.arkli.files
 
+import android.content.ContentResolver
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
@@ -41,6 +42,8 @@ private class PickFailure(message: String) : Exception(message)
  *
  * 参数：`{ mime?: string = 图片通配, multiple?: boolean = false, max?: number = 20, keepSource?: boolean = false }`。
  * `keepSource` 为 true 时，图片项多返回不透明 `sourceHandle`（真实 URI 只留在原生侧），供 `native.file.overwrite` 写回原图。
+ * `edit`：选图页预览里「编辑」按钮允许的模式，`["crop","rotate","shape","lasso"]` 的子集；缺省为 `["crop","rotate"]`，传 `[]` 关闭编辑，视频选择不显示。
+ * 编辑后的图（矩形为 JPEG，带形状或套索为带透明的 PNG，方向已摆正）替换原图返回；这类项是缓存里的 file:// 临时文件，即使 `keepSource` 也不给 `sourceHandle`。
  * `camera` 为 true（仅图片）时一律走自带选图页并显示拍照按钮，点它返回 `{ items: [], failed: [], camera: true }`。
  * 返回：`{ items: [...], failed: [{ name, message }] }`，用户关闭选择器时 `items` 为空数组。
  *
@@ -63,7 +66,8 @@ internal class PickHandler(private val env: FileEnv, private val handles: Handle
         val max = params.optInt("max", FileConst.DEFAULT_PICK_MAX).coerceIn(1, FileConst.PICK_MAX_LIMIT)
         val keepSource = params.optBoolean("keepSource", false)
         val camera = PickerPolicy.wantsCamera(params.optBoolean("camera", false), PickKind.of(mime))
-        val picked = env.host.pickMediaOrCamera(mime, multiple, max, camera)
+        val edit = PickerPolicy.resolveEditModes(params.optJSONArray("edit"))
+        val picked = env.host.pickMediaOrCamera(mime, multiple, max, camera, edit)
         val uris = picked.uris.take(PickerPolicy.resolveMaxCount(multiple, max))
         val items = JSONArray()
         val failed = JSONArray()
@@ -94,7 +98,7 @@ internal class PickHandler(private val env: FileEnv, private val handles: Handle
         val name = FileNames.sanitize(rawName ?: "file")
         return when {
             mime.startsWith("video/") -> videoItem(uri, name, mime, rawSize)
-            mime.startsWith("image/") -> imageItem(uri, name, mime, made).also { if (keepSource) it.put("sourceHandle", handles.put(uri)) }
+            mime.startsWith("image/") -> imageItem(uri, name, mime, made).also { if (keepSource && uri.scheme != ContentResolver.SCHEME_FILE) it.put("sourceHandle", handles.put(uri)) }
             else -> fileItem(uri, name, mime, rawSize, made)
         }
     }
@@ -226,6 +230,8 @@ internal class PickHandler(private val env: FileEnv, private val handles: Handle
 
     /** 查显示名与大小，查不到返回 null */
     private fun queryMeta(uri: Uri): Pair<String?, Long?> {
+        // 编辑页导出的是 file:// 文件，没有 provider 可查，直接按路径取
+        if (uri.scheme == ContentResolver.SCHEME_FILE) return uri.lastPathSegment to uri.path?.let { File(it).length() }
         try {
             resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { c ->
                 if (c.moveToFirst()) {

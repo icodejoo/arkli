@@ -3,10 +3,12 @@
 
 #include <jni.h>
 
+#include <atomic>
 #include <cstdio>
 #include <exception>
 #include <memory>
-#include <sstream>
+#include <ostream>
+#include <streambuf>
 #include <string>
 
 #include <llm/llm.hpp>
@@ -80,6 +82,71 @@ Llm* buildLlm(const std::string& configPath, const std::string& samplerJson, std
     return llm;
 }
 
+/** 取消标志：每次 nativeGenerate 开始时复位，nativeCancel 置位；同一时刻只有一个生成在跑（Kotlin 侧串行），所以全局一个就够 */
+std::atomic<bool> g_cancel{false};
+
+/** 把引擎状态从 USER_CANCEL 复位成 RUNNING：取消后 response() 开头会直接拒绝，不复位就没法再用 */
+void clearCancelState(Llm* llm) {
+    auto* ctx = const_cast<MNN::Transformer::LlmContext*>(llm->getContext());
+    if (ctx->status == MNN::Transformer::LlmStatus::USER_CANCEL) ctx->status = MNN::Transformer::LlmStatus::RUNNING;
+}
+
+/**
+ * 收集生成文本的输出流缓冲。MNN 每解出一个 token 就写一次并 flush，这里借写入这个时机检查取消标志：
+ * 命中就把引擎状态置为 USER_CANCEL，解码循环下一圈开头看到该状态便退出（见 MNN 的 ArGeneration::generate）。
+ * 状态是在解码线程自己的回调里改的，没有跨线程写。
+ */
+class CancelAwareBuf : public std::streambuf {
+public:
+    /** @param llm 正在生成的引擎 */
+    explicit CancelAwareBuf(Llm* llm) : llm_(llm) {}
+
+    /** 已收集的文本 */
+    const std::string& text() const { return buf_; }
+
+protected:
+    /** 批量写入：收下文本后检查取消 */
+    std::streamsize xsputn(const char* s, std::streamsize n) override {
+        buf_.append(s, static_cast<size_t>(n));
+        stopIfCancelled();
+        return n;
+    }
+
+    /** 单字符写入：收下后检查取消 */
+    int_type overflow(int_type ch) override {
+        if (!traits_type::eq_int_type(ch, traits_type::eof())) {
+            buf_.push_back(traits_type::to_char_type(ch));
+            stopIfCancelled();
+        }
+        return traits_type::not_eof(ch);
+    }
+
+    /** flush：没有可刷的缓冲，只借机检查取消（空输出的 token 也会走到这里） */
+    int sync() override {
+        stopIfCancelled();
+        return 0;
+    }
+
+private:
+    /** 标志已置位则把引擎状态改为 USER_CANCEL */
+    void stopIfCancelled() {
+        if (g_cancel.load(std::memory_order_relaxed)) {
+            const_cast<MNN::Transformer::LlmContext*>(llm_->getContext())->status = MNN::Transformer::LlmStatus::USER_CANCEL;
+        }
+    }
+
+    /** 正在生成的引擎 */
+    Llm* llm_;
+    /** 已收集的文本 */
+    std::string buf_;
+};
+
+/** 抛出 Java 的 CancellationException（Kotlin 的 CancellationException 即它），调用方随后应立刻返回 */
+void throwCancelled(JNIEnv* env) {
+    jclass cls = env->FindClass("java/util/concurrent/CancellationException");
+    if (cls != nullptr) env->ThrowNew(cls, "文本生成已取消");
+}
+
 /** 抛出 Java 的 IllegalStateException，调用方随后应立刻返回 */
 void throwState(JNIEnv* env, const std::string& msg) {
     jclass cls = env->FindClass("java/lang/IllegalStateException");
@@ -132,7 +199,8 @@ JNIEXPORT jlong JNICALL Java_com_let188_arkli_ai_MnnNative_nativeCreate(JNIEnv* 
  * @param maxNewTokens 最多生成的 token 数，小于等于 0 表示用模型缺省
  * @param temperature 采样温度，小于等于 0 表示贪心（此时 topK 无意义）
  * @param topK 温度采样的候选数
- * @return 生成文本的 UTF-8 字节（可能在末尾截断半个字，由 Kotlin 侧宽松解码）；失败时抛 IllegalStateException 并返回 null
+ * @return 生成文本的 UTF-8 字节（可能在末尾截断半个字，由 Kotlin 侧宽松解码）；失败时抛 IllegalStateException 并返回 null；
+ *         被 nativeCancel 打断时抛 CancellationException 并返回 null（预填充阶段不可打断，最多等它跑完再取消）
  */
 JNIEXPORT jbyteArray JNICALL Java_com_let188_arkli_ai_MnnNative_nativeGenerate(
     JNIEnv* env, jclass, jlong handle, jbyteArray system, jbyteArray prompt, jint maxNewTokens,
@@ -141,6 +209,7 @@ JNIEXPORT jbyteArray JNICALL Java_com_let188_arkli_ai_MnnNative_nativeGenerate(
         throwState(env, "MNN 会话未创建");
         return nullptr;
     }
+    g_cancel.store(false);  // 每次调用开始先复位，上一次的取消不能带到这一次
     try {
         auto* s = reinterpret_cast<Session*>(handle);
         const std::string want = samplerConfig(temperature, topK);
@@ -166,13 +235,20 @@ JNIEXPORT jbyteArray JNICALL Java_com_let188_arkli_ai_MnnNative_nativeGenerate(
         }
         Llm* llm = s->llm;
         llm->reset();
-        std::ostringstream out;
+        clearCancelState(llm);  // 上一次若被取消，状态还停在 USER_CANCEL
+        CancelAwareBuf buf(llm);
+        std::ostream out(&buf);
         MNN::Transformer::ChatMessages messages;
         const std::string sys = toBytes(env, system);
         if (!sys.empty()) messages.emplace_back("system", sys);
         messages.emplace_back("user", toBytes(env, prompt));
         llm->response(messages, &out, nullptr, maxNewTokens > 0 ? maxNewTokens : -1);
-        const std::string text = out.str();
+        if (g_cancel.load()) {
+            clearCancelState(llm);  // 别把“已取消”留给下一次调用
+            throwCancelled(env);
+            return nullptr;
+        }
+        const std::string& text = buf.text();
         jbyteArray bytes = env->NewByteArray(static_cast<jsize>(text.size()));
         if (bytes == nullptr) return nullptr;
         env->SetByteArrayRegion(bytes, 0, static_cast<jsize>(text.size()), reinterpret_cast<const jbyte*>(text.data()));
@@ -181,6 +257,14 @@ JNIEXPORT jbyteArray JNICALL Java_com_let188_arkli_ai_MnnNative_nativeGenerate(
         throwState(env, std::string("MNN 生成异常：") + e.what());
         return nullptr;
     }
+}
+
+/**
+ * 打断正在进行的 nativeGenerate：在下一个 token 写出时生效，已生成的部分丢弃。
+ * 可在任意线程调用；没有生成在跑时只是置位标志，下一次 nativeGenerate 开头会复位它，所以无副作用。
+ */
+JNIEXPORT void JNICALL Java_com_let188_arkli_ai_MnnNative_nativeCancel(JNIEnv*, jclass) {
+    g_cancel.store(true);
 }
 
 /**

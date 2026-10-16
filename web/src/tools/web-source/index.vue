@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 网页源码获取：经原生请求，正文只当纯文本显示，不执行脚本、不渲染 HTML
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { showFailToast, showSuccessToast } from 'vant'
 import { isNativeAvailable } from '@/native/bridge'
@@ -90,23 +91,18 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="tool-page">
-    <div v-if="!inApp" class="tool-card">
+    <tool-group v-if="!inApp">
       <p class="tool-hint">需要在 App 内使用：网页请求由 App 原生发出，浏览器里没法直接联网。</p>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">网址</h3>
+    <tool-group title="网址">
       <van-field v-model="input" clearable placeholder="example.com 或 https://…" :disabled="!inApp" @keyup.enter="fetchSource" />
-      <van-button type="primary" block class="ws-btn" :disabled="!inApp" @click="fetchSource">
-        {{ loading ? '请求中，点此取消' : '获取源码' }}
-      </van-button>
       <p v-if="error" class="tool-hint ws-error">{{ error }}</p>
       <p class="tool-hint">只当文本显示，不会执行脚本，也不会渲染页面。</p>
-    </div>
+    </tool-group>
 
     <template v-if="result && shown">
-      <div class="tool-card">
-        <h3 class="tool-card__title">响应</h3>
+      <tool-group title="响应">
         <p class="ws-line">状态：{{ result.status }} {{ result.statusText }}，耗时 {{ result.elapsedMs }} ms</p>
         <p class="ws-line ws-break">最终地址：{{ result.url }}</p>
         <p v-if="result.redirects.length" class="ws-line">经过 {{ result.redirects.length }} 次跳转</p>
@@ -117,26 +113,21 @@ onBeforeUnmount(() => {
             </div>
           </van-collapse-item>
         </van-collapse>
-      </div>
+      </tool-group>
 
-      <div class="tool-card">
-        <h3 class="tool-card__title">正文</h3>
-        <div class="ws-actions">
-          <van-button size="small" plain @click="copyBody">复制</van-button>
-          <van-button size="small" plain @click="saveBody">保存为文件</van-button>
-        </div>
+      <tool-group title="正文">
         <pre class="ws-body">{{ shown.text }}</pre>
         <p v-if="shown.truncated" class="tool-hint">只显示前 {{ shown.text.length }} 个字符，共 {{ shown.total }} 个；复制与保存的是完整内容。</p>
         <p v-if="nativeTruncated" class="tool-hint">响应超过 2MB，已被截断。</p>
-      </div>
+      </tool-group>
     </template>
+
+    <!-- 底部动作栏：复制正文、保存为文件，主按钮获取源码（请求中变成取消） -->
+    <bottom-actions :actions="{ copy: { disabled: !shown }, save: { disabled: !shown, text: '保存' } }" main :main-text="loading ? '取消' : '获取源码'" :main-type="loading ? 'danger' : 'primary'" :disabled="{ main: !inApp }" @main="fetchSource" @copy="copyBody" @save="saveBody" />
   </div>
 </template>
 
 <style lang="scss" scoped>
-.ws-btn {
-  margin-top: $space-2;
-}
 .ws-error {
   color: var(--c-error);
 }
@@ -150,11 +141,6 @@ onBeforeUnmount(() => {
 .ws-header {
   padding: 2px 0;
   font-size: 12px;
-}
-.ws-actions {
-  display: flex;
-  gap: $space-2;
-  margin-bottom: $space-2;
 }
 .ws-body {
   max-height: 60vh;

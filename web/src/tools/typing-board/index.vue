@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 打字板（含原手持弹幕）：输入文字后全屏横屏展示，文字没超出屏幕就静止，超出就横向滚动
+import BottomActions from '@/shared/BottomActions.vue'
 import ColorPicker from '@/shared/ColorPicker.vue'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { showToast } from 'vant'
@@ -164,16 +165,15 @@ onUnmounted(() => {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
+    <tool-group>
       <van-field v-model="text" label="文字" placeholder="想让别人看到的话" :maxlength="TEXT_MAX" show-word-limit clearable />
       <div v-if="recent.length" class="tb-recent">
         <span class="tb-recent__label">最近：</span>
         <van-tag v-for="r in recent" :key="r" plain type="primary" size="large" class="tb-recent__tag" @click="text = r">{{ r }}</van-tag>
       </div>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">配色预设</h3>
+    <tool-group title="配色预设">
       <div class="tb-presets">
         <van-button v-for="(p, i) in PRESETS" :key="p.name" size="small" round :style="{ background: p.bg, color: p.fg, borderColor: p.fg }" @click="applyPreset(i)">{{ p.name }}</van-button>
       </div>
@@ -181,26 +181,25 @@ onUnmounted(() => {
         <label>字色 <color-picker v-model="fg" label="字色" /></label>
         <label>背景 <color-picker v-model="bg" label="背景色" /></label>
       </div>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">字号 {{ fontSize }}</h3>
+    <tool-group :title="`字号 ${fontSize}`">
       <van-slider v-model="fontSize" :min="FONT_MIN" :max="FONT_MAX" :step="4" />
-      <h3 class="tool-card__title tb-gap">滚动速度 {{ speed }}（文字超出屏幕时才滚动）</h3>
+      <h3 class="tool-group__title tb-gap">滚动速度 {{ speed }}（文字超出屏幕时才滚动）</h3>
       <van-slider v-model="speed" :min="SPEED_MIN" :max="SPEED_MAX" :step="10" />
-      <h3 class="tool-card__title tb-gap">粗细</h3>
+      <h3 class="tool-group__title tb-gap">粗细</h3>
       <van-radio-group v-model="weight" direction="horizontal">
         <van-radio v-for="w in WEIGHTS" :key="w" :name="w">{{ WEIGHT_NAMES[w] }}</van-radio>
       </van-radio-group>
-      <h3 class="tool-card__title tb-gap">对齐（没超出屏幕时）</h3>
+      <h3 class="tool-group__title tb-gap">对齐（没超出屏幕时）</h3>
       <van-radio-group v-model="align" direction="horizontal">
         <van-radio name="left">居左</van-radio>
         <van-radio name="center">居中</van-radio>
         <van-radio name="right">居右</van-radio>
       </van-radio-group>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
+    <tool-group>
       <van-cell-group :border="false">
         <van-cell title="闪烁" center><template #value><van-switch v-model="blink" size="22" /></template></van-cell>
         <template v-if="blink">
@@ -208,13 +207,15 @@ onUnmounted(() => {
         </template>
       </van-cell-group>
       <template v-if="blink">
-        <h3 class="tool-card__title tb-gap">频率 {{ hz }} Hz</h3>
+        <h3 class="tool-group__title tb-gap">频率 {{ hz }} Hz</h3>
         <van-slider v-model="hz" :min="BLINK_HZ_MIN" :max="BLINK_HZ_MAX" :step="0.5" />
       </template>
-    </div>
+    </tool-group>
 
-    <van-button type="primary" block round @click="show">全屏展示</van-button>
     <p class="tool-hint">展示时自动横屏：文字没超出屏幕就静止，超出就横向滚动。点右下角的退出按钮回到编辑（点屏幕不会退出，防误触），并会保持屏幕常亮。闪烁有光敏风险，请谨慎使用。</p>
+
+    <!-- 底部动作栏：主按钮全屏展示（展示层 z-index 更高，会盖住这条栏） -->
+    <bottom-actions main main-text="全屏展示" @main="show" />
 
     <div ref="probeRef" class="tb-probe" :style="{ fontWeight: weight }" aria-hidden="true" />
 

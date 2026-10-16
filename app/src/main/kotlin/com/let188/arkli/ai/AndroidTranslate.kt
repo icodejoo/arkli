@@ -4,7 +4,9 @@ import android.content.Context
 import android.util.Log
 import com.let188.arkli.bridge.BridgeErrors
 import com.let188.arkli.bridge.BridgeException
+import kotlinx.coroutines.CancellationException
 import uniffi.arkli_ffi.TranslateFfiException
+import uniffi.arkli_ffi.translateCancel
 import uniffi.arkli_ffi.translateLoad
 import uniffi.arkli_ffi.translateRun
 import uniffi.arkli_ffi.translateUnload
@@ -54,13 +56,18 @@ internal class UniffiTranslateBackend : TranslateBackend {
         TranslateOutcome(r.text, r.elapsedMs.toLong(), r.detected, r.unrecognized)
     }
 
-    /** 把 Rust 错误翻译成桥错误 */
+    /** 打断翻译：置 Rust 侧取消标志，下一个解码步前生效 */
+    override fun cancel() = translateCancel()
+
+    /** 把 Rust 错误翻译成桥错误；被取消翻成协程取消，桥会回 CANCELLED */
     private fun <T> guard(block: () -> T): T = try {
         block()
     } catch (e: TranslateFfiException.NotLoaded) {
         throw BridgeException(BridgeErrors.NOT_READY, e.message.orEmpty())
     } catch (e: TranslateFfiException.InvalidInput) {
         throw BridgeException(BridgeErrors.BAD_PARAMS, e.message.orEmpty())
+    } catch (e: TranslateFfiException.Cancelled) {
+        throw CancellationException(e.message)
     } catch (e: TranslateFfiException) {
         Log.e(TRANSLATE_LOG_TAG, "Rust 翻译失败", e)
         throw BridgeException(BridgeErrors.INTERNAL, e.message.orEmpty())

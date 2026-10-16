@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 随机数生成：设范围、个数、是否重复、是否排序、小数位数，一键生成并复制
+import BottomActions from '@/shared/BottomActions.vue'
 import { ref } from 'vue'
 import { showToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
@@ -48,7 +49,7 @@ async function copy(): Promise<void> {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
+    <tool-group>
       <van-cell-group :border="false">
         <van-field v-model="min" label="最小值" type="number" />
         <van-field v-model="max" label="最大值" type="number" />
@@ -69,17 +70,16 @@ async function copy(): Promise<void> {
           <template #value><van-switch v-model="sort" size="22" /></template>
         </van-cell>
       </van-cell-group>
-    </div>
+    </tool-group>
 
-    <van-button type="primary" block round @click="generate">生成</van-button>
+    <tool-group v-if="error" class="rn-error">{{ error }}</tool-group>
 
-    <div v-if="error" class="tool-card rn-error">{{ error }}</div>
-
-    <div v-if="results.length" class="tool-card">
-      <h3 class="tool-card__title">结果（{{ results.length }} 个）</h3>
+    <tool-group v-if="results.length" :title="`结果（${results.length} 个）`">
       <p class="rn-out">{{ results.join('  ') }}</p>
-      <van-button size="small" plain block @click="copy">复制</van-button>
-    </div>
+    </tool-group>
+
+    <!-- 底部动作栏：复制结果，主按钮生成 -->
+    <bottom-actions :actions="{ copy: { disabled: !results.length } }" main @main="generate" @copy="copy" />
   </div>
 </template>
 

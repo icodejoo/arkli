@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 获取壁纸：尽力读取系统壁纸并展示、预览、保存；Android 13+ 通常只能读到默认壁纸
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, ref } from 'vue'
 import { showFailToast, showImagePreview, showSuccessToast } from 'vant'
 import { isNativeAvailable } from '@/native/bridge'
@@ -82,26 +83,27 @@ async function onSave(): Promise<void> {
   <div class="tool-page">
     <van-notice-bar v-if="!hosted" wrapable :scrollable="false" left-icon="info-o">{{ TIP_NO_HOST }}</van-notice-bar>
 
-    <div class="tool-card wv-main">
-      <van-button type="primary" round block :loading="loading" :disabled="!hosted" @click="onGet">获取当前壁纸</van-button>
+    <tool-group class="wv-main">
       <p class="tool-hint">{{ TIP_LIMIT }}</p>
-    </div>
+    </tool-group>
 
-    <div v-if="ok" class="tool-card">
-      <div class="tool-card__title">{{ describeOk(ok) }}</div>
+    <tool-group v-if="ok">
+      <div class="tool-group__title">{{ describeOk(ok) }}</div>
       <p v-if="ok.kind === 'default'" class="tool-hint">这是系统默认壁纸，不一定是你桌面正在用的那张。</p>
       <img class="wv-img" :src="url" alt="壁纸" @click="onPreview" />
-      <div class="wv-actions">
-        <van-button plain round @click="onPreview">全屏预览</van-button>
-        <van-button type="primary" round :loading="saving" @click="onSave">保存到相册</van-button>
-      </div>
-    </div>
+    </tool-group>
 
-    <div v-if="failure" class="tool-card">
-      <div class="tool-card__title">{{ failure.title }}</div>
+    <tool-group v-if="failure">
+      <div class="tool-group__title">{{ failure.title }}</div>
       <p class="tool-hint">{{ failure.detail }}</p>
       <p class="tool-hint">{{ ALTERNATIVE_TIP }}</p>
-    </div>
+    </tool-group>
+
+    <!-- 底部动作栏：预览与保存要先读到壁纸，主按钮读取壁纸 -->
+    <bottom-actions main :main-text="loading ? '读取中' : '获取当前壁纸'" :disabled="{ main: loading || !hosted }" @main="onGet">
+      <van-action-bar-icon icon="eye-o" text="预览" :disabled="!ok" @click="onPreview" />
+      <van-action-bar-icon text="保存" :disabled="!ok || saving" @click="onSave"><template #icon><i-arkli-save /></template></van-action-bar-icon>
+    </bottom-actions>
   </div>
 </template>
 
@@ -119,12 +121,5 @@ async function onSave(): Promise<void> {
   margin: $space-3 auto;
   border-radius: 10px;
   object-fit: contain;
-}
-
-/* 预览与保存并排 */
-.wv-actions {
-  display: flex;
-  justify-content: center;
-  gap: $space-3;
 }
 </style>

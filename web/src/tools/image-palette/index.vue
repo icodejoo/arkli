@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 取色器：上面是图片预览区，底部动作栏（左相册、右拍照）；提取图片主色（median-cut），长按图片取色并显示放大镜；点色块全屏显示，点一行复制 HEX，点右侧箭头带着颜色去颜色助手
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { showFailToast, showSuccessToast, showToast } from 'vant'
@@ -8,7 +9,7 @@ import { cameraItemToPicked, captureCamera, clearCamera, isAlbum, isCancelled } 
 import { copyText } from '@/shared/clipboard'
 import { loupeAbove } from '@/shared/color-picker'
 import { fitMaxEdge } from '@/shared/image-calc'
-import { drawScaled, loadBitmap, pickImages, releaseCanvas, type PickedImage } from '@/shared/image-io'
+import { drawScaled, loadBitmap, EDIT_BASIC, pickImages, releaseCanvas, type PickedImage } from '@/shared/image-io'
 import {
   getPixel,
   LONG_PRESS_MS,
@@ -80,7 +81,7 @@ async function accept(got: PickedImage, fromCamera: boolean): Promise<void> {
 async function fromAlbum(): Promise<void> {
   if (loading.value) return
   try {
-    const [got] = await pickImages({ multiple: false, max: 1, onFailed: (f) => showToast(`读取失败：${f[0].message}`) })
+    const [got] = await pickImages({ edit: EDIT_BASIC, multiple: false, max: 1, onFailed: (f) => showToast(`读取失败：${f[0].message}`) })
     if (got) await accept(got, false)
   } catch (e) {
     showFailToast((e as { message?: string }).message ?? '选图失败')
@@ -273,8 +274,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
-      <h3 class="tool-card__title">{{ image ? '长按图片取色' : '预览' }}</h3>
+    <tool-group :title="`${image ? '长按图片取色' : '预览'}`">
       <!-- 空状态：和垃圾识别一样的灰色线框图标 -->
       <div v-if="!image" class="pal-empty"><van-icon name="photo-o" class="pal-empty__icon" /><span class="tool-hint">用下方的相册或拍照选一张图</span></div>
       <div v-if="image" ref="viewRef" class="pal-view">
@@ -292,11 +292,11 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <template v-if="image">
-        <h3 class="tool-card__title pal-zoom-title">放大倍数 {{ zoom }}×</h3>
+        <h3 class="tool-group__title pal-zoom-title">放大倍数 {{ zoom }}×</h3>
         <div class="is-slider"><van-slider v-model="zoom" :min="ZOOM_MIN" :max="ZOOM_MAX" :step="1" /></div>
       </template>
       <van-loading v-if="loading" size="20" class="pal-loading" />
-    </div>
+    </tool-group>
 
     <!-- 使用说明：放在预览区卡片下面（卡片外），信息样式（蓝） -->
     <van-notice-bar
@@ -308,8 +308,7 @@ onBeforeUnmount(() => {
       text="长按图片取色（放大镜帮你对准像素）；点左侧色块全屏显示，点一行复制 HEX，点右侧箭头带着颜色到颜色助手；占比按取样缩略图的像素统计。"
     />
 
-    <div v-if="picked" class="tool-card">
-      <h3 class="tool-card__title">点选的颜色</h3>
+    <tool-group v-if="picked" title="点选的颜色">
       <van-cell-group :border="false">
         <!-- 点色块全屏；点一行复制 HEX；右侧「复制 RGB」单独复制 RGB，箭头带着颜色去颜色助手 -->
         <van-cell center clickable :title="toHex(picked)" :label="toRgbText(picked)" @click="copy(toHex(picked))">
@@ -322,10 +321,9 @@ onBeforeUnmount(() => {
           </template>
         </van-cell>
       </van-cell-group>
-    </div>
+    </tool-group>
 
-    <div v-if="image" class="tool-card">
-      <h3 class="tool-card__title">主色（{{ count }} 种）</h3>
+    <tool-group v-if="image" :title="`主色（${count} 种）`">
       <div class="is-slider"><van-slider v-model="count" :min="PALETTE_MIN" :max="PALETTE_MAX" @change="extract" /></div>
       <van-cell-group :border="false">
         <van-cell v-for="(c, i) in palette" :key="i" center clickable :title="toHex(c)" :label="toRgbText(c)" @click="copy(toHex(c))">
@@ -344,15 +342,12 @@ onBeforeUnmount(() => {
           </template>
         </van-cell>
       </van-cell-group>
-    </div>
+    </tool-group>
 
     <color-fullscreen v-model="fullShow" :color="fullHex" />
 
     <!-- 底部动作栏：左边相册、右边拍照（没有模型，不带 AI） -->
-    <van-action-bar class="pal-bar" placeholder :safe-area-inset-bottom="false">
-      <van-action-bar-icon plain type="primary" icon="photo-o" text="相册" :disabled="loading" @click="fromAlbum" />
-      <van-action-bar-button type="danger" icon="photograph-o" text="拍照" :disabled="loading" @click="takePhoto" />
-    </van-action-bar>
+    <bottom-actions album main main-text="拍照" main-type="danger" :disabled="{ album: loading, main: loading }" @album="fromAlbum" @main="takePhoto" />
   </div>
 </template>
 
@@ -406,11 +401,6 @@ onBeforeUnmount(() => {
 .pal-loading {
   display: flex;
   justify-content: center;
-}
-
-/* 底部动作栏：避开手势条 */
-.pal-bar {
-  padding-bottom: var(--safe-bottom);
 }
 
 /* 放大倍数滑块标题 */

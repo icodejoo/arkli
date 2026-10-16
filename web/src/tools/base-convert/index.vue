@@ -97,8 +97,8 @@ function onCustomInput(): void {
       当前 WebView 太旧，不支持大整数，请升级系统 WebView 后再试。
     </van-notice-bar>
     <template v-else>
-      <div class="tool-card">
-        <p class="tool-card__title">输入进制</p>
+      <tool-group>
+        <p class="tool-group__title">输入进制</p>
         <van-radio-group :model-value="radioValue" direction="horizontal" @update:model-value="pick">
           <van-radio v-for="b in COMMON_BASES" :key="b" :name="b">{{ b }}</van-radio>
           <van-radio :name="CUSTOM_FLAG">自定义</van-radio>
@@ -112,9 +112,9 @@ function onCustomInput(): void {
           :error-message="customError"
           @update:model-value="onCustomInput"
         />
-      </div>
+      </tool-group>
 
-      <div class="tool-card">
+      <tool-group>
         <van-field
           v-model="text"
           label="数值"
@@ -126,24 +126,24 @@ function onCustomInput(): void {
           :error-message="inputError"
         />
         <p v-if="!parsed" class="tool-hint gap">支持任意长整数，不支持小数。</p>
-      </div>
+      </tool-group>
 
-      <van-cell-group v-if="rows.length" class="tool-group" title="转换结果">
+      <tool-group v-if="rows.length" title="转换结果">
         <van-cell v-for="r in rows" :key="r.label" :title="r.label">
           <template #label>
             <span class="mono">{{ r.value }}</span>
           </template>
         </van-cell>
-      </van-cell-group>
+      </tool-group>
 
-      <div v-if="twos !== null" class="tool-card">
-        <p class="tool-card__title">补码位宽</p>
+      <tool-group v-if="twos !== null">
+        <p class="tool-group__title">补码位宽</p>
         <van-radio-group v-model="bits" direction="horizontal">
           <van-radio v-for="w in BIT_WIDTHS" :key="w" :name="w">{{ w }}</van-radio>
         </van-radio-group>
         <div v-if="twos" class="tool-result tool-result--text mono gap">{{ twos }}</div>
         <p v-else class="tool-result tool-result--error gap">超出 {{ bits }} 位能表示的范围</p>
-      </div>
+      </tool-group>
     </template>
   </div>
 </template>

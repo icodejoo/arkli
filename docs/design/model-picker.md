@@ -137,4 +137,4 @@ ToolMeta.models?: ToolModelOption[]  // 过渡：{ modelId, title, desc }，L1 �
 
 - 每组是一个 `ModelPickerSection`：各用自己工具的目录与记忆的选择（`ocr` 的选择与文字识别页共用）。
 - 多组时选中不关弹层，方便连选；弹出下载提示仍会关。触发器简称取第一组。
-- 翻译页只在图片模式才加 OCR 组。底部动作栏见 `shared/BottomActions.vue`（`items` + `item-<key>` 插槽），翻译与垃圾分类共用。
+- 翻译页只在图片模式才加 OCR 组。底部动作栏见 `shared/BottomActions.vue`：布尔 props `ai` / `album` / `photo` / `main` 控制四项有无（`mainText` / `mainType` / `mainColor` / `iconColor` / `disabled` 调样式与禁用），`#ai` 放模型选择器（用 `variant="bar"`，不传自定义触发器），`ai` / `album` / `photo` / `main` 同名插槽（带作用域）可整项替换，默认插槽放额外项，翻译、垃圾分类与其余工具页共用。

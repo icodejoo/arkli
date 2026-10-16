@@ -1,11 +1,13 @@
 <script setup lang="ts">
 // GIF 合成/分解：多图合成动图（自写编码器）；动图拆成逐帧 PNG（优先 ImageDecoder，没有则用内置解码）
+import BottomActions from '@/shared/BottomActions.vue'
 import ColorPicker from '@/shared/ColorPicker.vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { showFailToast, showToast } from 'vant'
 import ImageThumbList from '@/shared/ImageThumbList.vue'
 import ImageResultList from '@/shared/ImageResultList.vue'
 import { useImageResults } from '@/shared/useImageResults'
+import { shootPhoto } from '@/shared/shootPhoto'
 import { baseName, formatBytes } from '@/shared/image-calc'
 import { canvasToBlob, createCanvas, loadBitmap, pickImages, releaseCanvas, saveBlob, type PickedImage } from '@/shared/image-io'
 import { GifWriter } from './gif-encoder'
@@ -105,7 +107,7 @@ const duration = computed(() =>
   ),
 )
 
-/** 添加图片 */
+/** 相册添加图片 */
 async function add(): Promise<void> {
   const room = MAX_COMPOSE_FRAMES - images.value.length
   if (room <= 0) {
@@ -120,6 +122,19 @@ async function add(): Promise<void> {
   } catch (e) {
     showToast((e as { message?: string }).message ?? '选图失败')
   }
+}
+
+/** 拍照添加一张 */
+async function shoot(): Promise<void> {
+  if (images.value.length >= MAX_COMPOSE_FRAMES) {
+    showToast(`最多 ${MAX_COMPOSE_FRAMES} 张`)
+    return
+  }
+  const got = await shootPhoto()
+  if (!got) return
+  images.value = images.value.concat(got)
+  delays.value = delays.value.concat(uniformMs.value)
+  compose.clear()
 }
 
 /** 移除第 i 张 */
@@ -351,13 +366,12 @@ onBeforeUnmount(() => {
     </van-tabs>
 
     <template v-if="tab === 'compose'">
-      <div class="tool-card">
-        <h3 class="tool-card__title">选择图片（最多 {{ MAX_COMPOSE_FRAMES }} 张，可调整顺序）</h3>
+      <tool-group :title="`选择图片（最多 ${MAX_COMPOSE_FRAMES} 张，可调整顺序）`">
         <image-thumb-list :images="images" sortable @remove="remove" @move="move" />
-        <van-button block plain round :disabled="compose.busy.value" @click="add">{{ images.length ? '继续添加' : '选择图片' }}</van-button>
-      </div>
+        <p v-if="!images.length" class="tool-hint">点底部「相册」或「拍照」选图，可以多选。</p>
+      </tool-group>
 
-      <div class="tool-card">
+      <tool-group>
         <van-cell-group :border="false">
           <van-cell title="尺寸方式" center>
             <template #value>
@@ -408,37 +422,25 @@ onBeforeUnmount(() => {
           共 {{ playList.length }} 帧，{{ size.width }}×{{ size.height }}，总时长 {{ formatSeconds(duration) }}
           <template v-if="!frameCheck.ok">；超出上限 {{ frameCheck.over }} 帧，请减少图片或改用正放</template>
         </p>
-      </div>
+      </tool-group>
 
-      <van-button type="primary" block round :loading="compose.busy.value" :disabled="images.length < 2 || !frameCheck.ok" @click="runCompose">
-        {{ compose.busy.value ? `合成中 ${composeText}` : '合成 GIF' }}
-      </van-button>
-
-      <div v-if="compose.results.value.length" class="tool-card">
-        <h3 class="tool-card__title">结果（直接预览动图）</h3>
+      <tool-group v-if="compose.results.value.length" title="结果（直接预览动图）">
         <image-result-list :results="compose.results.value" />
-        <van-button type="primary" plain block round :loading="compose.saving.value" @click="compose.saveAll">保存</van-button>
-      </div>
+      </tool-group>
     </template>
 
     <template v-else>
-      <div class="tool-card">
-        <h3 class="tool-card__title">选择 GIF</h3>
+      <tool-group title="选择 GIF">
         <image-thumb-list :images="gif ? [gif] : []" @remove="() => { gif?.release(); gif = null; info = null; split.clear() }" />
-        <van-button block plain round :disabled="split.busy.value" @click="pickGif">{{ gif ? '重新选择' : '选择 GIF' }}</van-button>
+        <p v-if="!gif" class="tool-hint">点底部「相册」选一个 GIF 动图。</p>
         <p v-if="info" class="tool-hint">
           {{ info.width }}×{{ info.height }}，共 {{ info.frames }} 帧，总时长 {{ formatSeconds(info.durationMs) }}
           <template v-if="info.truncated">（只拆前 {{ MAX_DECOMPOSE_FRAMES }} 帧）</template>
         </p>
         <p v-if="decoderNote" class="tool-hint is-warn">{{ decoderNote }}</p>
-      </div>
+      </tool-group>
 
-      <van-button type="primary" block round :loading="split.busy.value" :disabled="!gif" @click="runSplit">
-        {{ split.busy.value ? `拆帧中 ${split.progress.value}` : '开始分解' }}
-      </van-button>
-
-      <div v-if="split.results.value.length" class="tool-card">
-        <h3 class="tool-card__title">逐帧结果（{{ split.results.value.length }} 帧）</h3>
+      <tool-group v-if="split.results.value.length" :title="`逐帧结果（${split.results.value.length} 帧）`">
         <ul class="frames">
           <li v-for="(r, i) in split.results.value" :key="r.id" class="frame">
             <img class="frame__img" :src="r.url" :alt="r.name" loading="lazy" />
@@ -446,9 +448,27 @@ onBeforeUnmount(() => {
             <van-button size="mini" plain @click="saveOne(i)">保存</van-button>
           </li>
         </ul>
-        <van-button type="primary" plain block round :loading="split.saving.value" @click="split.saveAll">全部保存</van-button>
-      </div>
+      </tool-group>
     </template>
+
+    <!-- 底部动作栏：合成页有相册 / 拍照、保存与「合成 GIF」；分解页有相册（选 GIF）、全部保存与「开始分解」 -->
+    <bottom-actions
+      album
+      :photo="tab === 'compose'"
+      main
+      :main-text="tab === 'compose' ? (compose.busy.value ? `合成中 ${composeText}` : '合成 GIF') : split.busy.value ? `拆帧中 ${split.progress.value}` : '开始分解'"
+      :disabled="{
+        album: tab === 'compose' ? compose.busy.value : split.busy.value,
+        photo: compose.busy.value,
+        main: tab === 'compose' ? compose.busy.value || images.length < 2 || !frameCheck.ok : split.busy.value || !gif,
+      }"
+      @album="tab === 'compose' ? add() : pickGif()"
+      @photo="shoot"
+      @main="tab === 'compose' ? runCompose() : runSplit()"
+    >
+      <van-action-bar-icon v-if="tab === 'compose'" text="保存" :disabled="!compose.results.value.length || compose.saving.value" @click="compose.saveAll"><template #icon><i-arkli-save /></template></van-action-bar-icon>
+      <van-action-bar-icon v-else text="全部保存" :disabled="!split.results.value.length || split.saving.value" @click="split.saveAll"><template #icon><i-arkli-save /></template></van-action-bar-icon>
+    </bottom-actions>
   </div>
 </template>
 

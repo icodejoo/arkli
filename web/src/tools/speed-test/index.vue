@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 网速测试：TCP 延迟 + 下行速率，需要用户点「开始」才会消耗流量
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { isNativeAvailable } from '@/native/bridge'
 import { netSpeed } from '@/native/net'
@@ -113,22 +114,19 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="tool-page">
-    <div v-if="!inApp" class="tool-card">
+    <tool-group v-if="!inApp">
       <p class="tool-hint">需要在 App 内使用：测速由 App 原生发出，浏览器里没法直接联网。</p>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">开始前请注意</h3>
+    <tool-group title="开始前请注意">
       <p class="tool-hint">下行测速最多下载约 {{ maxMb }}MB，用移动数据时请留意流量。点「开始」才会测。</p>
-      <van-button type="primary" block class="st-btn" :disabled="!inApp" @click="start">
-        {{ phase === 'latency' ? `测延迟 ${sampleDone}/${LATENCY_TIMES}，点此取消` : phase === 'download' ? '测下行，点此取消' : '开始测速' }}
-      </van-button>
+      <p v-if="phase === 'latency'" class="tool-hint">测延迟 {{ sampleDone }}/{{ LATENCY_TIMES }}…</p>
+      <p v-else-if="phase === 'download'" class="tool-hint">测下行…</p>
       <van-progress v-if="phase === 'download'" :percentage="progress" stroke-width="6" class="st-progress" />
       <p v-if="error" class="tool-hint st-error">{{ error }}</p>
-    </div>
+    </tool-group>
 
-    <div v-if="latency" class="tool-card">
-      <h3 class="tool-card__title">延迟（TCP 连接 {{ LATENCY_HOST }}:{{ LATENCY_PORT }}，{{ latency.count }} 次）</h3>
+    <tool-group v-if="latency" :title="`延迟（TCP 连接 ${LATENCY_HOST}:${LATENCY_PORT}，${latency.count} 次）`">
       <div v-if="latency.ok" class="st-grid">
         <div><b>{{ formatMs(latency.min) }}</b><span>最小</span></div>
         <div><b>{{ formatMs(latency.avg) }}</b><span>平均</span></div>
@@ -136,31 +134,29 @@ onBeforeUnmount(() => {
       </div>
       <p v-else class="tool-hint st-error">5 次都没连上，网络可能不通。</p>
       <p v-if="latency.ok && latency.loss > 0" class="tool-hint">有 {{ Math.round(latency.loss * 100) }}% 的连接失败。</p>
-    </div>
+    </tool-group>
 
-    <div v-if="bps !== null" class="tool-card">
-      <h3 class="tool-card__title">下行速率</h3>
+    <tool-group v-if="bps !== null" title="下行速率">
       <p class="st-big">{{ formatMbps(bps) }}</p>
       <p class="tool-hint">约 {{ formatMBps(bps) }}，本次下载 {{ (bytes / 1_000_000).toFixed(1) }}MB。</p>
-    </div>
+    </tool-group>
 
-    <div v-if="history.length" class="tool-card">
-      <h3 class="tool-card__title">最近记录</h3>
+    <tool-group v-if="history.length" title="最近记录">
       <div v-for="h in history" :key="h.ts" class="st-his">
         <span>{{ formatTime(h.ts) }}</span>
         <span>{{ formatMs(h.latencyAvg) }}</span>
         <span>{{ h.bps === null ? '—' : formatMbps(h.bps) }}</span>
       </div>
-    </div>
+    </tool-group>
 
     <p class="tool-hint st-src">测速数据来自 Cloudflare（speed.cloudflare.com），结果受网络与服务器影响，仅供参考。</p>
+
+    <!-- 底部动作栏：主按钮开始测速（测速中变成取消） -->
+    <bottom-actions main :main-text="phase === 'latency' || phase === 'download' ? '取消' : '开始测速'" :main-type="phase === 'latency' || phase === 'download' ? 'danger' : 'primary'" :disabled="{ main: !inApp }" @main="start" />
   </div>
 </template>
 
 <style lang="scss" scoped>
-.st-btn {
-  margin-top: $space-2;
-}
 .st-progress {
   margin-top: $space-2;
 }

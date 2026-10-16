@@ -1,8 +1,9 @@
 <script setup lang="ts">
 // 二维码生成：输入文本实时画到 Canvas，可调纠错、边距、尺寸、颜色，导出 PNG
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { showFailToast, showSuccessToast } from 'vant'
-import { canvasToBlob, loadBitmap, pickImages, saveBlob, type PickedImage } from '@/shared/image-io'
+import { canvasToBlob, loadBitmap, EDIT_FULL, pickImages, saveBlob, type PickedImage } from '@/shared/image-io'
 import {
   BORDER_MAX,
   BORDER_MIN,
@@ -125,7 +126,7 @@ function drawLogo(ctx: CanvasRenderingContext2D, qrSize: number): void {
 /** 选择中间图片（相册），失败给提示 */
 async function pickLogo(): Promise<void> {
   try {
-    const got = await pickImages({ multiple: false, max: 1, onFailed: (f) => showFailToast(`读取失败：${f[0].message}`) })
+    const got = await pickImages({ edit: EDIT_FULL, multiple: false, max: 1, onFailed: (f) => showFailToast(`读取失败：${f[0].message}`) })
     const one: PickedImage | undefined = got[0]
     if (!one) return
     logo.value?.close()
@@ -161,8 +162,7 @@ async function save(): Promise<void> {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
-      <h3 class="tool-card__title">内容</h3>
+    <tool-group title="内容">
       <van-field
         v-model="text"
         type="textarea"
@@ -172,35 +172,33 @@ async function save(): Promise<void> {
         placeholder="输入文字或网址，如 https://example.com"
         :error-message="errorText"
       />
-    </div>
+    </tool-group>
 
-    <div v-if="result.ok && colorsValid" class="tool-card qr-preview">
+    <tool-group v-if="result.ok && colorsValid" class="qr-preview">
       <canvas ref="canvas" class="qr-canvas" />
       <p class="tool-hint">
         版本 {{ result.value.version }} · {{ result.value.size }}×{{ result.value.size }} 模块 · 输出 {{ pixels }}×{{ pixels }} px
       </p>
-    </div>
-    <div v-else-if="!settled" class="tool-card qr-empty tool-hint">输入内容后，二维码会显示在这里</div>
+    </tool-group>
+    <tool-group v-else-if="!settled" class="qr-empty tool-hint">输入内容后，二维码会显示在这里</tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">纠错等级（越高越抗污损，但码更密）</h3>
+    <tool-group title="纠错等级（越高越抗污损，但码更密）">
       <van-radio-group v-model="ecc" direction="horizontal">
         <van-radio v-for="o in ECC_OPTIONS" :key="o.id" :name="o.id">{{ o.label }} {{ o.hint }}</van-radio>
       </van-radio-group>
-      <h3 class="tool-card__title qr-gap">边距：{{ border }} 格</h3>
+      <h3 class="tool-group__title qr-gap">边距：{{ border }} 格</h3>
       <van-slider v-model="border" :min="BORDER_MIN" :max="BORDER_MAX" />
-      <h3 class="tool-card__title qr-gap">尺寸：{{ size }} px</h3>
+      <h3 class="tool-group__title qr-gap">尺寸：{{ size }} px</h3>
       <van-slider v-model="size" :min="SIZE_MIN" :max="SIZE_MAX" :step="32" />
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">中间图片（可选）</h3>
+    <tool-group title="中间图片（可选）">
       <div class="qr-logo-row">
         <van-button size="small" @click="pickLogo">{{ logo ? '更换图片' : '选择图片' }}</van-button>
         <van-button v-if="logo" size="small" plain @click="clearLogo">去掉</van-button>
       </div>
       <template v-if="logo && plan && advice">
-        <h3 class="tool-card__title qr-gap">图片大小：{{ plan.pct }}%（{{ plan.modules }} 格，上限 {{ plan.maxModules }} 格）</h3>
+        <h3 class="tool-group__title qr-gap">图片大小：{{ plan.pct }}%（{{ plan.modules }} 格，上限 {{ plan.maxModules }} 格）</h3>
         <van-slider v-model="sliderPct" :min="sliderMin" :max="Math.max(plan.maxPct, 1)" :disabled="plan.unfit" />
         <p v-if="advice.unfitNote" class="tool-hint qr-warn">{{ advice.unfitNote }}</p>
         <p v-if="advice.shrinkNote" class="tool-hint qr-warn">{{ advice.shrinkNote }}</p>
@@ -210,10 +208,9 @@ async function save(): Promise<void> {
           <van-button v-for="e in advice.upgrade" :key="e" size="small" type="primary" plain @click="ecc = e">纠错升到 {{ e }}</van-button>
         </div>
       </template>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">前景色</h3>
+    <tool-group title="前景色">
       <div class="qr-swatches">
         <button
           v-for="c in FG_PRESETS"
@@ -226,7 +223,7 @@ async function save(): Promise<void> {
         />
       </div>
       <van-field v-model="fg" placeholder="#000000" :error-message="parseHex(fg) ? '' : '请输入 #rgb 或 #rrggbb'" />
-      <h3 class="tool-card__title qr-gap">背景色</h3>
+      <h3 class="tool-group__title qr-gap">背景色</h3>
       <div class="qr-swatches">
         <button
           v-for="c in BG_PRESETS"
@@ -240,11 +237,10 @@ async function save(): Promise<void> {
       </div>
       <van-field v-model="bg" placeholder="#ffffff" :error-message="parseHex(bg) ? '' : '请输入 #rgb 或 #rrggbb'" />
       <p v-if="warning" class="tool-hint qr-warn">{{ warning }}</p>
-    </div>
+    </tool-group>
 
-    <div class="tool-actions">
-      <van-button type="primary" :disabled="!canDraw" :loading="saving" @click="save">保存 PNG</van-button>
-    </div>
+    <!-- 底部动作栏：二维码是实时画出来的，主操作就是保存；中间图片是可选素材，仍在页面里选 -->
+    <bottom-actions main main-text="保存 PNG" :disabled="{ main: !canDraw || saving }" @main="save" />
   </div>
 </template>
 

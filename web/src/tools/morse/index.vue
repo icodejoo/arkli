@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 摩斯电码：文本与摩斯互转，可调 WPM 与频率，用 WebAudio 发声播放
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { showFailToast, showSuccessToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
@@ -128,14 +129,14 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
+    <tool-group>
       <van-radio-group v-model="mode" direction="horizontal">
         <van-radio name="encode">文本 → 摩斯</van-radio>
         <van-radio name="decode">摩斯 → 文本</van-radio>
       </van-radio-group>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
+    <tool-group>
       <van-field
         v-model="input"
         type="textarea"
@@ -146,16 +147,13 @@ onBeforeUnmount(() => {
         :placeholder="mode === 'encode' ? '输入英文、数字或常用标点' : '点用 . 划用 -，字符间空格，单词间 /'"
       />
       <p v-if="notice" class="tool-hint morse-notice">{{ notice }}</p>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">{{ mode === 'encode' ? '摩斯码' : '文本' }}</h3>
+    <tool-group :title="`${mode === 'encode' ? '摩斯码' : '文本'}`">
       <p class="morse-out">{{ output || '（结果显示在这里）' }}</p>
-      <van-button size="small" plain :disabled="!output" @click="copy">复制</van-button>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">播放设置</h3>
+    <tool-group title="播放设置">
       <div class="morse-row">
         <span class="morse-row__k">速度 {{ wpm }} WPM</span>
         <van-slider v-model="wpm" class="morse-row__bar" :min="WPM_MIN" :max="WPM_MAX" />
@@ -165,10 +163,10 @@ onBeforeUnmount(() => {
         <van-slider v-model="freq" class="morse-row__bar" :min="FREQ_MIN" :max="FREQ_MAX" :step="10" :disabled="playing" />
       </div>
       <p class="tool-hint">预计 {{ seconds }} 秒。点 1 : 划 3 : 字符间隔 3 : 单词间隔 7。</p>
-    </div>
+    </tool-group>
 
-    <van-button v-if="!playing" type="primary" block round :disabled="!morse.trim()" @click="play">播放</van-button>
-    <van-button v-else type="danger" block round @click="stop">停止</van-button>
+    <!-- 底部动作栏：复制结果，主按钮播放（播放中变成停止） -->
+    <bottom-actions :actions="{ copy: { disabled: !output } }" main :main-text="playing ? '停止' : '播放'" :main-type="playing ? 'danger' : 'primary'" :disabled="{ main: !playing && !morse.trim() }" @main="playing ? stop() : play()" @copy="copy" />
   </div>
 </template>
 

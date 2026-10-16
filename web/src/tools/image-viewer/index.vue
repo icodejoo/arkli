@@ -1,9 +1,11 @@
 <script setup lang="ts">
 // 图片查看器：显示基础信息与 EXIF（相机参数、拍摄时间），GPS 默认折叠并提示隐私
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { showImagePreview, showToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
 import { pickImages, previewBlob, type PickedImage } from '@/shared/image-io'
+import { shootPhoto } from '@/shared/shootPhoto'
 import { parseExif, type ExifData } from './exif'
 import { buildRows, detectKind, EXIF_READ_BYTES, formatGps, type ImageKind } from './logic'
 
@@ -36,17 +38,14 @@ const noExifHint = computed(() => {
   return kind.value === 'jpeg' ? '这张图没有 EXIF 信息。' : '只有 JPEG 才读取 EXIF，其他格式仅显示基础信息。'
 })
 
-/** 选图并解析 */
-async function choose(): Promise<void> {
-  if (loading.value) return
+/** 采用新图并解析 */
+async function adopt(img: PickedImage): Promise<void> {
   try {
-    const got = await pickImages({ multiple: false, max: 1, onFailed: (f) => showToast(`读取失败：${f[0].message}`) })
-    if (!got.length) return
     loading.value = true
     image.value?.release()
-    image.value = got[0]
+    image.value = img
     showGps.value = false
-    const b = await (await fetch(got[0].url)).blob()
+    const b = await (await fetch(img.url)).blob()
     blob.value = b
     const head = new Uint8Array(await b.slice(0, EXIF_READ_BYTES).arrayBuffer())
     kind.value = detectKind(head)
@@ -56,6 +55,24 @@ async function choose(): Promise<void> {
   } finally {
     loading.value = false
   }
+}
+
+/** 相册选图并解析 */
+async function choose(): Promise<void> {
+  if (loading.value) return
+  try {
+    const got = await pickImages({ multiple: false, max: 1, onFailed: (f) => showToast(`读取失败：${f[0].message}`) })
+    if (got.length) await adopt(got[0])
+  } catch (e) {
+    showToast((e as { message?: string }).message ?? '选图失败')
+  }
+}
+
+/** 拍照并解析 */
+async function shoot(): Promise<void> {
+  if (loading.value) return
+  const got = await shootPhoto()
+  if (got) await adopt(got)
 }
 
 /** 全屏预览：宿主内走原生，浏览器里回退 vant 预览 */
@@ -80,24 +97,20 @@ onBeforeUnmount(() => image.value?.release())
 
 <template>
   <div class="tool-page">
-    <van-button type="primary" block round :loading="loading" @click="choose">{{ image ? '换一张' : '选择图片' }}</van-button>
-
     <template v-if="image">
-      <div class="tool-card">
+      <tool-group>
         <img class="shot" :src="image.url" :alt="image.name" @click="preview" />
         <p class="tool-hint">点击图片全屏查看</p>
-      </div>
+      </tool-group>
 
-      <div class="tool-card">
-        <h3 class="tool-card__title">图片信息</h3>
+      <tool-group title="图片信息">
         <van-cell-group :border="false">
           <van-cell v-for="r in rows" :key="r.label" :title="r.label" :value="r.value" />
         </van-cell-group>
         <p v-if="noExifHint" class="tool-hint">{{ noExifHint }}</p>
-      </div>
+      </tool-group>
 
-      <div v-if="gpsText" class="tool-card">
-        <h3 class="tool-card__title">拍摄位置</h3>
+      <tool-group v-if="gpsText" title="拍摄位置">
         <template v-if="!showGps">
           <p class="tool-hint">这张图带着定位信息。分享前请留意，别把住址、公司位置带出去。</p>
           <van-button plain block round @click="showGps = true">显示 GPS 坐标</van-button>
@@ -112,9 +125,12 @@ onBeforeUnmount(() => image.value?.release())
             <van-button plain round size="small" @click="showGps = false">隐藏</van-button>
           </div>
         </template>
-      </div>
+      </tool-group>
     </template>
-    <p v-else class="tool-hint">选一张图，看看尺寸、相机参数和拍摄时间。全程在本机处理，不上传。</p>
+    <p v-else class="tool-hint">点底部「相册」或「拍照」选一张图，看看尺寸、相机参数和拍摄时间。全程在本机处理，不上传。</p>
+
+    <!-- 底部动作栏：选图后自动解析，没有单独的开始按钮；右边主按钮是拍照 -->
+    <bottom-actions album main main-text="拍照" main-type="danger" :disabled="{ album: loading, main: loading }" @album="choose" @main="shoot" />
   </div>
 </template>
 

@@ -163,11 +163,11 @@ onBeforeUnmount(cancelTimer)
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
+    <tool-group>
       <van-radio-group v-model="mode" direction="horizontal" :disabled="counting">
         <van-radio v-for="m in MODES" :key="m" :name="m">{{ MODE_LABEL[m] }}</van-radio>
       </van-radio-group>
-    </div>
+    </tool-group>
 
     <div
       ref="pad"

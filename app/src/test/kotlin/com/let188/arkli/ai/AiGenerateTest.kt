@@ -33,6 +33,7 @@ class AiGenerateTest {
             this.prompt = prompt
             return "ok"
         }
+        override fun cancel() {}
     }
 
     /** 真提供者（Qwen + 交接）与分派器 */

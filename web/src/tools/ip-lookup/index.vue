@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // IP 查询：输入 IP 或域名，或查本机公网 IP；只展示国家代码、运营商 / ASN、主机名，不展示城市与经纬度
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { showFailToast, showSuccessToast } from 'vant'
 import { isNativeAvailable } from '@/native/bridge'
@@ -112,30 +113,29 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="tool-page">
-    <div v-if="!inApp" class="tool-card">
+    <tool-group v-if="!inApp">
       <p class="tool-hint">需要在 App 内使用：查询由 App 原生发出，浏览器里没法直接联网。</p>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">IP 或域名</h3>
+    <tool-group title="IP 或域名">
       <van-field v-model="input" clearable placeholder="8.8.8.8、2001:db8::1 或 example.com" :disabled="!inApp" @keyup.enter="lookup" />
       <div class="ip-actions">
-        <van-button type="primary" class="ip-main" :disabled="!inApp" @click="lookup">{{ loading ? '查询中，点此取消' : '查询' }}</van-button>
         <van-button plain :disabled="!inApp || loading" @click="lookupSelf">本机公网 IP</van-button>
       </div>
       <p v-if="error" class="tool-hint ip-error">{{ error }}</p>
       <p class="tool-hint">数据来自 ipinfo.io，查不到时用 RDAP（rdap.org）。只显示国家、运营商和主机名，不显示城市与经纬度。</p>
-    </div>
+    </tool-group>
 
-    <div v-if="info" class="tool-card">
-      <h3 class="tool-card__title">结果（来源：{{ SOURCE_TEXT[info.source] }}）</h3>
+    <tool-group v-if="info" :title="`结果（来源：${SOURCE_TEXT[info.source]}）`">
       <p v-if="resolvedNote" class="tool-hint ip-note">{{ resolvedNote }}</p>
       <div v-for="[k, v] in rows" :key="k" class="ip-row">
         <span class="ip-k">{{ k }}</span>
         <span class="ip-v">{{ v }}</span>
       </div>
-      <van-button size="small" plain class="ip-copy" @click="copyAll">复制</van-button>
-    </div>
+    </tool-group>
+
+    <!-- 底部动作栏：复制结果，主按钮查询（查询中变成取消） -->
+    <bottom-actions :actions="{ copy: { disabled: !info } }" main :main-text="loading ? '取消' : '查询'" :main-type="loading ? 'danger' : 'primary'" :disabled="{ main: !inApp }" @main="lookup" @copy="copyAll" />
   </div>
 </template>
 
@@ -144,9 +144,6 @@ onBeforeUnmount(() => {
   display: flex;
   gap: $space-2;
   margin-top: $space-2;
-}
-.ip-main {
-  flex: 1;
 }
 .ip-error {
   color: var(--c-error);
@@ -168,8 +165,5 @@ onBeforeUnmount(() => {
 }
 .ip-v {
   word-break: break-all;
-}
-.ip-copy {
-  margin-top: $space-2;
 }
 </style>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 自定义抽签：输入选项，抽出 N 个；选项自动存本地，下次打开还在
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, ref, watch } from 'vue'
 import { parseOptions } from '@/shared/options'
 import { checkDraw, drawLots } from './logic'
@@ -56,17 +57,16 @@ function clear(): void {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
-      <h3 class="tool-card__title">选项（每行一个，也可用逗号分隔）</h3>
+    <tool-group title="选项（每行一个，也可用逗号分隔）">
       <van-field v-model="text" type="textarea" rows="5" autosize placeholder="火锅&#10;烧烤&#10;麻辣烫" />
       <p class="tool-hint lottery-meta">
         共 {{ parsed.items.length }} 个选项
         <template v-if="parsed.duplicates">，已忽略 {{ parsed.duplicates }} 个重复</template>
         <template v-if="parsed.truncated">，超出上限的部分已忽略</template>
       </p>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
+    <tool-group>
       <van-cell-group :border="false">
         <van-cell title="抽取个数" center>
           <template #value>
@@ -75,21 +75,20 @@ function clear(): void {
         </van-cell>
       </van-cell-group>
       <p v-if="error" class="tool-hint lottery-error" role="alert">{{ error }}</p>
-    </div>
+    </tool-group>
 
-    <div class="tool-actions">
-      <van-button plain @click="clear">清空</van-button>
-      <van-button type="primary" :disabled="!!checkDraw(parsed.items, count).error" @click="go">抽签</van-button>
-    </div>
+    <van-button plain block round @click="clear">清空选项</van-button>
 
-    <div v-if="drawn && picked.length" class="tool-card lottery-result" aria-live="polite">
-      <h3 class="tool-card__title">抽中了</h3>
+    <tool-group v-if="drawn && picked.length" title="抽中了" class="lottery-result" aria-live="polite">
       <van-cell-group :border="false">
         <van-cell v-for="(p, i) in picked" :key="p" :title="p" center>
           <template #icon><span class="lottery-no">{{ i + 1 }}</span></template>
         </van-cell>
       </van-cell-group>
-    </div>
+    </tool-group>
+
+    <!-- 底部动作栏：主按钮抽签 -->
+    <bottom-actions main main-text="抽签" :disabled="{ main: !!checkDraw(parsed.items, count).error }" @main="go" />
   </div>
 </template>
 

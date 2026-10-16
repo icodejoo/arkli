@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 水平仪：读重力方向，圆形气泡看平放，条形看立放；可校准零点、锁定读数
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { applyZero, bubbleOffset, foldToQuarter, formatDeg, inPlaneAngle, isSteady, startGravity, tiltFromGravity, totalTilt, type MotionSourceLike, type MotionStatus, type Tilt, type Vec3 } from './logic'
 
@@ -121,7 +122,7 @@ onBeforeUnmount(() => stop?.())
 
 <template>
   <div class="tool-page">
-    <div class="tool-card level-card">
+    <tool-group class="level-card">
       <van-tabs v-model:active="mode" type="card" class="level__tabs">
         <van-tab title="圆形" name="bubble" />
         <van-tab title="条形" name="bar" />
@@ -146,26 +147,29 @@ onBeforeUnmount(() => stop?.())
       <p v-if="locked" class="tool-hint">读数已锁定</p>
       <p v-else-if="shaky" class="tool-hint level__warn">手机在晃动，读数仅供参考</p>
       <p v-else-if="mode === 'bar' && shown && !shown.standing" class="tool-hint">手机平放时条形显示的是横滚角，立起来再测水平线更准。</p>
-    </div>
+    </tool-group>
 
-    <div v-if="awaiting" class="tool-card">
-      <p class="tool-hint">这个系统要先授权才能读动作传感器。</p>
-      <van-button type="primary" block round @click="askPermission">授权并开始</van-button>
+    <tool-group v-if="awaiting">
+      <p class="tool-hint">这个系统要先授权才能读动作传感器，点底部「授权并开始」。</p>
       <p v-if="denied" class="tool-hint level__warn">授权被拒绝了，请到系统设置里允许「动作与方向」访问后重试。</p>
-    </div>
+    </tool-group>
     <div v-else-if="status === 'waiting'" class="tool-hint">正在读取传感器...</div>
     <div v-else-if="status === 'unsupported'" class="tool-hint level__warn">{{ TIP_UNSUPPORTED }}</div>
 
-    <div class="tool-actions">
-      <van-button block round plain :disabled="!vec" @click="calibrate">{{ zero || zeroBar ? '清除校准' : '校准零点' }}</van-button>
-      <van-button block round type="primary" :disabled="!shown" @click="toggleLock">{{ locked ? '解除锁定' : '锁定读数' }}</van-button>
-    </div>
+    <van-button block round plain :disabled="!vec" @click="calibrate">{{ zero || zeroBar ? '清除校准' : '校准零点' }}</van-button>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">使用小提示</h3>
+    <tool-group title="使用小提示">
       <p class="tool-hint">先在一个确认水平的桌面上点「校准零点」，之后的读数就是相对这个面的偏差。把手机转 180 度再看，读数应当正负对称，不对称就说明零点偏了。</p>
       <p class="tool-hint">手机壳、摄像头凸起会让平放的手机本身就有点斜，量精细的东西请贴着边测。</p>
-    </div>
+    </tool-group>
+
+    <!-- 底部动作栏：主按钮锁定 / 解除锁定读数（传感器仍持续运行）；需要授权时先显示「授权并开始」；校准零点是次要操作，留在页内 -->
+    <bottom-actions
+      main
+      :main-text="awaiting ? '授权并开始' : locked ? '解除锁定' : '锁定读数'"
+      :disabled="{ main: !awaiting && !shown }"
+      @main="awaiting ? askPermission() : toggleLock()"
+    />
   </div>
 </template>
 

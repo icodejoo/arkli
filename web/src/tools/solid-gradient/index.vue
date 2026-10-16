@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 纯色图与渐变图：选尺寸，纯色 / 线性渐变（2~5 色标、角度）/ 径向渐变，预览并导出 PNG
+import BottomActions from '@/shared/BottomActions.vue'
 import ColorPicker from '@/shared/ColorPicker.vue'
 import { computed, ref } from 'vue'
 import ImageResultList from '@/shared/ImageResultList.vue'
@@ -142,15 +143,13 @@ async function run(): Promise<void> {
       <van-tab title="径向渐变" name="radial" />
     </van-tabs>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">预览</h3>
+    <tool-group title="预览">
       <div class="sg-box" :style="{ paddingTop: previewPad + '%' }">
         <div class="sg-fill" :style="{ background: previewBg }" />
       </div>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">颜色</h3>
+    <tool-group title="颜色">
       <van-cell v-if="kind === 'solid'" title="纯色" center>
         <template #value><color-picker v-model="solid" label="纯色" /></template>
       </van-cell>
@@ -167,10 +166,9 @@ async function run(): Promise<void> {
           <div class="is-slider"><van-slider v-model="angle" :min="0" :max="360" /></div>
         </template>
       </template>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">尺寸</h3>
+    <tool-group title="尺寸">
       <div class="sg-presets">
         <van-button v-for="p in presets" :key="p.label" size="small" plain @click="usePreset(p)">{{ p.label }}</van-button>
       </div>
@@ -180,15 +178,14 @@ async function run(): Promise<void> {
       </div>
       <p v-if="!sizeCheck.ok" class="tool-hint sg-warn">{{ sizeCheck.message }}</p>
       <p v-else class="tool-hint">输出 {{ sizeCheck.width }}×{{ sizeCheck.height }} PNG</p>
-    </div>
+    </tool-group>
 
-    <van-button type="primary" block round :loading="busy" :disabled="!sizeCheck.ok" @click="run">生成图片</van-button>
-
-    <div v-if="results.length" class="tool-card">
-      <h3 class="tool-card__title">结果（点击预览）</h3>
+    <tool-group v-if="results.length" title="结果（点击预览）">
       <image-result-list :results="results" />
-      <van-button type="primary" plain block round :loading="saving" @click="saveAll">保存</van-button>
-    </div>
+    </tool-group>
+
+    <!-- 底部动作栏：保存结果，主按钮生成图片 -->
+    <bottom-actions :actions="{ save: { disabled: !results.length || saving } }" main :main-text="busy ? '生成中' : '生成图片'" :disabled="{ main: busy || !sizeCheck.ok }" @main="run" @save="saveAll" />
   </div>
 </template>
 

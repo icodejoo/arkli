@@ -12,8 +12,10 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     IArkliAi: typeof import('~icons/arkli/ai')['default']
+    IArkliSave: typeof import('~icons/arkli/save')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    ToolGroup: typeof import('./components/ToolGroup.vue')['default']
     VanActionBar: typeof import('vant/es')['ActionBar']
     VanActionBarButton: typeof import('vant/es')['ActionBarButton']
     VanActionBarIcon: typeof import('vant/es')['ActionBarIcon']
@@ -40,8 +42,6 @@ declare module 'vue' {
     VanSearch: typeof import('vant/es')['Search']
     VanSlider: typeof import('vant/es')['Slider']
     VanStepper: typeof import('vant/es')['Stepper']
-    VanSwipe: typeof import('vant/es')['Swipe']
-    VanSwipeItem: typeof import('vant/es')['SwipeItem']
     VanSwitch: typeof import('vant/es')['Switch']
     VanTab: typeof import('vant/es')['Tab']
     VanTabbar: typeof import('vant/es')['Tabbar']

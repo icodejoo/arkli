@@ -55,7 +55,7 @@ const diffResult = computed(() => {
     </van-tabs>
 
     <template v-if="tab === 'add'">
-      <div class="tool-card">
+      <tool-group>
         <van-cell-group>
           <van-field v-model="baseText" label="起始时刻" inputmode="numeric" placeholder="23:30:00" clearable />
           <van-field label="运算">
@@ -69,7 +69,7 @@ const diffResult = computed(() => {
           <van-field v-model="deltaText" label="时长" inputmode="numeric" placeholder="02:15:00" clearable />
         </van-cell-group>
         <p class="tool-hint hint">格式 时:分:秒，时长的小时可超过 24。</p>
-      </div>
+      </tool-group>
       <p v-if="addResult && 'error' in addResult" class="tool-result tool-result--error">{{ addResult.error }}</p>
       <div v-else-if="addResult" class="tool-result">
         <span class="tool-result__label">结果时刻</span>
@@ -78,7 +78,7 @@ const diffResult = computed(() => {
     </template>
 
     <template v-else>
-      <div class="tool-card">
+      <tool-group>
         <van-cell-group>
           <van-field v-model="aText" label="起" inputmode="numeric" placeholder="09:00:00" clearable />
           <van-field v-model="bText" label="止" inputmode="numeric" placeholder="18:30:00" clearable />
@@ -88,16 +88,16 @@ const diffResult = computed(() => {
             </template>
           </van-cell>
         </van-cell-group>
-      </div>
+      </tool-group>
       <p v-if="diffResult && 'error' in diffResult" class="tool-result tool-result--error">{{ diffResult.error }}</p>
       <template v-else-if="diffResult">
         <div class="tool-result">
           <span class="tool-result__label">时间差</span>
           {{ diffResult.text }}
         </div>
-        <van-cell-group class="tool-group" title="换算">
+        <tool-group title="换算">
           <van-cell v-for="u in diffResult.units" :key="u.name" :title="u.name" :value="String(u.value)" />
-        </van-cell-group>
+        </tool-group>
       </template>
     </template>
   </div>

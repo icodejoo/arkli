@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.let188.arkli.bridge.BridgeErrors
 import com.let188.arkli.bridge.BridgeException
+import kotlinx.coroutines.CancellationException
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
@@ -60,9 +61,14 @@ internal class MnnQwenBackend : QwenBackend {
         return decodeLenient(bytes)
     }
 
-    /** 把原生层异常翻译成桥错误 */
+    /** 打断生成：置原生层取消标志，下一个 token 处生效 */
+    override fun cancel() = MnnNative.nativeCancel()
+
+    /** 把原生层异常翻译成桥错误；取消原样放行（它是 IllegalStateException 的子类，必须排在前面），桥会回 CANCELLED */
     private fun <T> guard(block: () -> T): T = try {
         block()
+    } catch (e: CancellationException) {
+        throw e
     } catch (e: IllegalStateException) {
         Log.e(QWEN_LOG_TAG, "MNN 失败", e)
         throw BridgeException(BridgeErrors.INTERNAL, e.message.orEmpty())

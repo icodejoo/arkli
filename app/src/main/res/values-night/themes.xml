@@ -1,0 +1,6 @@
+<resources>
+    <!-- 系统深色时用深色父主题：WebView 的 prefers-color-scheme 取决于 Activity 主题明暗，不看系统设置 -->
+    <style name="Theme.Arkli" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@drawable/splash_background</item>
+    </style>
+</resources>

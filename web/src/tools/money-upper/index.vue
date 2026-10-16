@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 金额转大写：输入金额，实时显示财务大写
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, ref } from 'vue'
 import { showFailToast, showSuccessToast } from 'vant'
 import { moneyToUpper } from './logic'
@@ -27,7 +28,7 @@ async function copy(): Promise<void> {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
+    <tool-group>
       <van-field
         v-model="input"
         label="金额（元）"
@@ -39,15 +40,17 @@ async function copy(): Promise<void> {
         :error-message="errorMsg"
       />
       <p class="tool-hint hint">最多 12 位整数（千亿），超过两位小数按四舍五入。</p>
-    </div>
+    </tool-group>
 
     <template v-if="result?.ok">
       <div class="tool-result tool-result--text">
         <span class="tool-result__label">大写金额</span>
         <span class="upper">{{ result.text }}</span>
       </div>
-      <van-button type="primary" block icon="description-o" @click="copy">复制</van-button>
     </template>
+
+    <!-- 底部动作栏：金额转大写是实时的，主操作就是复制 -->
+    <bottom-actions main main-text="复制" :disabled="{ main: !result?.ok }" @main="copy" />
   </div>
 </template>
 

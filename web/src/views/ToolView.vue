@@ -92,6 +92,8 @@ watchEffect(() => {
       @click-left="goBack"
     >
       <template v-if="meta" #right>
+        <!-- 工具页可用 teleport 往这里放自己的标题栏按钮（如筛选） -->
+        <span id="shell-nav-actions" class="shell__slot" />
         <model-picker v-if="showPicker" :tool-id="meta.id" />
         <component
           :is="cameraOn ? KeyboardIcon : CameraIcon"
@@ -133,6 +135,12 @@ watchEffect(() => {
     }
   }
 
+  // 工具页挂进来的标题栏按钮容器
+  &__slot {
+    display: inline-flex;
+    align-items: center;
+  }
+
   // 摄像头按钮与星标之间留空
   &__cam {
     margin-right: $space-3;
@@ -141,8 +149,8 @@ watchEffect(() => {
   &__body {
     max-width: 720px;
     margin: 0 auto;
-    padding: $space-4;
-    padding-bottom: calc(#{$space-4} + var(--safe-bottom));
+    padding: $space-3;
+    padding-bottom: calc(#{$space-3} + var(--safe-bottom));
   }
 }
 </style>

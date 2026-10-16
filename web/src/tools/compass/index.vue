@@ -80,7 +80,7 @@ onUnmounted(() => {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card compass-card">
+    <tool-group class="compass-card">
       <div class="compass" :class="{ 'compass--off': status !== 'ok' }">
         <div class="compass__pointer" />
         <div class="compass__dial" :style="dialStyle">
@@ -99,21 +99,20 @@ onUnmounted(() => {
         <template v-if="status === 'ok'">{{ dirText }} {{ degText }}</template>
         <template v-else>--</template>
       </div>
-    </div>
+    </tool-group>
 
-    <div v-if="needPermission && status === 'idle'" class="tool-card">
+    <tool-group v-if="needPermission && status === 'idle'">
       <p class="tool-hint">这个系统要先授权才能读方向传感器。</p>
       <van-button type="primary" block round @click="askPermission">授权并开始</van-button>
       <p v-if="denied" class="tool-hint compass__warn">授权被拒绝了，请到系统设置里允许「动作与方向」访问后重试。</p>
-    </div>
+    </tool-group>
     <div v-else-if="status === 'waiting'" class="tool-hint">正在读取传感器...</div>
     <div v-else-if="status === 'unsupported'" class="tool-hint compass__warn">{{ TIP_UNSUPPORTED }}</div>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">使用小提示</h3>
+    <tool-group title="使用小提示">
       <p class="tool-hint">手机尽量放平。远离磁铁、金属、音箱和手机壳磁扣；读数乱跳时，拿着手机在空中画几个 8 字来校准。</p>
       <p class="tool-hint">这里指的是磁北，与地理正北有几度偏差（磁偏角），导航级用途请别依赖。</p>
-    </div>
+    </tool-group>
   </div>
 </template>
 

@@ -4,10 +4,15 @@ import {
   BANNER_MIN,
   buildPrompt,
   CATEGORY_HINTS,
+  DEFAULT_CATEGORY,
   generateCouplet,
   hanCount,
   MAX_ATTEMPTS,
   parseReply,
+  buildUpperPrompt,
+  generateUpper,
+  validateUpperReply,
+  UPPER_LEN_ANY,
   validateReply,
   validateUpper,
   type LlmRequest,
@@ -19,6 +24,10 @@ const REQ: LlmRequest = { demand: '程序员加班', wantBanner: true, bannerLen
 const NO_BANNER: LlmRequest = { ...REQ, wantBanner: false }
 
 describe('类型表', () => {
+  it('通用排第一；类型名不认识时按通用写', () => {
+    expect(CATEGORY_HINTS[0].name).toBe(DEFAULT_CATEGORY)
+    expect(buildPrompt({ ...REQ, category: '不存在的类型' })).toBe(buildPrompt({ ...REQ, category: DEFAULT_CATEGORY }))
+  })
   it('16 类，含挽联，名字不重复', () => {
     expect(CATEGORY_HINTS).toHaveLength(16)
     expect(new Set(CATEGORY_HINTS.map((c) => c.name)).size).toBe(16)
@@ -147,5 +156,35 @@ describe('validateUpper', () => {
     expect(validateUpper('春风abc')).toContain('只能')
     expect(validateUpper('，，')).toContain('汉字')
     expect(validateUpper('春'.repeat(10), 8)).toContain('8')
+  })
+})
+
+describe('出上联', () => {
+  it('提示词：带字数与类型，且不让写下联', () => {
+    const p = buildUpperPrompt({ demand: '', category: '春节', len: 7 })
+    expect(p).toContain('正好 7 个汉字')
+    expect(p).toContain('春节')
+    expect(p).toContain('不要写下联')
+    expect(buildUpperPrompt({ demand: '', category: '春节', len: UPPER_LEN_ANY })).not.toContain('正好')
+  })
+  it('校验：字数、字符', () => {
+    expect(validateUpperReply('春风送暖入屠苏', 7)).toBeNull()
+    expect(validateUpperReply('春风送暖', 7)).toContain('要求 7 字')
+    expect(validateUpperReply('春风abc', UPPER_LEN_ANY)).toContain('之外')
+    expect(validateUpperReply('', UPPER_LEN_ANY)).toContain('没有')
+  })
+  it('生成：首次不合格会带原因重试', async () => {
+    const run = vi.fn().mockResolvedValueOnce('上联：春风').mockResolvedValueOnce('上联：春风送暖入屠苏')
+    const r = await generateUpper({ demand: '', category: '通用', len: 7 }, run)
+    expect(r).toEqual({ ok: true, up: '春风送暖入屠苏', attempts: 2 })
+    expect(run.mock.calls[1][0]).toContain('上一次的问题')
+  })
+  it('生成：没写“上联：”时取第一行', async () => {
+    const r = await generateUpper({ demand: '', category: '通用', len: UPPER_LEN_ANY }, async () => '\n春风送暖\n')
+    expect(r.ok && r.up).toBe('春风送暖')
+  })
+  it('生成：两次都不合格返回失败', async () => {
+    const r = await generateUpper({ demand: '', category: '通用', len: 7 }, async () => '上联：春风')
+    expect(r.ok).toBe(false)
   })
 })

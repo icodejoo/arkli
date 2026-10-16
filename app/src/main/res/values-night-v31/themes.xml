@@ -1,0 +1,8 @@
+<resources>
+    <!-- Android 12+ 深色：启动页属性同 values-v31，父主题换成深色 -->
+    <style name="Theme.Arkli" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@drawable/splash_background</item>
+        <item name="android:windowSplashScreenBackground">@color/splash_color</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
+    </style>
+</resources>

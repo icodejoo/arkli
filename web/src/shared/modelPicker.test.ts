@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
-import type { ModelStatus } from '@/native/model'
+import type { ModelStateName, ModelStatus } from '@/native/model'
 import { TAG_AI, hasAiChoices, tools } from '@/tools/registry'
 import ModelPickerList from './ModelPickerList.vue'
 import { L4_OPENAI_ID, type CatalogItem } from './aiCatalog'
 import {
+  buildExtraItem,
   MSG_DOWNLOADING,
   MSG_NOT_READY,
   buildDesc,
@@ -173,5 +174,19 @@ describe('注册表', () => {
   it('没有 ai 标签的工具不出选择器', () => {
     expect(hasAiChoices(tools.find((t) => t.id === 'base64'))).toBe(false)
     expect(hasAiChoices(undefined)).toBe(false)
+  })
+})
+
+describe('buildExtraItem', () => {
+  const info = { id: 'corpus', modelId: 'couplet-corpus', title: '语料库', desc: '73 万副' }
+  const st = (state: ModelStateName) => ({ state, totalBytes: 100e6, downloadedBytes: 50e6 })
+  it('已安装：选中时 selected，否则 ready', () => {
+    expect(buildExtraItem(info, st('installed'), true).status).toBe('selected')
+    expect(buildExtraItem(info, st('installed'), false).status).toBe('ready')
+  })
+  it('未下载 / 下载中 / 没快照', () => {
+    expect(buildExtraItem(info, st('absent'), true)).toMatchObject({ status: 'missing', modelId: 'couplet-corpus' })
+    expect(buildExtraItem(info, st('downloading'), false)).toMatchObject({ status: 'loading', progress: 0.5 })
+    expect(buildExtraItem(info, undefined, false).status).toBe('unsupported')
   })
 })

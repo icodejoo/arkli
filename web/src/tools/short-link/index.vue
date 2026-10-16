@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 短链还原：逐跳请求并列出跳转链，只还原，不生成短链
+import BottomActions from '@/shared/BottomActions.vue'
 import { onBeforeUnmount, ref } from 'vue'
 import { showFailToast, showSuccessToast } from 'vant'
 import { isNativeAvailable } from '@/native/bridge'
@@ -64,45 +65,38 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="tool-page">
-    <div v-if="!inApp" class="tool-card">
+    <tool-group v-if="!inApp">
       <p class="tool-hint">需要在 App 内使用：请求由 App 原生发出，浏览器里没法直接联网。</p>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">短链</h3>
+    <tool-group title="短链">
       <van-field v-model="input" clearable placeholder="粘贴短链，如 t.cn/xxxx" :disabled="!inApp" @keyup.enter="run" />
-      <van-button type="primary" block class="sl-btn" :disabled="!inApp" @click="run">
-        {{ loading ? '还原中，点此取消' : '还原' }}
-      </van-button>
       <p v-if="error" class="tool-hint sl-error">{{ error }}</p>
       <p class="tool-hint">只还原，不生成短链。最多追 {{ MAX_HOPS }} 跳，每一跳都不会自动跟随，能看清中间经过了谁。</p>
-    </div>
+    </tool-group>
 
-    <div v-if="hops.length" class="tool-card">
-      <h3 class="tool-card__title">跳转链</h3>
+    <tool-group v-if="hops.length" title="跳转链">
       <ol class="sl-list">
         <li v-for="(h, i) in hops" :key="i" class="sl-item">
           <span class="sl-status">{{ h.status }}</span>
           <span class="sl-url">{{ h.url }}</span>
         </li>
       </ol>
-    </div>
+    </tool-group>
 
-    <div v-if="result" class="tool-card">
-      <h3 class="tool-card__title">结果</h3>
+    <tool-group v-if="result" title="结果">
       <p class="sl-final">{{ result.finalUrl }}</p>
       <p class="tool-hint" :class="{ 'sl-error': result.outcome !== 'done' }">
         {{ result.error ? `${outcomeText(result.outcome)}：${result.error}` : outcomeText(result.outcome) }}
       </p>
-      <van-button size="small" plain @click="copyFinal">复制最终地址</van-button>
-    </div>
+    </tool-group>
+
+    <!-- 底部动作栏：复制最终地址，主按钮还原（还原中变成取消） -->
+    <bottom-actions :actions="{ copy: { disabled: !result, text: '复制地址' } }" main :main-text="loading ? '取消' : '还原'" :main-type="loading ? 'danger' : 'primary'" :disabled="{ main: !inApp }" @main="run" @copy="copyFinal" />
   </div>
 </template>
 
 <style lang="scss" scoped>
-.sl-btn {
-  margin-top: $space-2;
-}
 .sl-error {
   color: var(--c-error);
 }

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 文字转图：输入文字排版成图片，自动换行，超过高度上限自动分页成多张
+import BottomActions from '@/shared/BottomActions.vue'
 import ColorPicker from '@/shared/ColorPicker.vue'
 import { computed, ref } from 'vue'
 import { showToast } from 'vant'
@@ -132,12 +133,11 @@ async function run(): Promise<void> {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
-      <h3 class="tool-card__title">文字内容</h3>
+    <tool-group title="文字内容">
       <van-field v-model="text" type="textarea" rows="6" autosize placeholder="输入或粘贴要转成图片的文字" @update:model-value="clear" />
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
+    <tool-group>
       <van-cell-group :border="false">
         <van-cell title="宽度" center>
           <template #value>
@@ -166,10 +166,9 @@ async function run(): Promise<void> {
         <van-cell title="内边距" :value="`${padding} px`" />
       </van-cell-group>
       <div class="is-slider"><van-slider v-model="padding" :min="0" :max="200" /></div>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">配色</h3>
+    <tool-group title="配色">
       <div class="presets">
         <button
           v-for="(p, i) in BG_PRESETS"
@@ -194,9 +193,9 @@ async function run(): Promise<void> {
         </van-cell>
       </van-cell-group>
       <p class="tool-hint">背景两个颜色相同就是纯色。</p>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
+    <tool-group>
       <van-field v-model="footer" label="页脚水印" placeholder="可选，显示在每张图底部" maxlength="40" />
       <van-cell title="单张高度上限" center>
         <template #value>
@@ -206,15 +205,14 @@ async function run(): Promise<void> {
         </template>
       </van-cell>
       <p class="tool-hint">文字太长放不下时，会自动拆成多张图。</p>
-    </div>
+    </tool-group>
 
-    <van-button type="primary" block round :loading="busy" @click="run">{{ busy ? '生成中' : '生成图片' }}</van-button>
-
-    <div v-if="results.length" class="tool-card">
-      <h3 class="tool-card__title">结果（共 {{ results.length }} 张，点击预览）</h3>
+    <tool-group v-if="results.length" :title="`结果（共 ${results.length} 张，点击预览）`">
       <image-result-list :results="results" />
-      <van-button type="primary" plain block round :loading="saving" @click="saveAll">保存</van-button>
-    </div>
+    </tool-group>
+
+    <!-- 底部动作栏：保存结果，主按钮生成图片 -->
+    <bottom-actions :actions="{ save: { disabled: !results.length || saving } }" main :main-text="busy ? '生成中' : '生成图片'" :disabled="{ main: busy }" @main="run" @save="saveAll" />
   </div>
 </template>
 

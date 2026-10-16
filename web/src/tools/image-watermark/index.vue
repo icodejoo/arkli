@@ -1,10 +1,12 @@
 <script setup lang="ts">
 // 图片水印：文字水印，九宫格单个或整图平铺，可调字号/颜色/透明度/旋转，支持多图批量
+import BottomActions from '@/shared/BottomActions.vue'
 import ColorPicker from '@/shared/ColorPicker.vue'
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { showToast } from 'vant'
 import ImageResultList from '@/shared/ImageResultList.vue'
 import { useImageResults } from '@/shared/useImageResults'
+import { shootPhoto } from '@/shared/shootPhoto'
 import { FORMAT_MIME, fitMaxEdge, outputName } from '@/shared/image-calc'
 import { canvasToBlob, createCanvas, drawScaled, loadBitmap, pickImages, releaseCanvas, type PickedImage } from '@/shared/image-io'
 import { clamp, fontPx, layoutWatermark, type WatermarkMode } from './logic'
@@ -127,7 +129,16 @@ async function buildPreview(): Promise<void> {
   }
 }
 
-/** 选图（追加） */
+/** 追加图片：清掉旧结果，首张到位时生成预览底图 */
+async function append(got: PickedImage[]): Promise<void> {
+  if (!got.length) return
+  const hadFirst = images.value.length > 0
+  images.value = images.value.concat(got)
+  clear()
+  if (!hadFirst) await buildPreview()
+}
+
+/** 相册选图（追加） */
 async function add(): Promise<void> {
   const room = MAX_PICK - images.value.length
   if (room <= 0) {
@@ -135,15 +146,20 @@ async function add(): Promise<void> {
     return
   }
   try {
-    const hadFirst = images.value.length > 0
-    const got = await pickImages({ multiple: true, max: room, onFailed: (f) => showToast(`${f.length} 张读取失败：${f[0].message}`) })
-    if (!got.length) return
-    images.value = images.value.concat(got)
-    clear()
-    if (!hadFirst) await buildPreview()
+    await append(await pickImages({ multiple: true, max: room, onFailed: (f) => showToast(`${f.length} 张读取失败：${f[0].message}`) }))
   } catch (e) {
     showToast((e as { message?: string }).message ?? '选图失败')
   }
+}
+
+/** 拍照（追加一张） */
+async function shoot(): Promise<void> {
+  if (images.value.length >= MAX_PICK) {
+    showToast(`最多 ${MAX_PICK} 张`)
+    return
+  }
+  const got = await shootPhoto()
+  if (got) await append([got])
 }
 
 /** 清空已选 */
@@ -191,17 +207,14 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
-      <h3 class="tool-card__title">选择图片（最多 {{ MAX_PICK }} 张，已选 {{ images.length }}）</h3>
+    <tool-group :title="`选择图片（最多 ${MAX_PICK} 张，已选 ${images.length}）`">
       <canvas v-show="images.length" ref="previewEl" class="wm-preview" />
-      <div class="tool-actions">
-        <van-button plain round :disabled="busy" @click="add">{{ images.length ? '继续添加' : '选择图片' }}</van-button>
-        <van-button v-if="images.length" plain round :disabled="busy" @click="reset">清空</van-button>
-      </div>
+      <p v-if="!images.length" class="tool-hint">点底部「相册」或「拍照」选图，可以多选。</p>
+      <van-button v-if="images.length" plain round :disabled="busy" @click="reset">清空已选</van-button>
       <p v-if="images.length" class="tool-hint wm-tip">预览按第一张图缩小绘制，导出时按原尺寸，效果等比一致。</p>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
+    <tool-group>
       <van-field v-model="text" label="水印文字" placeholder="如：仅供办理业务使用" maxlength="40" clearable />
       <van-cell-group :border="false">
         <van-cell title="模式" center>
@@ -256,17 +269,14 @@ onBeforeUnmount(() => {
           </van-radio-group>
         </template>
       </van-cell>
-    </div>
+    </tool-group>
 
-    <van-button type="primary" block round :loading="busy" :disabled="!images.length || !text.trim()" @click="run">
-      {{ busy ? `处理中 ${progress}` : '生成水印图' }}
-    </van-button>
-
-    <div v-if="results.length" class="tool-card">
-      <h3 class="tool-card__title">结果（点击预览）</h3>
+    <tool-group v-if="results.length" title="结果（点击预览）">
       <image-result-list :results="results" />
-      <van-button type="primary" plain block round :loading="saving" @click="saveAll">保存</van-button>
-    </div>
+    </tool-group>
+
+    <!-- 底部动作栏：相册 / 拍照追加图片，保存结果，主按钮生成水印图 -->
+    <bottom-actions :actions="{ save: { disabled: !results.length || saving } }" album photo main :main-text="busy ? `处理中 ${progress}` : '生成水印图'" :disabled="{ album: busy, photo: busy, main: busy || !images.length || !text.trim() }" @album="add" @photo="shoot" @main="run" @save="saveAll" />
   </div>
 </template>
 

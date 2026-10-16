@@ -145,14 +145,13 @@ async function copy(value: string): Promise<void> {
         <span v-if="contrast">{{ contrast.text }} : 1</span>
         <span v-else>颜色写法有误</span>
       </div>
-      <div class="tool-card">
-        <h3 class="tool-card__title">前景色（文字）</h3>
+      <tool-group title="前景色（文字）">
         <van-field v-model="fgText" clearable autocomplete="off" :spellcheck="false" placeholder="#1b1d22" :error-message="fgParsed.ok ? '' : fgParsed.error" />
-        <h3 class="tool-card__title cc-gap">背景色</h3>
+        <h3 class="tool-group__title cc-gap">背景色</h3>
         <van-field v-model="bgText" clearable autocomplete="off" :spellcheck="false" placeholder="#ffffff" :error-message="bgParsed.ok ? '' : bgParsed.error" />
         <van-button class="cc-gap" size="small" plain @click="swapContrast">前景背景互换</van-button>
-      </div>
-      <div v-if="contrast" class="tool-card">
+      </tool-group>
+      <tool-group v-if="contrast">
         <van-cell-group :border="false">
           <van-cell v-for="r in LEVEL_ROWS" :key="r.key" :title="r.label" center>
             <template #value>
@@ -161,18 +160,17 @@ async function copy(value: string): Promise<void> {
           </van-cell>
         </van-cell-group>
         <p class="tool-hint cc-gap">大号文字指 18pt（24px）以上，或 14pt（约 19px）以上加粗。半透明颜色按不透明计算。</p>
-      </div>
+      </tool-group>
     </template>
 
     <template v-else-if="tab === 'palette'">
-      <div class="tool-card">
-        <h3 class="tool-card__title">基色</h3>
+      <tool-group title="基色">
         <van-field v-model="text" clearable autocomplete="off" :spellcheck="false" placeholder="#3b6cf6" :error-message="error" />
-        <h3 class="tool-card__title cc-gap">方案</h3>
+        <h3 class="tool-group__title cc-gap">方案</h3>
         <van-radio-group v-model="scheme" direction="horizontal">
           <van-radio v-for="s in SCHEMES" :key="s" :name="s">{{ SCHEME_LABEL[s] }}</van-radio>
         </van-radio-group>
-      </div>
+      </tool-group>
       <div class="swatches">
         <button v-for="(s, i) in swatches" :key="i" type="button" class="swatch" :style="{ background: s.hex, color: s.fg }" @click="copyHex(s.hex)">
           {{ s.hex }}
@@ -186,8 +184,7 @@ async function copy(value: string): Promise<void> {
     <p class="tool-hint cc-center">点上面的色块全屏显示</p>
     <color-fullscreen v-model="fullShow" :color="fullHex" />
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">输入颜色</h3>
+    <tool-group title="输入颜色">
       <van-field
         v-model="text"
         clearable
@@ -196,10 +193,9 @@ async function copy(value: string): Promise<void> {
         placeholder="#3b6cf6 / rgb(59,108,246) / hsl(224,91%,60%)"
         :error-message="error"
       />
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">微调 RGB</h3>
+    <tool-group title="微调 RGB">
       <div v-for="c in CHANNELS" :key="c.key" class="channel">
         <b class="channel__k">{{ c.key.toUpperCase() }}</b>
         <van-slider
@@ -212,9 +208,9 @@ async function copy(value: string): Promise<void> {
         />
         <span class="channel__v">{{ Math.round(color[c.key]) }}</span>
       </div>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
+    <tool-group>
       <van-cell-group :border="false">
         <van-cell v-for="r in rows" :key="r.label" center :title-style="{ flex: '0 0 44px' }">
           <template #title><span class="row__k">{{ r.label }}</span></template>
@@ -224,7 +220,7 @@ async function copy(value: string): Promise<void> {
           </template>
         </van-cell>
       </van-cell-group>
-    </div>
+    </tool-group>
     </template>
   </div>
 </template>

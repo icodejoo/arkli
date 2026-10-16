@@ -1,9 +1,11 @@
 <script setup lang="ts">
 // 图片提取表格：OCR 文字框 → 行列聚类 → 可编辑表格 → 复制 TSV / 下载 CSV；另有「粘贴文字拆表」入口
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, onDeactivated, ref, shallowRef } from 'vue'
 import { showFailToast, showSuccessToast, showToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
-import { pickImages, saveBlob, type PickedImage } from '@/shared/image-io'
+import { EDIT_BASIC, pickImages, saveBlob, type PickedImage } from '@/shared/image-io'
+import { shootPhoto } from '@/shared/shootPhoto'
 import { aiOcr, AiNotReadyError } from '@/native/ai'
 import { useAiCatalog } from '@/native/useAiCatalog'
 import ModelMissingNotice from '@/shared/ModelMissingNotice.vue'
@@ -41,17 +43,33 @@ const rows = ref<string[][]>([])
 /** 列数 */
 const colCount = computed(() => (rows.value[0] ? rows.value[0].length : 0))
 
-/** 选图 */
+/** 采用新图：释放旧图并清掉旧表格 */
+function adopt(img: PickedImage): void {
+  image.value?.release()
+  image.value = img
+  rows.value = []
+}
+
+/** 相册选图 */
 async function choose(): Promise<void> {
   try {
-    const got = await pickImages({ onFailed: (f) => showToast(`读取失败：${f[0].message}`) })
-    if (!got.length) return
-    image.value?.release()
-    image.value = got[0]
-    rows.value = []
+    const got = await pickImages({ edit: EDIT_BASIC, onFailed: (f) => showToast(`读取失败：${f[0].message}`) })
+    if (got.length) adopt(got[0])
   } catch (e) {
     showToast((e as { message?: string }).message ?? '选图失败')
   }
+}
+
+/** 拍照 */
+async function shoot(): Promise<void> {
+  const got = await shootPhoto()
+  if (got) adopt(got)
+}
+
+/** 底部主按钮：图片页识别，粘贴页拆表 */
+function onMain(): void {
+  if (tab.value === 'image') void recognize()
+  else splitText()
 }
 
 /** 识别图片并聚类成表 */
@@ -118,30 +136,23 @@ onBeforeUnmount(cleanup)
     </van-tabs>
 
     <template v-if="tab === 'image'">
-      <div class="tool-card">
-        <h3 class="tool-card__title">选择表格图片</h3>
+      <tool-group title="选择表格图片">
         <img v-if="image" class="preview" :src="image.url" alt="表格图片" />
-        <van-button block plain round :disabled="busy" @click="choose">{{ image ? '换一张' : '选择图片' }}</van-button>
+        <p v-else class="tool-hint">点底部「相册」或「拍照」选一张表格图片。</p>
         <p class="tool-hint">适合线框清楚、没有合并单元格的表格；效果取决于文字识别质量，识别后可以逐格修改。</p>
-      </div>
+      </tool-group>
       <model-missing-notice v-if="catalogReady && !modelReady" />
-      <van-button type="primary" block round :loading="busy" :disabled="!image || !modelReady" @click="recognize">
-        {{ busy ? '识别中…' : '识别并生成表格' }}
-      </van-button>
       <p v-if="catalogReady && !modelReady" class="tool-hint">模型未就绪时，可以切到「粘贴文字」，把别处识别好的文字拆成表格。</p>
     </template>
 
     <template v-else>
-      <div class="tool-card">
-        <h3 class="tool-card__title">粘贴文字</h3>
+      <tool-group title="粘贴文字">
         <van-field v-model="pasted" type="textarea" rows="6" autosize placeholder="每行一行；列之间用制表符、多个空格或空格隔开" />
         <p class="tool-hint">有制表符按制表符拆；没有则优先按连续多个空格拆（能保留格内单个空格），再不行按任意空白拆。</p>
-      </div>
-      <van-button type="primary" block round :disabled="!pasted.trim()" @click="splitText">拆成表格</van-button>
+      </tool-group>
     </template>
 
-    <div v-if="rows.length" class="tool-card">
-      <h3 class="tool-card__title">表格（{{ rows.length }} 行 × {{ colCount }} 列，可直接修改）</h3>
+    <tool-group v-if="rows.length" :title="`表格（${rows.length} 行 × ${colCount} 列，可直接修改）`">
       <div class="table-wrap">
         <table class="grid">
           <thead>
@@ -164,11 +175,22 @@ onBeforeUnmount(cleanup)
           </tbody>
         </table>
       </div>
-      <div class="actions">
-        <van-button type="primary" plain round @click="copyTsv">复制 TSV</van-button>
-        <van-button type="primary" plain round @click="downloadCsv">下载 CSV</van-button>
-      </div>
-    </div>
+    </tool-group>
+
+    <!-- 底部动作栏：图片页有相册 / 拍照，复制 TSV、下载 CSV，主按钮识别或拆表 -->
+    <bottom-actions
+      :album="tab === 'image'"
+      :photo="tab === 'image'"
+      main
+      :main-text="tab === 'image' ? (busy ? '识别中' : '识别') : '拆成表格'"
+      :disabled="{ album: busy, photo: busy, main: tab === 'image' ? busy || !image || !modelReady : !pasted.trim() }"
+      @album="choose"
+      @photo="shoot"
+      @main="onMain"
+      :actions="{ copy: { disabled: !rows.length }, save: { disabled: !rows.length, text: 'CSV' } }"
+      @copy="copyTsv"
+      @save="downloadCsv"
+    />
   </div>
 </template>
 
@@ -224,15 +246,6 @@ onBeforeUnmount(cleanup)
     white-space: nowrap;
     background: none;
     border: 0;
-  }
-}
-
-.actions {
-  display: flex;
-  gap: $space-3;
-
-  > .van-button {
-    flex: 1;
   }
 }
 </style>

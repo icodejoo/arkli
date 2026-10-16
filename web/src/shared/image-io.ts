@@ -160,6 +160,21 @@ function pickViaInput(multiple: boolean): Promise<File[]> {
   })
 }
 
+/** 选图页预览里「编辑」按钮允许的模式：crop 裁剪（自由/固定比例），rotate 旋转与翻转，shape 预设形状（圆、心形等），lasso 手绘套索 */
+export type PickEditMode = 'crop' | 'rotate' | 'shape' | 'lasso'
+
+/** 全部合法的编辑模式（供单测校验常量） */
+export const PICK_EDIT_MODES: readonly PickEditMode[] = ['crop', 'rotate', 'shape', 'lasso']
+
+/** 基础编辑：裁剪 + 旋转，输出仍是 JPEG，所有单图工具页通用 */
+export const EDIT_BASIC: PickEditMode[] = ['crop', 'rotate']
+
+/** 完整编辑：再加形状与套索，会输出带透明的 PNG；仅限后续流程会铺底色/保留 alpha 的页面 */
+export const EDIT_FULL: PickEditMode[] = ['crop', 'rotate', 'shape', 'lasso']
+
+/** 关闭编辑：传给 edit 后选图页不显示「编辑」按钮 */
+export const EDIT_NONE: PickEditMode[] = []
+
 /** 选图入参 */
 export interface PickImagesOptions {
   /** 是否多选 */
@@ -170,6 +185,12 @@ export interface PickImagesOptions {
   keepSource?: boolean
   /** 是否在原生选图页显示拍照按钮（仅原生；点了会返回 camera: true） */
   camera?: boolean
+  /**
+   * 原生选图页预览里「编辑」按钮允许的模式（仅原生，仅图片选择）。不传默认全部（裁剪、旋转、形状、套索）；传 EDIT_NONE（[]）关闭编辑；传 EDIT_BASIC 只留裁剪与旋转。
+   * 用户在选图页里编辑过的图，返回的是编辑后的图（方向已摆正）：矩形为 JPEG，用了 shape 或 lasso 抠出形状时为带透明的 PNG；
+   * 这类项即使 keepSource 也不带 sourceHandle（它不对应相册里的原图）。
+   */
+  edit?: PickEditMode[]
   /** 部分文件失败的回调 */
   onFailed?: (failed: Array<{ name: string; message: string }>) => void
 }
@@ -190,7 +211,7 @@ export async function pickImagesOrCamera(
   if (isNativeAvailable()) {
     const res = await call<{ items: NativePickItem[]; failed: Array<{ name: string; message: string }>; camera?: boolean }>(
       'native.file.pick',
-      { mime: IMAGE_ACCEPT, multiple, max, ...(opts.keepSource ? { keepSource: true } : {}), ...(opts.camera ? { camera: true } : {}) },
+      { mime: IMAGE_ACCEPT, multiple, max, ...(opts.keepSource ? { keepSource: true } : {}), ...(opts.camera ? { camera: true } : {}), ...(opts.edit ? { edit: opts.edit } : {}) },
       { timeoutMs: 0 },
     )
     if (res.failed?.length) opts.onFailed?.(res.failed)

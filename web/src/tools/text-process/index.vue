@@ -2,6 +2,7 @@
 // 文字处理：正则提取、查找替换、行处理、大小写、全半角、统计，另带打开/保存文本文件。
 // 保存：目前只做浏览器下载（Blob + <a download>）；宿主内的保存（写入文档目录）先不做，
 // 因为 saveBlob 面向图片、会存进相册，不适合纯文本。
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { showToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
@@ -177,12 +178,10 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
+    <tool-group>
       <div class="tp-bar">
         <van-button size="small" plain @click="pickFile">打开文件</van-button>
-        <van-button size="small" plain :disabled="!text" @click="save">保存</van-button>
         <van-button v-if="hasHost" size="small" plain :disabled="!text" @click="shareText">分享</van-button>
-        <van-button size="small" plain :disabled="!text" @click="copy(text)">复制</van-button>
         <van-button size="small" plain :disabled="!text || readonly" @click="text = ''">清空</van-button>
         <input ref="fileInput" class="tp-file" type="file" accept="text/*,.txt,.md,.csv,.json,.log" @change="onFile" />
       </div>
@@ -201,10 +200,9 @@ onBeforeUnmount(() => {
       <p class="tool-hint">
         {{ stats.chars }} 字（不含空白 {{ stats.charsNoSpace }}）· {{ stats.lines }} 行 · {{ stats.bytes }} 字节
       </p>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">整理</h3>
+    <tool-group title="整理">
       <div class="tp-grid">
         <van-button size="small" @click="apply(dedupeLines)">行去重</van-button>
         <van-button size="small" @click="apply((s) => sortLines(s))">升序</van-button>
@@ -217,10 +215,9 @@ onBeforeUnmount(() => {
         <van-button size="small" @click="apply(toHalfWidth)">转半角</van-button>
         <van-button size="small" @click="apply(toFullWidth)">转全角</van-button>
       </div>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">查找替换</h3>
+    <tool-group title="查找替换">
       <van-field v-model="findText" label="查找" placeholder="要找的内容" clearable />
       <van-field v-model="replaceText" label="替换为" placeholder="留空表示删除" clearable />
       <div class="tp-opts">
@@ -228,10 +225,9 @@ onBeforeUnmount(() => {
         <van-checkbox v-model="replaceCase" shape="square">区分大小写</van-checkbox>
       </div>
       <van-button type="primary" block round size="small" @click="doReplace">全部替换</van-button>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">正则提取</h3>
+    <tool-group title="正则提取">
       <van-field v-model="extractPattern" label="表达式" placeholder="如 \d+ 或 [\w.]+@\w+\.com" clearable />
       <div class="tp-opts">
         <van-checkbox v-model="extractCase" shape="square">区分大小写</van-checkbox>
@@ -245,7 +241,10 @@ onBeforeUnmount(() => {
         <pre class="tp-result">{{ shownExtract.join('\n') }}</pre>
         <van-button size="small" plain block @click="copy(extracted.join('\n'))">复制全部结果</van-button>
       </template>
-    </div>
+    </tool-group>
+
+    <!-- 底部动作栏：整理类操作地位平等，主按钮取收尾最常用的「复制」，保存放插槽；打开文件、分享、清空与各整理操作留在页内 -->
+    <bottom-actions :actions="{ save: { disabled: !text } }" main main-text="复制" :disabled="{ main: !text }" @main="copy(text)" @save="save" />
   </div>
 </template>
 

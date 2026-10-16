@@ -20,13 +20,12 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <div class="tool-card ai-gap">
-    <h3 class="tool-card__title">{{ feature }}需要本地 AI 模型</h3>
+  <tool-group :title="`${feature}需要本地 AI 模型`" class="ai-gap">
     <p class="tool-hint">模型未就绪：当前版本还没有内置这个模型，{{ feature }}的识别/生成这一步暂时不能用。</p>
     <p v-if="purpose" class="tool-hint">用途：{{ purpose }}</p>
     <p v-if="size" class="tool-hint">模型大小：{{ size }}（上线后按需下载）</p>
     <van-button v-if="retry" size="small" plain round :loading="loading" @click="emit('retry')">重新检测</van-button>
-  </div>
+  </tool-group>
 </template>
 
 <style lang="scss" scoped>

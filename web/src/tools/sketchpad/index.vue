@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 画板：Pointer Events 画笔，笔画存成栈，撤销/重做靠重绘；导出 PNG 走 saveBlob
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import { showFailToast, showSuccessToast } from 'vant'
 import { canvasToBlob, createCanvas, releaseCanvas, saveBlob } from '@/shared/image-io'
@@ -284,14 +285,14 @@ onBeforeUnmount(() => {
       />
     </div>
 
-    <div class="tool-card">
+    <tool-group>
       <div class="tool-actions">
         <van-button size="small" :disabled="!undoable" @click="doUndo">撤销</van-button>
         <van-button size="small" :disabled="!redoable" @click="doRedo">重做</van-button>
         <van-button size="small" :type="erasing ? 'primary' : 'default'" @click="erasing = !erasing">橡皮</van-button>
         <van-button size="small" @click="doClear">清空</van-button>
       </div>
-      <h3 class="tool-card__title sk-title">画笔颜色</h3>
+      <h3 class="tool-group__title sk-title">画笔颜色</h3>
       <div class="sk-swatches">
         <button
           v-for="c in PALETTE"
@@ -304,9 +305,9 @@ onBeforeUnmount(() => {
           @click="pickColor(c)"
         />
       </div>
-      <h3 class="tool-card__title sk-title">粗细 {{ width }}</h3>
+      <h3 class="tool-group__title sk-title">粗细 {{ width }}</h3>
       <van-slider :model-value="width" :min="MIN_WIDTH" :max="MAX_WIDTH" @update:model-value="onWidth" />
-      <h3 class="tool-card__title sk-title">背景色</h3>
+      <h3 class="tool-group__title sk-title">背景色</h3>
       <div class="sk-swatches">
         <button
           v-for="c in BG_PALETTE"
@@ -319,10 +320,12 @@ onBeforeUnmount(() => {
           @click="setBg(c)"
         />
       </div>
-    </div>
+    </tool-group>
 
-    <van-button type="primary" block round :loading="saving" @click="exportPng">保存为图片</van-button>
     <p class="tool-hint">清空不能撤销。画板内容不会自动保存，离开页面就没了。</p>
+
+    <!-- 底部动作栏：画板没有「生成」一步，主操作就是保存为图片 -->
+    <bottom-actions main main-text="保存为图片" :disabled="{ main: saving }" @main="exportPng" />
   </div>
 </template>
 

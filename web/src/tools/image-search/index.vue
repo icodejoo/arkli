@@ -1,9 +1,11 @@
 <script setup lang="ts">
 // 以图搜图：选图后可分享/保存图片，并打开或复制各搜图站入口；不替你上传，也不泄漏图片内容
+import BottomActions from '@/shared/BottomActions.vue'
 import { onBeforeUnmount, ref } from 'vue'
 import { showFailToast, showSuccessToast, showToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
-import { pickImages, type PickedImage } from '@/shared/image-io'
+import { EDIT_BASIC, pickImages, type PickedImage } from '@/shared/image-io'
+import { shootPhoto } from '@/shared/shootPhoto'
 import { NOTES, SEARCH_SITES, STEPS } from './data'
 import { openSite, shareImage, shareName } from './logic'
 
@@ -12,16 +14,26 @@ const image = ref<PickedImage | null>(null)
 /** 处理中 */
 const busy = ref(false)
 
-/** 选图 */
+/** 采用新图并释放旧图 */
+function adopt(img: PickedImage): void {
+  image.value?.release()
+  image.value = img
+}
+
+/** 相册选图 */
 async function choose(): Promise<void> {
   try {
-    const got = await pickImages({ multiple: false, max: 1, onFailed: (f) => showToast(`读取失败：${f[0].message}`) })
-    if (!got.length) return
-    image.value?.release()
-    image.value = got[0]
+    const got = await pickImages({ edit: EDIT_BASIC, multiple: false, max: 1, onFailed: (f) => showToast(`读取失败：${f[0].message}`) })
+    if (got.length) adopt(got[0])
   } catch (e) {
     showToast((e as { message?: string }).message ?? '选图失败')
   }
+}
+
+/** 拍照 */
+async function shoot(): Promise<void> {
+  const got = await shootPhoto()
+  if (got) adopt(got)
 }
 
 /** 分享图片，不行则保存 */
@@ -56,23 +68,17 @@ onBeforeUnmount(() => image.value?.release())
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
-      <h3 class="tool-card__title">怎么用</h3>
+    <tool-group title="怎么用">
       <p v-for="(s, i) in STEPS" :key="s" class="tool-hint">{{ i + 1 }}. {{ s }}</p>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">1. 选图并分享</h3>
+    <tool-group title="1. 选图并分享">
       <img v-if="image" :src="image.url" class="is-thumb" alt="已选图片" />
-      <div class="tool-actions">
-        <van-button type="primary" @click="choose">{{ image ? '换一张' : '选择图片' }}</van-button>
-        <van-button :disabled="!image" :loading="busy" @click="doShare">分享图片</van-button>
-      </div>
+      <p v-if="!image" class="tool-hint">点底部「相册」或「拍照」选图，再点「分享」。</p>
       <p class="tool-hint">不支持分享时会自动保存到相册。</p>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">2. 去搜图站</h3>
+    <tool-group title="2. 去搜图站">
       <van-cell v-for="s in SEARCH_SITES" :key="s.url" :title="s.name" :label="s.note">
         <template #right-icon>
           <van-button size="mini" type="primary" @click="open(s.url)">打开</van-button>
@@ -80,7 +86,10 @@ onBeforeUnmount(() => image.value?.release())
         </template>
       </van-cell>
       <p v-for="n in NOTES" :key="n" class="tool-hint">{{ n }}</p>
-    </div>
+    </tool-group>
+
+    <!-- 底部动作栏：相册 / 拍照选图，主按钮分享图片 -->
+    <bottom-actions album photo main main-text="分享" :disabled="{ album: busy, photo: busy, main: busy || !image }" @album="choose" @photo="shoot" @main="doShare" />
   </div>
 </template>
 

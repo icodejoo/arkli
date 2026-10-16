@@ -32,6 +32,12 @@ interface QwenBackend {
      * @return 模型原始输出
      */
     fun generate(system: String, prompt: String, maxNewTokens: Int, sampling: Sampling = Sampling.GREEDY): String
+
+    /**
+     * 打断正在进行的 [generate]：在下一个 token 写出时生效，[generate] 随后抛 [CancellationException]。
+     * 可在任意线程调用；没有生成在跑时无副作用（下一次 [generate] 开头会复位取消标志）。
+     */
+    fun cancel()
 }
 
 /**
@@ -145,10 +151,11 @@ class QwenService(
 
     /**
      * 跑一次生成并清理输出。引擎抛 INTERNAL（会话已失效、重建失败等）时卸掉会话并清掉指纹，下次调用会重新加载，
-     * 不让一个坏掉的会话卡死到被回收。注意：生成**不可取消**（引擎没有中断接口，真取消是统一协议第 7 步，未做）。
+     * 不让一个坏掉的会话卡死到被回收。生成可被取消：协程被取消时调 [QwenBackend.cancel]，引擎在下一个 token 处中止，
+     * 抛出的 [CancellationException] 原样往外传（会话仍可用，不丢弃）。
      */
-    private fun generateGuarded(block: () -> String): String = try {
-        AiQwenPolicy.cleanOutput(block())
+    private suspend fun generateGuarded(block: () -> String): String = try {
+        AiQwenPolicy.cleanOutput(runCancellable(backend::cancel, block))
     } catch (e: BridgeException) {
         if (e.code == BridgeErrors.INTERNAL) discardSession()
         throw e

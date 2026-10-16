@@ -48,6 +48,38 @@ object PickerPolicy {
     fun resolveMaxCount(multiple: Boolean, max: Int): Int =
         if (multiple) max else 1
 
+    /** 没传 edit 时的默认编辑模式：全部能力（裁剪、旋转、形状、套索） */
+    val DEFAULT_EDIT_MODES: List<String> =
+        listOf(PickerConst.MODE_CROP, PickerConst.MODE_ROTATE, PickerConst.MODE_SHAPE, PickerConst.MODE_LASSO)
+
+    /**
+     * 解析选图页允许的编辑模式：缺省开全部模式；空数组关闭编辑；非空取合法值，全是非法值时按缺省（全部）处理。
+     *
+     * @param raw 页面传入的 edit 数组，缺省为 null
+     * @return 允许的模式；空列表表示不显示编辑按钮
+     * @example
+     * PickerPolicy.resolveEditModes(null) // ["crop","rotate","shape","lasso"]
+     * PickerPolicy.resolveEditModes(JSONArray("[]")) // []
+     */
+    fun resolveEditModes(raw: JSONArray?): List<String> {
+        if (raw == null) return DEFAULT_EDIT_MODES
+        if (raw.length() == 0) return emptyList()
+        return parseEditModes(raw).ifEmpty { DEFAULT_EDIT_MODES }
+    }
+
+    /**
+     * 解析 edit 参数：只保留 crop、rotate、shape、lasso，去重并保持出现顺序。
+     *
+     * @param arr 页面传入的 JSON 数组，可为 null
+     * @return 合法模式列表
+     * @example PickerPolicy.parseEditModes(JSONArray("[\"crop\",\"x\",\"crop\"]")) // ["crop"]
+     */
+    fun parseEditModes(arr: JSONArray?): List<String> {
+        if (arr == null) return emptyList()
+        val valid = setOf(PickerConst.MODE_CROP, PickerConst.MODE_ROTATE, PickerConst.MODE_SHAPE, PickerConst.MODE_LASSO)
+        return (0 until arr.length()).mapNotNull { arr.optString(it, "").takeIf { m -> m in valid } }.distinct()
+    }
+
     /**
      * 组装 native.file.pick 的返回结果 JSON。
      *

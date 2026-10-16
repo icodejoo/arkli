@@ -52,6 +52,7 @@ internal object AiFixtures {
         override fun load(modelDir: String) = error("不该加载")
         override fun unload() {}
         override fun translate(text: String, src: String, tgt: String, numBeams: Int): TranslateOutcome = error("不该翻译")
+        override fun cancel() {}
     }
 
     /** 不该被调用的对联引擎（卸载除外） */
@@ -67,6 +68,7 @@ internal object AiFixtures {
         override fun load(configPath: String) {}
         override fun unload() {}
         override fun generate(system: String, prompt: String, maxNewTokens: Int, sampling: Sampling) = QWEN_OUT
+        override fun cancel() {}
     }
 
     /**

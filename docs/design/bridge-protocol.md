@@ -116,13 +116,14 @@ summary: 小工具页与原生/Rust 之间的消息格式（v2）、会话与取
 
 | 项 | 说明 |
 |---|---|
-| params | `{ mime?: string = "image/*", multiple?: boolean = false, max?: number = 20, keepSource?: boolean = false, camera?: boolean = false }`。`camera` 为 true（仅图片）时单选多选一律走自带选图页，页内右下固定一个拍照圆钮，点它丢弃已选并返回 `camera: true`；权限被拒回退系统选择器时没有该按钮。`keepSource` 为 true 时图片项多返回 `sourceHandle`（见下方 `native.file.overwrite`）。`mime` 取值：`image/*`、`video/*`、`image/*,video/*`、具体媒体类型（如 `image/png`）走 Photo Picker；其他（如 `text/plain`、`*/*`）走系统文档选择器。`max` 上限 50 |
+| params | `{ mime?: string = "image/*", multiple?: boolean = false, max?: number = 20, keepSource?: boolean = false, camera?: boolean = false, edit?: ("crop"\|"rotate"\|"shape"\|"lasso")[] }`。`edit` 是选图页预览里「编辑」按钮允许的模式（`crop` 裁剪、`rotate` 旋转翻转、`shape` 预设形状、`lasso` 手绘套索）：不传默认全部四种，传 `[]` 关闭，非法值被过滤；仅图片选择有编辑，视频没有，单选多选都支持。用户编辑过的图以编辑后的结果替换原图返回（方向已摆正、`orientation` 为 1）：矩形是 JPEG，用了形状或套索时是带透明的 PNG（`mime` 为 `image/png`）；这类项不带 `sourceHandle`；在编辑页取消只回到选图页，不影响选择。细节见 platform-infrastructure.md「选图页内的编辑」。`camera` 为 true（仅图片）时单选多选一律走自带选图页，页内右下固定一个拍照圆钮，点它丢弃已选并返回 `camera: true`；权限被拒回退系统选择器时没有该按钮。`keepSource` 为 true 时图片项多返回 `sourceHandle`（见下方 `native.file.overwrite`）。`mime` 取值：`image/*`、`video/*`、`image/*,video/*`、具体媒体类型（如 `image/png`）走 Photo Picker；其他（如 `text/plain`、`*/*`）走系统文档选择器。`max` 上限 50 |
 | 返回 | `{ items: Item[], failed: { name, message }[] }` |
 | 图片 Item | `{ kind: "image", path, url, name, mime, size, width?, height?, orientation }`。文件原样拷进 `cache/pick/`（保留 EXIF），≤ 128MB，超过进 `failed`。`width/height` 是按 EXIF 方向摆正后的显示尺寸，`orientation` 为 EXIF 方向值 1~8；页面用 `createImageBitmap(..., { imageOrientation: 'from-image' })` 摆正 |
 | `sourceHandle` | 仅 `keepSource: true` 的图片 Item 才有：`"uri:<随机 id>"`，不透明句柄，真实 URI 只留在原生侧的会话句柄表里（与视频句柄同一张表），随会话失效；只能交给 `native.file.overwrite` |
 | HEIC/HEIF | API 28+ 用平台 `ImageDecoder` 转成 JPEG（质量 92，输出已摆正且不带 EXIF，`orientation` 恒为 1，`name` 扩展名换成 `.jpg`）；超过 2500 万像素按采样率缩小防 OOM。API 24~27 无法转换，该文件进 `failed` 并提示换格式 |
 | 视频 Item | `{ kind: "video", handle: "uri:<随机 id>", name, mime, size, width?, height?, durationMs? }`。不拷贝、不读入内存，真实 content URI 只存在原生侧的会话句柄表里，页面拿不到；句柄随会话失效，只能交给原生方法使用 |
 | 其他文件 Item | `{ kind: "file", path, url, name, mime, size }`，≤ 64MB 拷进缓存，更大的进 `failed` |
+| 编辑后的图片 | 选图页里编辑导出的结果走同一条图片 Item 流程（拷进 `cache/pick/`），不带 `sourceHandle`；编辑页没做任何改动就点完成，返回原图本身，不重新编码 |
 | 点拍照按钮 | 仅 `camera: true` 时可能出现：返回 `{ items: [], failed: [], camera: true }`，调用方应回到拍照；其他情况不带 `camera` 字段 |
 | 用户取消 | 用户直接关掉选择器：成功返回 `{ items: [], failed: [] }`，**不是**错误。`CANCELLED` 只用于 `native.task.cancel` 或会话关闭 |
 | 错误 | `BAD_PARAMS`（mime 格式不对）、`NOT_READY`（已有选择器在显示）、`PERMISSION_DENIED`（非主 frame） |

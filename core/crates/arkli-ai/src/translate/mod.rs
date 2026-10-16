@@ -41,6 +41,7 @@ use std::time::Instant;
 
 #[cfg(feature = "mnn-backend")]
 use crate::mnn::{MnnNet, MnnRuntime};
+use crate::task::CancelToken;
 
 pub use engine::TranslateOptions;
 pub use error::{ErrorKind, TranslateError};
@@ -146,6 +147,32 @@ impl Translator {
         tgt: &str,
         num_beams: Option<usize>,
     ) -> Result<TranslateOutput, TranslateError> {
+        self.translate_cancellable(text, src, tgt, num_beams, &CancelToken::new())
+    }
+
+    /// 同 [`Translator::translate`]，但可被打断：每个解码步与每个句子片段前检查令牌。
+    ///
+    /// # 参数
+    /// - `text`/`src`/`tgt`/`num_beams`：同 [`Translator::translate`]。
+    /// - `cancel`：取消令牌；触发后在下一个检查点返回 `ErrorKind::Cancelled`（最多等一次 decoder 调用）。
+    ///
+    /// # 返回
+    /// 同 [`Translator::translate`]；被取消返回 `Cancelled`。
+    ///
+    /// # 示例
+    /// ```ignore
+    /// let token = CancelToken::new();
+    /// let out = t.translate_cancellable("Hello world.", "en", "zh-CN", None, &token)?;
+    /// ```
+    pub fn translate_cancellable(
+        &mut self,
+        text: &str,
+        src: &str,
+        tgt: &str,
+        num_beams: Option<usize>,
+        cancel: &CancelToken,
+    ) -> Result<TranslateOutput, TranslateError> {
+        dispatch!(&mut self.inner, e => e.set_cancel(cancel.clone()));
         let started = Instant::now();
         let opts = TranslateOptions {
             max_len: None,

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // WiFi 二维码：输入名称与密码，生成可扫码连接的二维码（系统不允许读取已保存密码）
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, nextTick, ref, watch } from 'vue'
 import { showFailToast, showSuccessToast, showToast } from 'vant'
 import { isNativeAvailable } from '@/native/bridge'
@@ -85,14 +86,12 @@ async function openWifi(): Promise<void> {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
-      <h3 class="tool-card__title">先说明一下</h3>
+    <tool-group title="先说明一下">
       <p class="tool-hint">Android 10 以后，系统不允许应用读取已保存的 WiFi 密码，所以这里需要你手动输入。生成的二维码可以给别人扫码连接。</p>
       <van-button v-if="hasNative" size="small" plain type="primary" @click="openWifi">打开系统 WiFi 设置</van-button>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">网络信息</h3>
+    <tool-group title="网络信息">
       <van-field v-model="ssid" label="名称" placeholder="WiFi 名称（SSID）" clearable />
       <van-field v-if="auth !== 'nopass'" v-model="password" label="密码" placeholder="WiFi 密码" clearable />
       <van-radio-group v-model="auth" direction="horizontal" class="wq-auth">
@@ -102,17 +101,16 @@ async function openWifi(): Promise<void> {
         <template #right-icon><van-switch v-model="hidden" size="20" /></template>
       </van-cell>
       <p v-if="error" class="tool-hint wq-err">{{ error }}</p>
-    </div>
+    </tool-group>
 
-    <div v-if="qr" class="tool-card wq-preview">
+    <tool-group v-if="qr" class="wq-preview">
       <canvas ref="canvas" class="wq-canvas" />
       <p class="tool-hint">用另一台手机的相机或扫码工具扫一扫即可连接</p>
-    </div>
-    <div v-else class="tool-card tool-hint wq-empty">填好名称和密码后，二维码会显示在这里</div>
+    </tool-group>
+    <tool-group v-else class="tool-hint wq-empty">填好名称和密码后，二维码会显示在这里</tool-group>
 
-    <div class="tool-actions">
-      <van-button type="primary" :disabled="!qr" :loading="saving" @click="save">保存二维码</van-button>
-    </div>
+    <!-- 底部动作栏：二维码是实时画出来的，主操作就是保存 -->
+    <bottom-actions main main-text="保存二维码" :disabled="{ main: !qr || saving }" @main="save" />
   </div>
 </template>
 

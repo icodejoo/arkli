@@ -2,9 +2,6 @@ package com.let188.arkli.net
 
 import java.net.URI
 
-/** 出站白名单里的主机：目前只有维基媒体 REST（历史上的今天），精确匹配、不做后缀通配 */
-internal const val HOST_WIKIMEDIA_API = "api.wikimedia.org"
-
 /** 模型下载白名单：GitHub release 入口 */
 internal const val HOST_GITHUB = "github.com"
 
@@ -39,17 +36,15 @@ enum class NetVerdict {
 }
 
 /**
- * 页面出站策略：白名单、CSP 头与请求去向判定，全部是纯函数，JVM 单测可直接跑。
- * 白名单是单一事实来源，CSP 的 connect-src 也从它生成，改域名只改 [ALLOWED_HOSTS]。
+ * 页面出站策略：CSP 头与请求去向判定，全部是纯函数，JVM 单测可直接跑。
+ * 页面出站不设主机白名单：任何 https 资源（接口、字体、图片、样式）都放行，明文 http 一律拒绝；
+ * 脚本仍只允许同源（script-src 'self'），不加载远程代码。原生模型下载器的白名单 [DOWNLOAD_HOSTS] 另算。
  */
 object NetPolicy {
 
-    /** 允许页面直接请求的主机（小写、精确匹配）。要求对方接口支持 CORS */
-    val ALLOWED_HOSTS: Set<String> = setOf(HOST_WIKIMEDIA_API)
-
     /**
-     * 原生模型下载器可访问的主机（小写、精确匹配）。**与页面出站白名单 [ALLOWED_HOSTS] 分开**：
-     * 这些主机只给原生下载器用，不进 CSP，页面自己仍然连不上。每一跳重定向都要校验。
+     * 原生模型下载器可访问的主机（小写、精确匹配）。**与页面出站策略分开**：
+     * 这些主机只给原生下载器用，页面出站虽然放行任意 https，但下载器仍只认这几个主机。每一跳重定向都要校验。
      */
     val DOWNLOAD_HOSTS: Set<String> = setOf(HOST_GITHUB, HOST_GITHUB_OBJECTS, HOST_GITHUB_RELEASE_ASSETS)
 
@@ -59,20 +54,15 @@ object NetPolicy {
     /**
      * 判断一个 URL 是否允许页面出站。
      *
-     * 规则：必须是 https、无 userinfo、端口缺省或 443、主机（忽略大小写）精确命中白名单。
-     * IP 字面量、punycode 变体、带尾点的主机都不在白名单里，自然被拒。
+     * 规则：必须是 https 且能解析出主机、无 userinfo（挡掉 `https://good.com@evil.com` 这类障眼法）；主机不限。
      *
      * @param url 完整 URL 字符串
-     * @return 允许返回 true；解析失败或任一条件不满足返回 false
-     * 示例：`NetPolicy.isAllowedOutbound("https://api.wikimedia.org/feed/v1")` 为 true
+     * @return 允许返回 true；明文 http、其他协议、解析失败返回 false
+     * 示例：`NetPolicy.isAllowedOutbound("https://fonts.gstatic.com/a.woff2")` 为 true
      */
     fun isAllowedOutbound(url: String): Boolean {
         val u = parse(url) ?: return false
-        if (u.scheme?.lowercase() != SCHEME_HTTPS) return false
-        if (u.rawUserInfo != null) return false
-        if (u.port != -1 && u.port != PORT_HTTPS) return false
-        val host = u.host?.lowercase() ?: return false
-        return host in ALLOWED_HOSTS
+        return u.scheme?.lowercase() == SCHEME_HTTPS && u.rawUserInfo == null && u.host != null
     }
 
     /**
@@ -102,7 +92,7 @@ object NetPolicy {
      *
      * @param url 请求 URL
      * @param appHost 应用内虚拟域名（如 appassets.androidplatform.net）
-     * @return [NetVerdict.APP] 为应用内 https 域；[NetVerdict.ALLOW] 为白名单；否则 [NetVerdict.BLOCK]
+     * @return [NetVerdict.APP] 为应用内 https 域；[NetVerdict.ALLOW] 为其他 https；否则 [NetVerdict.BLOCK]
      */
     fun classify(url: String, appHost: String): NetVerdict {
         val u = parse(url) ?: return NetVerdict.BLOCK
@@ -114,18 +104,18 @@ object NetPolicy {
      * 生成页面 CSP 头的值。
      *
      * @param extraConnect 额外放进 connect-src 的来源，仅开发期热更新用（如 `ws://127.0.0.1:5173`），默认没有
-     * @return 形如 `default-src 'self'; connect-src 'self' https://api.wikimedia.org; ...`
+     * @return 形如 `default-src 'self'; connect-src 'self' https:; ...`
      */
     fun contentSecurityPolicy(extraConnect: List<String> = emptyList()): String {
-        val connect = (listOf("'self'") + ALLOWED_HOSTS.sorted().map { "$SCHEME_HTTPS://$it" } + extraConnect).joinToString(" ")
+        val connect = (listOf("'self'", "$SCHEME_HTTPS:") + extraConnect).joinToString(" ")
         return listOf(
             "default-src 'self'",
             "connect-src $connect",
-            "img-src 'self' data: blob:",
-            "media-src 'self' blob:",
-            "style-src 'self' 'unsafe-inline'",
+            "img-src 'self' data: blob: $SCHEME_HTTPS:",
+            "media-src 'self' blob: $SCHEME_HTTPS:",
+            "style-src 'self' 'unsafe-inline' $SCHEME_HTTPS:",
             "script-src 'self'",
-            "font-src 'self' data:",
+            "font-src 'self' data: $SCHEME_HTTPS:",
             "frame-src 'none'",
             "object-src 'none'",
             "base-uri 'self'",

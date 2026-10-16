@@ -99,13 +99,11 @@ function sizeText(n: number): string {
       <van-tab title="文件" name="file" />
     </van-tabs>
 
-    <div v-if="source === 'text'" class="tool-card">
-      <h3 class="tool-card__title">文本（按 UTF-8 计算）</h3>
+    <tool-group v-if="source === 'text'" title="文本（按 UTF-8 计算）">
       <van-field v-model="input" type="textarea" rows="3" autosize clearable placeholder="输入要计算哈希的文本" />
-    </div>
+    </tool-group>
 
-    <div v-else class="tool-card">
-      <h3 class="tool-card__title">文件</h3>
+    <tool-group v-else title="文件">
       <label class="hash-pick">
         <input type="file" class="hash-pick__input" @change="onPick" />
         <span class="hash-pick__btn">{{ file ? '换一个文件' : '选择文件' }}</span>
@@ -115,16 +113,15 @@ function sizeText(n: number): string {
       <van-progress v-if="progress !== null" :percentage="Math.round(progress * 100)" stroke-width="6" class="hash-progress" />
       <van-button v-if="progress !== null" size="small" plain @click="cancel">取消</van-button>
       <p v-if="!file" class="tool-hint">文件只在本机读取，不会上传。</p>
-    </div>
+    </tool-group>
 
-    <van-cell-group inset class="tool-group">
+    <tool-group>
       <van-cell title="大写字母" center>
         <template #right-icon><van-switch v-model="upper" size="22" /></template>
       </van-cell>
-    </van-cell-group>
+    </tool-group>
 
-    <div v-if="digests" class="tool-card">
-      <h3 class="tool-card__title">结果（点一行复制）</h3>
+    <tool-group v-if="digests" title="结果（点一行复制）">
       <div
         v-for="a in HASH_ALGOS"
         :key="a.id"
@@ -135,15 +132,14 @@ function sizeText(n: number): string {
         <span class="hash-row__name">{{ a.label }}<van-icon v-if="matched === a.id" name="success" /></span>
         <code class="hash-row__hex">{{ formatHex(digests[a.id], upper) }}</code>
       </div>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">比对期望值（可选）</h3>
+    <tool-group title="比对期望值（可选）">
       <van-field v-model="expected" clearable placeholder="粘贴官方给出的哈希值" />
       <p v-if="hasExpected && digests" class="tool-hint hash-verdict" :class="{ 'hash-verdict--ok': matched }">
         {{ matched ? '一致，匹配 ' + HASH_ALGOS.find((a) => a.id === matched)?.label : '不一致' }}
       </p>
-    </div>
+    </tool-group>
   </div>
 </template>
 

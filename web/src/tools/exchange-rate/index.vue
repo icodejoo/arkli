@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 汇率换算：联网取汇率（主备两个源），断网用缓存，再不行可手动输入汇率
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { isNativeAvailable } from '@/native/bridge'
 import {
@@ -133,18 +134,16 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
-      <h3 class="tool-card__title">金额</h3>
+    <tool-group title="金额">
       <van-field v-model="amount" type="number" inputmode="decimal" clearable placeholder="输入金额" />
       <div class="er-pair">
         <van-button plain class="er-cur" @click="openPicker('from')">{{ currencyLabel(from) }}</van-button>
         <van-button icon="exchange" size="small" round class="er-swap" aria-label="互换" @click="swap" />
         <van-button plain class="er-cur" @click="openPicker('to')">{{ currencyLabel(to) }}</van-button>
       </div>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">结果</h3>
+    <tool-group title="结果">
       <p v-if="loading" class="tool-hint">正在取汇率…</p>
       <template v-else>
         <p v-if="result" class="er-result">{{ result }} <small>{{ to }}</small></p>
@@ -163,13 +162,15 @@ onBeforeUnmount(() => {
         :label="`1 ${from} =`"
         :placeholder="`手动输入汇率（${to}）`"
       />
-      <van-button v-if="inApp" size="small" plain class="er-refresh" :loading="loading" @click="load">刷新汇率</van-button>
-    </div>
+    </tool-group>
 
     <p class="tool-hint er-src">
       <template v-if="sourceText">数据来源：{{ sourceText }}。</template>
       汇率仅供参考，实际成交以银行或平台为准。
     </p>
+
+    <!-- 底部动作栏：主按钮刷新汇率，仅 App 内可用（浏览器里没有联网通道） -->
+    <bottom-actions main :main-text="loading ? '刷新中' : '刷新汇率'" :disabled="{ main: loading || !inApp }" @main="load" />
 
     <van-popup v-model:show="pickerOpen" position="bottom" round>
       <van-picker :columns="columns" :model-value="[pickSide === 'from' ? from : to]" @confirm="onConfirm" @cancel="pickerOpen = false" />
@@ -205,9 +206,6 @@ onBeforeUnmount(() => {
 }
 .er-warn {
   color: var(--c-error);
-}
-.er-refresh {
-  margin-top: $space-2;
 }
 .er-src {
   padding: 0 $space-2;

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 量角器：屏上拖两条射线读夹角；倾角模式读手机的倾斜角（复用水平仪的算法）
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { isSteady, startGravity, type MotionSourceLike, type MotionStatus, type Vec3 } from '../level/logic'
 import { clampAngle, clientToView, edgeInclination, FULL_CIRCLE, HALF_CIRCLE, includedAngle, nearestRay, pointAngle, polar, SNAP_STEP, snapAngle, surfaceInclination, sweepAngle, type DialMode, type Point } from './logic'
@@ -230,7 +231,7 @@ onBeforeUnmount(end)
     </van-tabs>
 
     <template v-if="mode === 'screen'">
-      <div class="tool-card pro-card">
+      <tool-group class="pro-card">
         <svg
           ref="svgEl"
           class="pro__svg"
@@ -259,8 +260,8 @@ onBeforeUnmount(end)
           {{ fmt(angle) }}
           <span v-if="dial === 'full'" class="tool-result__label">另一侧 {{ fmt(otherSide) }}（从红线逆时针转到蓝线）</span>
         </div>
-      </div>
-      <div class="tool-card">
+      </tool-group>
+      <tool-group>
         <van-cell-group>
           <van-cell title="盘面">
             <van-radio-group :model-value="dial" direction="horizontal" @update:model-value="(v: string) => setDial(v as DialMode)">
@@ -273,11 +274,11 @@ onBeforeUnmount(end)
           </van-cell>
         </van-cell-group>
         <p class="tool-hint">拖动圆点转动射线，哪条离手指近就动哪条。读数只和角度有关，跟屏幕尺寸无关。</p>
-      </div>
+      </tool-group>
     </template>
 
     <template v-else>
-      <div class="tool-card pro-card">
+      <tool-group class="pro-card">
         <van-tabs :active="tiltKind" type="card" @change="(n: string | number) => (tiltKind = n as TiltKind)">
           <van-tab title="贴边测量" name="edge" />
           <van-tab title="贴面测量" name="surface" />
@@ -286,21 +287,26 @@ onBeforeUnmount(end)
         <p v-if="lockedTilt !== null" class="tool-hint">读数已锁定</p>
         <p v-else-if="shaky" class="tool-hint pro__warn">手机在晃动，读数仅供参考</p>
         <p class="tool-hint">{{ tiltKind === 'edge' ? '手机立起来，让长边贴着要量的物体，读数是这条边与水平线的夹角。' : '把手机平贴在斜面上，读数是斜面与水平面的夹角。' }}</p>
-      </div>
+      </tool-group>
 
-      <div v-if="awaiting" class="tool-card">
-        <p class="tool-hint">这个系统要先授权才能读动作传感器。</p>
-        <van-button type="primary" block round @click="askPermission">授权并开始</van-button>
+      <tool-group v-if="awaiting">
+        <p class="tool-hint">这个系统要先授权才能读动作传感器，点底部「授权并开始」。</p>
         <p v-if="denied" class="tool-hint pro__warn">授权被拒绝了，请到系统设置里允许「动作与方向」访问后重试。</p>
-      </div>
+      </tool-group>
       <div v-else-if="status === 'waiting'" class="tool-hint">正在读取传感器...</div>
       <div v-else-if="status === 'unsupported'" class="tool-hint pro__warn">{{ TIP_UNSUPPORTED }}</div>
 
-      <div class="tool-actions">
-        <van-button block round type="primary" :disabled="shownTilt === null" @click="toggleLock">{{ lockedTilt === null ? '锁定读数' : '解除锁定' }}</van-button>
-      </div>
       <p class="tool-hint">不同机型传感器零点略有差异，量之前可以先在水平桌面上看看读数是不是 0。</p>
     </template>
+
+    <!-- 底部动作栏：只在「倾角」页出现，主按钮锁定 / 解除锁定读数；需要授权时先显示「授权并开始」 -->
+    <bottom-actions
+      v-if="mode === 'tilt'"
+      main
+      :main-text="awaiting ? '授权并开始' : lockedTilt === null ? '锁定读数' : '解除锁定'"
+      :disabled="{ main: !awaiting && shownTilt === null }"
+      @main="awaiting ? askPermission() : toggleLock()"
+    />
   </div>
 </template>
 

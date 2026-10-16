@@ -1,9 +1,11 @@
 <script setup lang="ts">
 // 图片压缩（含格式转换）：JPEG / WebP / PNG，质量、最长边、目标体积、PNG 缩色。
 // App 内走原生 native.image.compress；桌面浏览器没有宿主时退回 Canvas，两条路径共用界面与结果列表。
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, reactive, ref, shallowRef } from 'vue'
 import { showFailToast, showSuccessToast, showToast } from 'vant'
 import ImageThumbList from '@/shared/ImageThumbList.vue'
+import { shootPhoto } from '@/shared/shootPhoto'
 import { changeText, fitMaxEdge, FORMAT_MIME, formatBytes, outputName } from '@/shared/image-calc'
 import {
   canvasToBlob,
@@ -128,7 +130,7 @@ function clearResults(): void {
   failed.value = []
 }
 
-/** 添加图片 */
+/** 相册添加图片 */
 async function add(): Promise<void> {
   const room = roomLeft(images.value.length, MAX_PICK)
   if (room <= 0) {
@@ -142,6 +144,24 @@ async function add(): Promise<void> {
   } catch (e) {
     showToast((e as { message?: string }).message ?? '选图失败')
   }
+}
+
+/** 拍照添加一张 */
+async function shoot(): Promise<void> {
+  if (roomLeft(images.value.length, MAX_PICK) <= 0) {
+    showToast(`最多 ${MAX_PICK} 张`)
+    return
+  }
+  const got = await shootPhoto()
+  if (!got) return
+  images.value = images.value.concat(got)
+  clearResults()
+}
+
+/** 底部主按钮：处理中点它取消，否则开始压缩 */
+function onMain(): void {
+  if (busy.value) cancel()
+  else void run()
 }
 
 /** 移除第 i 张 */
@@ -280,13 +300,12 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
-      <h3 class="tool-card__title">选择图片（最多 {{ MAX_PICK }} 张）</h3>
+    <tool-group :title="`选择图片（最多 ${MAX_PICK} 张）`">
       <image-thumb-list :images="images" @remove="remove" />
-      <van-button block plain round :disabled="busy" @click="add">{{ images.length ? '继续添加' : '选择图片' }}</van-button>
-    </div>
+      <p v-if="!images.length" class="tool-hint">点底部「相册」或「拍照」选图，可以多选。</p>
+    </tool-group>
 
-    <div class="tool-card">
+    <tool-group>
       <van-cell-group :border="false">
         <van-cell title="输出格式" center>
           <template #value>
@@ -350,24 +369,17 @@ onBeforeUnmount(() => {
           native ? '' : '当前是浏览器预览模式，缩色 PNG、目标体积、保留 EXIF 只在 App 内可用。'
         }}
       </p>
-    </div>
+    </tool-group>
 
-    <div class="ic-actions">
-      <van-button type="primary" block round :loading="busy" :disabled="!images.length" @click="run">
-        {{ busy ? `压缩中 ${progress}` : '开始压缩' }}
-      </van-button>
-      <van-button v-if="busy" plain block round @click="cancel">取消</van-button>
-    </div>
+    <p v-if="busy" class="tool-hint">压缩中 {{ progress }}</p>
 
-    <div v-if="failed.length" class="tool-card">
-      <h3 class="tool-card__title">失败 {{ failed.length }} 张</h3>
+    <tool-group v-if="failed.length" :title="`失败 ${failed.length} 张`">
       <ul class="ic-failed">
         <li v-for="(f, i) in failed" :key="i">{{ f }}</li>
       </ul>
-    </div>
+    </tool-group>
 
-    <div v-if="rows.length" class="tool-card">
-      <h3 class="tool-card__title">结果 {{ summary }}</h3>
+    <tool-group v-if="rows.length" :title="`结果 ${summary}`">
       <ul class="ic-results">
         <li v-for="r in rows" :key="r.id" class="ic-result">
           <img class="ic-result__img" :src="r.url" :alt="r.name" />
@@ -378,8 +390,22 @@ onBeforeUnmount(() => {
           </div>
         </li>
       </ul>
-      <van-button type="primary" plain block round :loading="saving" @click="save">保存全部</van-button>
-    </div>
+    </tool-group>
+
+    <!-- 底部动作栏：相册 / 拍照追加图片，保存全部结果，主按钮开始压缩（处理中变成取消） -->
+    <bottom-actions
+      album
+      photo
+      main
+      :main-text="busy ? '取消' : '开始压缩'"
+      :main-type="busy ? 'danger' : 'primary'"
+      :disabled="{ album: busy, photo: busy, main: !busy && !images.length }"
+      @album="add"
+      @photo="shoot"
+      @main="onMain"
+      :actions="{ save: { disabled: !rows.length || saving, text: '保存全部' } }"
+      @save="save"
+    />
   </div>
 </template>
 
@@ -392,12 +418,6 @@ onBeforeUnmount(() => {
 /* 滑杆留出触控空间 */
 .ic-slider {
   padding: $space-2 $space-3 $space-3;
-}
-
-.ic-actions {
-  display: flex;
-  flex-direction: column;
-  gap: $space-2;
 }
 
 .ic-failed {

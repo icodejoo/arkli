@@ -48,9 +48,10 @@ interface ActivityHost {
      * @param multiple 是否多选
      * @param max 多选上限
      * @param camera 是否显示拍照按钮（仅图片场景生效）
+     * @param edit 选图页预览里允许的编辑模式；空表示关闭编辑，默认实现忽略
      * @return 选中的 URI 与是否点了拍照
      */
-    suspend fun pickMediaOrCamera(mime: String, multiple: Boolean, max: Int, camera: Boolean): PickResult =
+    suspend fun pickMediaOrCamera(mime: String, multiple: Boolean, max: Int, camera: Boolean, edit: List<String> = emptyList()): PickResult =
         PickResult(pickMedia(mime, multiple, max), false)
 
     /**

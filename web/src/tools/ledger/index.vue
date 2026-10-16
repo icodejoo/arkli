@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 极简记账：数据存 IndexedDB，按月看收支与分类占比，可导出 JSON/CSV、导入 JSON
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onMounted, ref } from 'vue'
 import { showConfirmDialog, showFailToast, showSuccessToast, showToast } from 'vant'
 import { saveBlob } from '@/shared/image-io'
@@ -262,7 +263,7 @@ onMounted(() => {
     <van-notice-bar v-if="memoryOnly" wrapable :scrollable="false" text="本机存储不可用，账目只在这次打开期间有效，记得导出。" />
     <van-notice-bar v-else-if="remind" wrapable :scrollable="false" text="记录挺多了，或者很久没备份了，建议导出一份 JSON 存好。" />
 
-    <div class="tool-card">
+    <tool-group>
       <div class="lg-month">
         <van-button size="small" icon="arrow-left" plain aria-label="上个月" @click="moveMonth(-1)" />
         <strong>{{ month }}</strong>
@@ -273,10 +274,9 @@ onMounted(() => {
         <div><span class="tool-hint">收入</span><b class="lg-in">{{ formatCents(sum.income) }}</b></div>
         <div><span class="tool-hint">结余</span><b>{{ formatCents(sum.balance) }}</b></div>
       </div>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">分类占比</h3>
+    <tool-group title="分类占比">
       <van-radio-group v-model="shareKind" direction="horizontal">
         <van-radio v-for="k in KINDS" :key="k" :name="k">{{ KIND_LABEL[k] }}</van-radio>
       </van-radio-group>
@@ -290,10 +290,9 @@ onMounted(() => {
           <div class="lg-bar"><i :class="shareKind === 'out' ? 'lg-fill-out' : 'lg-fill-in'" :style="{ width: s.percent + '%' }" /></div>
         </li>
       </ul>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">明细（{{ monthEntries.length }} 笔）</h3>
+    <tool-group :title="`明细（${monthEntries.length} 笔）`">
       <p v-if="!monthEntries.length" class="tool-hint">点下面的按钮记第一笔</p>
       <van-cell-group v-else :border="false">
         <van-cell v-for="e in monthEntries" :key="e.id" :title="e.category" :label="`${tsToDateStr(e.ts)}${e.note ? ' · ' + e.note : ''}`" center>
@@ -305,12 +304,9 @@ onMounted(() => {
           </template>
         </van-cell>
       </van-cell-group>
-    </div>
+    </tool-group>
 
-    <van-button type="primary" block round @click="openForm">记一笔</van-button>
-
-    <div class="tool-card">
-      <h3 class="tool-card__title">备份与导入</h3>
+    <tool-group title="备份与导入">
       <div class="tool-actions">
         <van-button size="small" @click="exportJson">导出 JSON</van-button>
         <van-button size="small" @click="exportCsv">导出 CSV</van-button>
@@ -318,11 +314,14 @@ onMounted(() => {
       </div>
       <input ref="fileEl" type="file" accept=".json,application/json" hidden @change="onFile" />
       <p class="tool-hint lg-gap">数据只存在本机，卸载或清除数据会丢，请定期导出。</p>
-    </div>
+    </tool-group>
+
+    <!-- 底部动作栏：主按钮记一笔（弹出表单） -->
+    <bottom-actions main main-text="记一笔" @main="openForm" />
 
     <van-popup v-model:show="showForm" position="bottom" round closeable teleport="body">
       <div class="lg-form">
-        <h3 class="tool-card__title">记一笔</h3>
+        <h3 class="tool-group__title">记一笔</h3>
         <van-radio-group :model-value="fKind" direction="horizontal" @update:model-value="setFormKind">
           <van-radio v-for="k in KINDS" :key="k" :name="k">{{ KIND_LABEL[k] }}</van-radio>
         </van-radio-group>

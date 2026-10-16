@@ -1,9 +1,11 @@
 <script setup lang="ts">
 // 文字识别：选图 → 本地 OCR → 按阅读顺序排行 → 逐行/全文复制，识别框叠加在原图上
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, onDeactivated, ref, shallowRef } from 'vue'
 import { showToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
-import { pickImages, type PickedImage } from '@/shared/image-io'
+import { EDIT_BASIC, pickImages, type PickedImage } from '@/shared/image-io'
+import { shootPhoto } from '@/shared/shootPhoto'
 import { aiOcr, AiNotReadyError, type OcrResult } from '@/native/ai'
 import { useAiCatalog } from '@/native/useAiCatalog'
 import ModelMissingNotice from '@/shared/ModelMissingNotice.vue'
@@ -57,18 +59,28 @@ const boxes = computed(() => {
   return out
 })
 
-/** 选图，换图后清掉旧结果 */
+/** 采用新图：释放旧图，换图后清掉旧结果 */
+function adopt(img: PickedImage): void {
+  image.value?.release()
+  image.value = img
+  result.value = null
+  active.value = -1
+}
+
+/** 相册选图 */
 async function choose(): Promise<void> {
   try {
-    const got = await pickImages({ onFailed: (f) => showToast(`读取失败：${f[0].message}`) })
-    if (!got.length) return
-    image.value?.release()
-    image.value = got[0]
-    result.value = null
-    active.value = -1
+    const got = await pickImages({ edit: EDIT_BASIC, onFailed: (f) => showToast(`读取失败：${f[0].message}`) })
+    if (got.length) adopt(got[0])
   } catch (e) {
     showToast((e as { message?: string }).message ?? '选图失败')
   }
+}
+
+/** 拍照 */
+async function shoot(): Promise<void> {
+  const got = await shootPhoto()
+  if (got) adopt(got)
 }
 
 /** 开始识别 */
@@ -120,34 +132,30 @@ onBeforeUnmount(cleanup)
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
-      <h3 class="tool-card__title">选择图片</h3>
+    <tool-group title="选择图片">
       <div v-if="image" ref="stage" class="stage" @click="onStageClick">
         <img class="stage__img" :src="image.url" alt="待识别图片" />
         <svg v-if="result" class="stage__mask" :viewBox="viewBox" preserveAspectRatio="none">
           <polygon v-for="(b, i) in boxes" :key="i" :points="b.points" class="box" :class="{ 'is-active': b.line === active }" />
         </svg>
       </div>
-      <van-button block plain round :disabled="busy" @click="choose">{{ image ? '换一张' : '选择图片' }}</van-button>
+      <p v-else class="tool-hint">点底部「相册」或「拍照」选一张图。</p>
       <p class="tool-hint">中文、英文、数字由同一个模型一起识别。</p>
-    </div>
+    </tool-group>
 
     <model-missing-notice v-if="catalogReady && !modelReady" />
 
-    <van-button type="primary" block round :loading="busy" :disabled="!image || !modelReady" @click="run">
-      {{ busy ? '识别中…' : '开始识别' }}
-    </van-button>
-
-    <div v-if="result" class="tool-card">
-      <h3 class="tool-card__title">识别结果</h3>
+    <tool-group v-if="result" title="识别结果">
       <p class="tool-hint">{{ summary }}。点图上的框或下面的行可以定位，点行即复制该行。</p>
       <ul v-if="lines.length" class="lines">
         <li v-for="(l, i) in lines" :key="i" class="line" :class="{ 'is-active': i === active }" @click="active = i; copy(l.text, '已复制该行')">
           {{ l.text }}
         </li>
       </ul>
-      <van-button v-if="lines.length" type="primary" plain block round @click="copy(fullText, '已复制全文')">复制全文</van-button>
-    </div>
+    </tool-group>
+
+    <!-- 底部动作栏：相册 / 拍照选图，复制全文，主按钮开始识别 -->
+    <bottom-actions :actions="{ copy: { disabled: !lines.length, text: '复制全文' } }" album photo main :main-text="busy ? '识别中' : '开始识别'" :disabled="{ album: busy, photo: busy, main: busy || !image || !modelReady }" @album="choose" @photo="shoot" @main="run" @copy="copy(fullText, '已复制全文')" />
   </div>
 </template>
 

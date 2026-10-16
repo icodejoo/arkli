@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 通知自己：给自己发一条通知，可立即、N 分钟后或指定时间；待触发的提醒可在列表里取消
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { showFailToast, showSuccessToast, showToast } from 'vant'
 import { isNativeAvailable } from '@/native/bridge'
@@ -112,13 +113,12 @@ onBeforeUnmount(() => clearInterval(timer))
   <div class="tool-page">
     <van-notice-bar v-if="!hosted" wrapable :scrollable="false" left-icon="info-o">{{ TIP_NO_HOST }}</van-notice-bar>
 
-    <div class="tool-card">
+    <tool-group>
       <van-field v-model="title" label="标题" placeholder="提醒我做什么" :maxlength="MAX_TITLE" />
       <van-field v-model="text" label="内容" type="textarea" rows="2" autosize placeholder="可选，补充说明" :maxlength="MAX_TEXT" />
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">什么时候提醒</h3>
+    <tool-group title="什么时候提醒">
       <van-radio-group v-model="mode" direction="horizontal">
         <van-radio name="now">立即</van-radio>
         <van-radio name="delay">N 分钟后</van-radio>
@@ -134,12 +134,9 @@ onBeforeUnmount(() => clearInterval(timer))
       <div v-else-if="mode === 'at'" class="ns-row">
         <input v-model="atText" class="ns-datetime" type="datetime-local" aria-label="提醒时间" />
       </div>
-    </div>
+    </tool-group>
 
-    <van-button type="primary" block round :loading="busy" :disabled="!hosted" @click="submit">{{ submitText }}</van-button>
-
-    <div class="tool-card">
-      <h3 class="tool-card__title">待触发的提醒</h3>
+    <tool-group title="待触发的提醒">
       <van-empty v-if="items.length === 0" image-size="64" description="暂无" />
       <van-cell-group v-else :border="false">
         <van-cell v-for="a in items" :key="a.id" :title="a.title" :label="`${formatAt(a.atEpochMs, now)}（还有 ${formatCountdown(a.atEpochMs - now)}）`" center>
@@ -148,8 +145,11 @@ onBeforeUnmount(() => clearInterval(timer))
           </template>
         </van-cell>
       </van-cell-group>
-    </div>
+    </tool-group>
     <p class="tool-hint">到点由系统闹钟唤起，App 退到后台也会提醒。设备重启后未触发的提醒会失效。</p>
+
+    <!-- 底部动作栏：主按钮提醒 -->
+    <bottom-actions main :main-text="busy ? '提交中' : submitText" :disabled="{ main: busy || !hosted }" @main="submit" />
   </div>
 </template>
 

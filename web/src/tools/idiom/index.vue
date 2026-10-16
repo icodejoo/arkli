@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 成语查询：内置精选词库，支持成语/拼音/首字母/释义搜索，详情里可接龙
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, ref } from 'vue'
 import { showFailToast, showSuccessToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
@@ -46,18 +47,19 @@ async function copy(): Promise<void> {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
-      <h3 class="tool-card__title">查成语</h3>
+    <tool-group title="查成语">
       <van-search v-model="keyword" shape="round" placeholder="成语、拼音、首字母（如 yxzx）或释义关键字" :clearable="true" />
       <p class="tool-hint">内置精选词库（{{ all.length }} 条），非完整词典。</p>
-      <van-button plain block class="idiom-random" @click="pickRandom">随机来一个</van-button>
-    </div>
+    </tool-group>
 
-    <van-cell-group v-if="hits.length" inset class="tool-group">
+    <tool-group v-if="hits.length">
       <van-cell v-for="h in hits" :key="h.idiom.word" :title="h.idiom.word" :label="h.idiom.pinyin" is-link @click="open(h.idiom)" />
-    </van-cell-group>
+    </tool-group>
     <p v-if="hits.length >= MAX_RESULTS" class="tool-hint idiom-more">最多显示 {{ MAX_RESULTS }} 条，换个关键字再缩小范围。</p>
     <p v-else-if="keyword.trim() && !hits.length" class="tool-hint idiom-more">词库里没找到，换个说法试试。</p>
+
+    <!-- 底部动作栏：主按钮随机来一个（详情弹层层级更高，会盖住这条栏） -->
+    <bottom-actions main main-text="随机来一个" @main="pickRandom" />
 
     <van-popup v-model:show="show" position="bottom" round closeable :style="{ maxHeight: '80%' }">
       <div v-if="current" class="idiom-detail">
@@ -67,7 +69,7 @@ async function copy(): Promise<void> {
         <p v-if="current.example" class="tool-hint">例：{{ current.example }}</p>
         <van-button plain size="small" @click="copy">复制</van-button>
 
-        <h3 class="tool-card__title idiom-chain-title">接龙：以“{{ Array.from(current.word).pop() }}”开头</h3>
+        <h3 class="tool-group__title idiom-chain-title">接龙：以“{{ Array.from(current.word).pop() }}”开头</h3>
         <p v-if="!chain.length" class="tool-hint">词库里暂时没有可接的。</p>
         <div v-else class="idiom-chain">
           <van-tag v-for="c in chain" :key="c.idiom.word" size="large" :type="c.diffSound ? 'warning' : 'primary'" plain @click="open(c.idiom)">
@@ -80,9 +82,6 @@ async function copy(): Promise<void> {
 </template>
 
 <style lang="scss" scoped>
-.idiom-random {
-  margin-top: $space-4;
-}
 .idiom-more {
   text-align: center;
 }

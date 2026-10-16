@@ -29,13 +29,13 @@ async function copy(text: string): Promise<void> {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
+    <tool-group>
       <van-field v-model="query" placeholder="搜命令名、别名或作用，如 rm、删除" clearable />
       <div class="lm-cats">
         <van-tag :plain="cat !== ALL" type="primary" size="large" class="lm-cat" @click="cat = ALL">全部 {{ COMMANDS.length }}</van-tag>
         <van-tag v-for="k in CATEGORIES" :key="k" :plain="cat !== k" type="primary" size="large" class="lm-cat" @click="cat = k">{{ k }} {{ counts[k] }}</van-tag>
       </div>
-    </div>
+    </tool-group>
 
     <p v-if="!list.length" class="tool-hint">没有匹配的命令，换个关键词试试。</p>
 

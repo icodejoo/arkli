@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 视频压缩：选视频，挑一档预设，原生用系统编码器重新编码（只降码率，不改分辨率），音轨原样保留
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { showFailToast, showSuccessToast, showToast } from 'vant'
 import { isNativeAvailable } from '@/native/bridge'
@@ -137,10 +138,10 @@ onBeforeUnmount(() => abort?.abort())
     <van-notice-bar v-if="!hosted" wrapable :scrollable="false" left-icon="info-o">{{ TIP_NO_HOST }}</van-notice-bar>
 
     <template v-else>
-      <div class="tool-card">
-        <div class="tool-card__title">1. 选择视频</div>
-        <van-button block round plain type="primary" :disabled="running" @click="onPick">{{ video ? '换一个视频' : '选择视频' }}</van-button>
-        <template v-if="video">
+      <tool-group>
+        <div class="tool-group__title">1. 选择视频</div>
+        <p v-if="!video" class="tool-hint">点底部「相册」选一个视频。</p>
+        <template v-else>
           <p class="vc-name">{{ video.name }}</p>
           <p class="tool-hint">
             {{ formatBytes(srcBytes) }}<template v-if="info?.durationMs"> · {{ formatDuration(info.durationMs) }}</template
@@ -152,10 +153,10 @@ onBeforeUnmount(() => abort?.abort())
         <ul class="vc-limits">
           <li v-for="t in LIMITS" :key="t">{{ t }}</li>
         </ul>
-      </div>
+      </tool-group>
 
-      <div v-if="video && info" class="tool-card">
-        <div class="tool-card__title">2. 选择压缩档位</div>
+      <tool-group v-if="video && info">
+        <div class="tool-group__title">2. 选择压缩档位</div>
         <div class="vc-presets">
           <button
             v-for="(p, i) in PRESETS"
@@ -173,15 +174,13 @@ onBeforeUnmount(() => abort?.abort())
         <p class="tool-hint">{{ PRESETS.find((p) => p.key === preset)?.hint }}。预计体积按码率估算，实际可能有出入。</p>
         <p v-if="warning" class="vc-warn">{{ warning }}</p>
 
-        <van-button v-if="!running" block round type="primary" class="vc-go" :disabled="!canRun" @click="onCompress">开始压缩</van-button>
-        <div v-else class="vc-running">
+        <div v-if="running" class="vc-running">
           <van-progress :percentage="percent" stroke-width="8" />
-          <van-button size="small" plain @click="onCancel">取消</van-button>
         </div>
-      </div>
+      </tool-group>
 
-      <div v-if="result" class="tool-card">
-        <div class="tool-card__title">3. 压缩结果</div>
+      <tool-group v-if="result">
+        <div class="tool-group__title">3. 压缩结果</div>
         <div class="vc-compare">
           <div class="vc-compare__col">
             <div class="vc-compare__label">压缩前</div>
@@ -197,12 +196,11 @@ onBeforeUnmount(() => abort?.abort())
           </div>
         </div>
         <p v-if="notSmaller" class="vc-warn">{{ result.message || NOT_SMALLER_TEXT }}</p>
-        <div class="vc-actions">
-          <van-button round type="primary" :disabled="saving" @click="onSave">保存到手机</van-button>
-          <van-button round plain type="primary" :disabled="saving" @click="onShare">分享</van-button>
-        </div>
-      </div>
+      </tool-group>
     </template>
+
+    <!-- 底部动作栏：相册选视频，保存 / 分享压缩结果，主按钮开始压缩（压缩中变成取消） -->
+    <bottom-actions :actions="{ save: { disabled: !result || saving, text: '保存到手机' }, share: { disabled: !result || saving } }" v-if="hosted" album main :main-text="running ? '取消' : '开始压缩'" :main-type="running ? 'danger' : 'primary'" :disabled="{ album: running, main: !running && !canRun }" @album="onPick" @main="running ? onCancel() : onCompress()" @save="onSave" @share="onShare" />
   </div>
 </template>
 
@@ -284,11 +282,6 @@ onBeforeUnmount(() => abort?.abort())
   color: var(--c-text-muted);
 }
 
-/* 开始按钮 */
-.vc-go {
-  margin-top: $space-4;
-}
-
 /* 进度行 */
 .vc-running {
   display: flex;
@@ -324,16 +317,5 @@ onBeforeUnmount(() => abort?.abort())
   font-size: 18px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-}
-
-/* 保存与分享并排 */
-.vc-actions {
-  display: flex;
-  gap: $space-3;
-  margin-top: $space-4;
-
-  .van-button {
-    flex: 1;
-  }
 }
 </style>

@@ -49,22 +49,20 @@ async function copy(text: string): Promise<void> {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
-      <h3 class="tool-card__title">User-Agent</h3>
+    <tool-group title="User-Agent">
       <van-field v-model="input" type="textarea" rows="3" autosize clearable placeholder="粘贴要解析的 UA" />
       <div class="ua-actions">
         <van-button size="small" plain @click="useOwn">用本机 UA</van-button>
         <van-button size="small" plain :disabled="!input" @click="copy(input)">复制 UA</van-button>
       </div>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">解析结果（点一行复制）</h3>
+    <tool-group title="解析结果（点一行复制）">
       <van-cell v-for="r in rows" :key="r.label" :title="r.label" :value="r.value" @click="copy(r.value)" />
       <p class="tool-hint ua-note">
         UA 可以伪造。Windows 10 与 11 的 UA 相同，iPad 的“桌面版网站”会伪装成 Mac，品牌是按型号规则猜的，仅供参考。
       </p>
-    </div>
+    </tool-group>
   </div>
 </template>
 

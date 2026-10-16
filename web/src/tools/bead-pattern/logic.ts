@@ -342,3 +342,31 @@ export function validatePalette(palette: Palette): string[] {
   }
   return errs
 }
+
+/**
+ * 把用到的颜色拼成可复制的文本，一色一行：`色号 名称 #色值`。
+ *
+ * @param rows 用量统计
+ * @returns 按行分隔的文本；无数据时为空串
+ * @example usageText([{ code: 'A01', name: '白', hex: '#fff', count: 3 }]) // 'A01 白 #fff'
+ */
+export function usageText(rows: readonly UsageRow[]): string {
+  return rows.map((r) => `${r.code} ${r.name} ${r.hex}`).join('\n')
+}
+
+/** 占比下限：低于它显示 `<0.1%` */
+const PERCENT_MIN = 0.1
+
+/**
+ * 某色占总豆数的百分比文案，保留一位小数。
+ *
+ * @param count 该色颗数
+ * @param total 总颗数
+ * @returns 如 `12.3%`；不到 0.1% 显示 `<0.1%`；总数为 0 时返回 `0%`
+ * @example percentText(1, 8) // '12.5%'
+ */
+export function percentText(count: number, total: number): string {
+  if (total <= 0 || count <= 0) return '0%'
+  const p = (count / total) * 100
+  return p < PERCENT_MIN ? `<${PERCENT_MIN}%` : `${p.toFixed(1)}%`
+}

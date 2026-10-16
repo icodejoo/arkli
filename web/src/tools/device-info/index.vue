@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 设备信息：浏览器侧能拿到的屏幕、系统、硬件、网络与特性；在 App 内再补上原生的品牌型号、电池、存储、传感器等，可一键复制
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { showToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
@@ -127,18 +128,20 @@ onUnmounted(() => {
 
 <template>
   <div class="tool-page">
-    <div v-if="hasHost" class="tool-card di-live">
+    <tool-group v-if="hasHost" class="di-live">
       <van-button size="small" plain :loading="loading" @click="refreshLive">刷新电池 / 存储 / 网络</van-button>
       <van-cell title="每 3 秒自动刷新" center class="di-auto">
         <template #right-icon><van-switch v-model="auto" size="20" /></template>
       </van-cell>
-    </div>
-    <van-cell-group v-for="g in groups" :key="g.title" :title="g.title" class="tool-group">
+    </tool-group>
+    <tool-group v-for="g in groups" :key="g.title" :title="g.title">
       <van-cell v-for="(i, idx) in g.items" :key="`${idx}-${i.label}`" :title="i.label" :value="i.value" class="di-cell" />
-    </van-cell-group>
-    <van-button type="primary" block round @click="copyAll">复制全部</van-button>
+    </tool-group>
     <p v-if="hasHost" class="tool-hint">带「原生」字样的分组来自系统接口，取不到的项显示「—」。</p>
     <p v-else class="tool-hint">这里只列页面自己能读到的信息。在 App 内可看到更多（品牌型号、电池、存储、传感器等）。</p>
+
+    <!-- 底部动作栏：主按钮复制全部信息 -->
+    <bottom-actions main main-text="复制全部" @main="copyAll" />
   </div>
 </template>
 

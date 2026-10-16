@@ -76,7 +76,7 @@ const shiftResult = computed(() => {
     </van-tabs>
 
     <template v-if="tab === 'diff'">
-      <div class="tool-card">
+      <tool-group>
         <van-cell-group>
           <van-field v-model="aText" :label="LABEL_START" type="date" />
           <van-field v-model="bText" label="结束日期" type="date" />
@@ -86,7 +86,7 @@ const shiftResult = computed(() => {
             </template>
           </van-cell>
         </van-cell-group>
-      </div>
+      </tool-group>
       <p v-if="diffResult && 'error' in diffResult" class="tool-result tool-result--error">{{ diffResult.error }}</p>
       <div v-else-if="diffResult" class="tool-result">
         <span class="tool-result__label">相差</span>
@@ -96,7 +96,7 @@ const shiftResult = computed(() => {
     </template>
 
     <template v-else>
-      <div class="tool-card">
+      <tool-group>
         <van-cell-group>
           <van-field v-model="baseText" :label="LABEL_START" type="date" />
           <van-field label="方向">
@@ -116,7 +116,7 @@ const shiftResult = computed(() => {
             </template>
           </van-field>
         </van-cell-group>
-      </div>
+      </tool-group>
       <p v-if="shiftResult && 'error' in shiftResult" class="tool-result tool-result--error">{{ shiftResult.error }}</p>
       <div v-else-if="shiftResult" class="tool-result">
         <span class="tool-result__label">推算结果</span>

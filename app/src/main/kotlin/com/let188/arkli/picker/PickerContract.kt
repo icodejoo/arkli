@@ -40,11 +40,13 @@ enum class PickerMedia {
  * @property max 最多可选个数（单选传 1）
  * @property camera 是否在页面内显示悬浮拍照按钮
  * @property media 媒体种类，默认图片
+ * @property editModes 预览页允许的编辑模式，空表示不显示编辑按钮；默认裁剪与旋转
  */
 data class PickerParams(
     val max: Int = PickerConst.DEFAULT_MAX,
     val camera: Boolean = false,
     val media: PickerMedia = PickerMedia.IMAGE,
+    val editModes: List<String> = PickerPolicy.DEFAULT_EDIT_MODES,
 )
 
 /**
@@ -57,6 +59,7 @@ class PickerContract : ActivityResultContract<PickerParams, PickOutcome>() {
             .putExtra(PickerConst.EXTRA_MAX, input.max)
             .putExtra(PickerConst.EXTRA_CAMERA, input.camera)
             .putExtra(PickerConst.EXTRA_MEDIA, input.media.name)
+            .putStringArrayListExtra(PickerConst.EXTRA_PICK_EDIT_MODES, ArrayList(input.editModes))
 
     /** 解析返回：OK 带 URI 列表，自定义码表示权限被拒或切回拍照，其余按取消 */
     override fun parseResult(resultCode: Int, intent: Intent?): PickOutcome = when (resultCode) {

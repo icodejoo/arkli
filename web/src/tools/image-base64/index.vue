@@ -1,10 +1,12 @@
 <script setup lang="ts">
 // 图片转 Base64：选图出 data URL / 纯 Base64；也能粘贴 Base64 还原图片并保存
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { showFailToast, showSuccessToast, showToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
 import { formatBytes, mimeToExt } from '@/shared/image-calc'
-import { pickImages, saveBlob, type PickedImage } from '@/shared/image-io'
+import { EDIT_BASIC, pickImages, saveBlob, type PickedImage } from '@/shared/image-io'
+import { shootPhoto } from '@/shared/shootPhoto'
 import {
   base64ToBytes,
   bloatText,
@@ -44,11 +46,9 @@ const sizeInfo = computed(() => {
   return `原图 ${formatBytes(img.size)} → 文本 ${formatBytes(output.value.length)}（${bloatText(img.size, output.value.length)}）`
 })
 
-/** 选图并编码 */
-async function choose(): Promise<void> {
+/** 采用新图并编码 */
+async function adopt(got: PickedImage): Promise<void> {
   try {
-    const [got] = await pickImages({ multiple: false, max: 1, onFailed: (f) => showToast(`读取失败：${f[0].message}`) })
-    if (!got) return
     image.value?.release()
     image.value = got
     dataUrl.value = ''
@@ -60,6 +60,28 @@ async function choose(): Promise<void> {
   } finally {
     encoding.value = false
   }
+}
+
+/** 相册选图并编码 */
+async function choose(): Promise<void> {
+  try {
+    const [got] = await pickImages({ edit: EDIT_BASIC, multiple: false, max: 1, onFailed: (f) => showToast(`读取失败：${f[0].message}`) })
+    if (got) await adopt(got)
+  } catch (e) {
+    showFailToast((e as { message?: string }).message ?? '编码失败')
+  }
+}
+
+/** 拍照并编码 */
+async function shoot(): Promise<void> {
+  const got = await shootPhoto()
+  if (got) await adopt(got)
+}
+
+/** 底部主按钮：图转文本页复制结果，文本转图片页保存图片 */
+function onMain(): void {
+  if (mode.value === 'encode') void copy()
+  else void saveRestored()
 }
 
 /** Blob 转 data URL */
@@ -159,32 +181,27 @@ onBeforeUnmount(() => {
     </van-tabs>
 
     <template v-if="mode === 'encode'">
-      <div class="tool-card">
-        <h3 class="tool-card__title">选择图片</h3>
+      <tool-group title="选择图片">
         <img v-if="image" class="b64-thumb" :src="image.url" alt="已选图片" />
-        <van-button block plain round :loading="encoding" @click="choose">{{ image ? '换一张' : '选择图片' }}</van-button>
-      </div>
+        <p v-else class="tool-hint">点底部「相册」或「拍照」选一张图。</p>
+      </tool-group>
 
-      <van-cell-group inset>
+      <van-cell-group>
         <van-cell title="带 data:image 前缀" center>
           <template #right-icon><van-switch v-model="withPrefix" size="22" /></template>
         </van-cell>
       </van-cell-group>
 
-      <div class="tool-card">
-        <h3 class="tool-card__title">结果</h3>
+      <tool-group title="结果">
         <van-field :model-value="shown" type="textarea" rows="4" autosize readonly placeholder="选图后这里显示 Base64" />
         <p v-if="sizeInfo" class="tool-hint">{{ sizeInfo }}</p>
         <p v-if="output.length > SHOW_CHARS" class="tool-hint">文本较长，这里只显示开头，复制的是完整内容。</p>
         <p v-if="output.length > BIG_TEXT_CHARS" class="tool-hint b64-warn">超过 500KB，部分应用粘贴会被截断。</p>
-      </div>
-
-      <van-button type="primary" block round :disabled="!output" @click="copy">复制</van-button>
+      </tool-group>
     </template>
 
     <template v-else>
-      <div class="tool-card">
-        <h3 class="tool-card__title">粘贴 Base64 或 data URL</h3>
+      <tool-group title="粘贴 Base64 或 data URL">
         <van-field
           v-model="pasted"
           type="textarea"
@@ -199,14 +216,24 @@ onBeforeUnmount(() => {
           <van-button size="small" plain icon="records-o" @click="paste">从剪贴板粘贴</van-button>
           <van-button size="small" plain icon="delete-o" @click="clearPaste">清空</van-button>
         </div>
-      </div>
+      </tool-group>
 
-      <div v-if="restored" class="tool-card">
-        <h3 class="tool-card__title">预览（{{ formatBytes(restored.blob.size) }}）</h3>
+      <tool-group v-if="restored" :title="`预览（${formatBytes(restored.blob.size)}）`">
         <img class="b64-thumb" :src="restored.url" alt="还原的图片" />
-        <van-button type="primary" block round @click="saveRestored">保存图片</van-button>
-      </div>
+      </tool-group>
     </template>
+
+    <!-- 底部动作栏：图转文本页有相册 / 拍照与「复制」，文本转图片页只有「保存图片」 -->
+    <bottom-actions
+      :album="mode === 'encode'"
+      :photo="mode === 'encode'"
+      main
+      :main-text="mode === 'encode' ? '复制' : '保存图片'"
+      :disabled="{ album: encoding, photo: encoding, main: mode === 'encode' ? !output : !restored }"
+      @album="choose"
+      @photo="shoot"
+      @main="onMain"
+    />
   </div>
 </template>
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 拆分选词：把一段中文拆成词，点选想要的，拼起来复制
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, ref, watch } from 'vue'
 import { showToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
@@ -42,13 +43,12 @@ async function copy(): Promise<void> {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
+    <tool-group>
       <van-field v-model="text" type="textarea" rows="4" autosize placeholder="粘贴或输入一段文字" />
       <p v-if="!segmenter" class="tool-hint">当前系统不支持智能分词，已改为按字拆分。</p>
-    </div>
+    </tool-group>
 
-    <div v-if="tokens.length" class="tool-card">
-      <h3 class="tool-card__title">点选要的词</h3>
+    <tool-group v-if="tokens.length" title="点选要的词">
       <div class="ws-chips">
         <template v-for="(t, i) in tokens" :key="i">
           <span
@@ -67,13 +67,14 @@ async function copy(): Promise<void> {
         <van-button size="small" plain :disabled="!selected.size" @click="selected = new Set()">清除</van-button>
         <van-checkbox v-model="spaced" shape="square">词间加空格</van-checkbox>
       </div>
-    </div>
+    </tool-group>
 
-    <div v-if="tokens.length" class="tool-card">
-      <h3 class="tool-card__title">选中的内容</h3>
+    <tool-group v-if="tokens.length" title="选中的内容">
       <p class="ws-out">{{ output || '还没选' }}</p>
-      <van-button type="primary" block round :disabled="!output" @click="copy">复制</van-button>
-    </div>
+    </tool-group>
+
+    <!-- 底部动作栏：主操作就是复制选中的内容 -->
+    <bottom-actions main main-text="复制" :disabled="{ main: !output }" @main="copy" />
   </div>
 </template>
 

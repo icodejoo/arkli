@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 噪音测量：用麦克风估算环境噪音。数值没有经过校准，仅供参考；可用校准偏移对齐一台已知的声级计
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { showFailToast } from 'vant'
 import { isNativeAvailable } from '@/native/bridge'
@@ -208,7 +209,7 @@ onBeforeUnmount(() => {
     <van-notice-bar v-if="!hosted" wrapable :scrollable="false" left-icon="info-o">{{ TIP_NO_HOST }}</van-notice-bar>
     <van-notice-bar wrapable :scrollable="false" color="var(--c-warn-text)" background="var(--c-warn-bg)" left-icon="warning-o">{{ TIP_UNCALIBRATED }}</van-notice-bar>
 
-    <div class="tool-card nm-main">
+    <tool-group class="nm-main">
       <div class="nm-db" :style="{ color }">{{ formatDb(shown) }}<span class="nm-unit">dB</span></div>
       <div class="nm-level" :style="{ color }">{{ level ? level.label : running ? '测量中…' : '点击下方开始' }}</div>
       <div class="nm-bar" role="presentation">
@@ -222,27 +223,28 @@ onBeforeUnmount(() => {
         <div><div class="nm-stats__v">{{ formatDb(shownPeak) }}</div><div class="nm-stats__k">瞬时峰值</div></div>
       </div>
       <div class="nm-actions">
-        <van-button v-if="!running" type="primary" round block :loading="starting" :disabled="!hosted" @click="onStart">开始测量</van-button>
-        <van-button v-else type="danger" round block @click="onStop">停止</van-button>
-        <van-button plain round :disabled="!stats.count" @click="onReset">清零</van-button>
+        <van-button plain round block :disabled="!stats.count" @click="onReset">清零</van-button>
       </div>
       <div v-if="denied" class="nm-denied">
         <p>{{ TIP_DENIED }}</p>
         <van-button size="small" plain round @click="onOpenSettings">打开系统设置</van-button>
       </div>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <div class="tool-card__title">近 60 秒</div>
+    <tool-group>
+      <div class="tool-group__title">近 60 秒</div>
       <canvas ref="canvas" class="nm-chart" :style="{ height: `${CHART_HEIGHT}px` }"></canvas>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <div class="tool-card__title">校准偏移：{{ offset > 0 ? '+' : '' }}{{ offset }} dB</div>
+    <tool-group>
+      <div class="tool-group__title">校准偏移：{{ offset > 0 ? '+' : '' }}{{ offset }} dB</div>
       <van-slider :model-value="offset" :min="OFFSET_RANGE.min" :max="OFFSET_RANGE.max" :step="0.5" @update:model-value="onOffset" />
       <p class="tool-hint">拿一台声级计或可信的 App 对照，把读数调到一致。偏移只影响显示，会记住。</p>
       <p class="tool-hint">参考：&lt;30 很安静，30~50 安静，50~70 一般，70~85 嘈杂，&gt;85 长时间会伤听力。</p>
-    </div>
+    </tool-group>
+
+    <!-- 底部动作栏：主按钮开始测量（测量中变成停止） -->
+    <bottom-actions main :main-text="running ? '停止' : starting ? '启动中' : '开始测量'" :main-type="running ? 'danger' : 'primary'" :disabled="{ main: !running && (starting || !hosted) }" @main="running ? onStop() : onStart()" />
   </div>
 </template>
 

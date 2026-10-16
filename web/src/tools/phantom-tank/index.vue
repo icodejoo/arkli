@@ -1,11 +1,12 @@
 <script setup lang="ts">
 // 幻影坦克：表图 + 里图合成一张 PNG，白底看到表图，黑底看到里图
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { showToast } from 'vant'
 import ImageResultList from '@/shared/ImageResultList.vue'
 import { useImageResults } from '@/shared/useImageResults'
 import { fitMaxEdge } from '@/shared/image-calc'
-import { canvasToBlob, createCanvas, loadBitmap, pickImages, releaseCanvas, type PickedImage } from '@/shared/image-io'
+import { canvasToBlob, createCanvas, loadBitmap, EDIT_BASIC, pickImages, releaseCanvas, type PickedImage } from '@/shared/image-io'
 import { clampContrast, composePhantom, CONTRAST_DEFAULT, CONTRAST_MAX, CONTRAST_MIN, coverRect, MAX_EDGE } from './logic'
 
 /** 输出文件名前缀 */
@@ -32,7 +33,7 @@ const bgColor = computed(() => (previewBg.value === 'white' ? '#ffffff' : '#0000
 /** 选一张图放进指定槽位 */
 async function choose(slot: 'surface' | 'inner'): Promise<void> {
   try {
-    const [got] = await pickImages({ multiple: false, max: 1, onFailed: (f) => showToast(`读取失败：${f[0].message}`) })
+    const [got] = await pickImages({ edit: EDIT_BASIC, multiple: false, max: 1, onFailed: (f) => showToast(`读取失败：${f[0].message}`) })
     if (!got) return
     const target = slot === 'surface' ? surface : inner
     target.value?.release()
@@ -103,8 +104,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="tool-page">
-    <div class="tool-card">
-      <h3 class="tool-card__title">表图与里图</h3>
+    <tool-group title="表图与里图">
       <div class="pt-slots">
         <div class="pt-slot">
           <div class="pt-slot__box" @click="choose('surface')">
@@ -126,12 +126,9 @@ onBeforeUnmount(() => {
         <van-slider v-model="contrastRaw" :min="CONTRAST_MIN * CONTRAST_SCALE" :max="CONTRAST_MAX * CONTRAST_SCALE" />
       </div>
       <p class="tool-hint">输出尺寸跟随表图（最长边不超过 {{ MAX_EDGE }}），里图会居中裁剪铺满。两张图的亮度各只用一半范围，对比度会降低，里图暗部看不清时可调高对比度。</p>
-    </div>
+    </tool-group>
 
-    <van-button type="primary" block round :loading="busy" :disabled="!surface || !inner" @click="run">合成</van-button>
-
-    <div v-if="results.length" class="tool-card">
-      <h3 class="tool-card__title">效果预览</h3>
+    <tool-group v-if="results.length" title="效果预览">
       <van-radio-group v-model="previewBg" direction="horizontal" class="is-radios">
         <van-radio name="white">白底</van-radio>
         <van-radio name="black">黑底</van-radio>
@@ -140,9 +137,11 @@ onBeforeUnmount(() => {
         <img class="pt-stage__img" :src="results[0].url" alt="幻影坦克预览" />
       </div>
       <image-result-list :results="results" />
-      <van-button type="primary" plain block round :loading="saving" @click="saveAll">保存 PNG</van-button>
       <p class="tool-hint pt-tip">发给别人要选“原图”发送：微信、QQ 压缩或转 JPG 后透明信息会丢，效果就没了。</p>
-    </div>
+    </tool-group>
+
+    <!-- 底部动作栏：两个槽位各自点图选图，这里只放保存与主按钮合成 -->
+    <bottom-actions :actions="{ save: { disabled: !results.length || saving, text: '保存 PNG' } }" main :main-text="busy ? '合成中' : '合成'" :disabled="{ main: busy || !surface || !inner }" @main="run" @save="saveAll" />
   </div>
 </template>
 

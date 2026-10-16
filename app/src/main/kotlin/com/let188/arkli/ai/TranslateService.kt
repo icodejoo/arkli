@@ -47,6 +47,12 @@ interface TranslateBackend {
      * @return 译文、耗时、识别出的语言与是否有无法识别的句子
      */
     fun translate(text: String, src: String, tgt: String, numBeams: Int): TranslateOutcome
+
+    /**
+     * 打断正在进行的 [translate]：在下一个解码步前生效，[translate] 随后抛 [CancellationException]。
+     * 可在任意线程调用；没有翻译在跑时无副作用（每次 [translate] 都会换新的取消标志）。
+     */
+    fun cancel()
 }
 
 /**
@@ -90,6 +96,7 @@ class TranslateService(
      * @param req 已校验的请求
      * @return 翻译结果
      * @throws BridgeException NOT_READY（模型未就绪）、BAD_PARAMS（Rust 拒绝）、INTERNAL（加载或推理失败）
+     * @throws CancellationException 协程被取消：已通知 Rust 在下一个解码步前中止，模型会话保持可用
      */
     suspend fun translate(req: AiTranslateRequest): TranslateResult = AiHeavyGate.run { translateLocked(req) }
 
@@ -130,14 +137,14 @@ class TranslateService(
     }
 
     /** 闸门内的实际流程 */
-    private fun translateLocked(req: AiTranslateRequest): TranslateResult {
+    private suspend fun translateLocked(req: AiTranslateRequest): TranslateResult {
         val dir = env.modelDir()
         if (!isModelReady()) {
             throw BridgeException(BridgeErrors.NOT_READY, "翻译模型未就绪：${dir.path} 缺文件，请先下载模型")
         }
         val t0 = now()
         ensureLoaded(dir)
-        val out = backend.translate(req.text, req.src, req.tgt, req.numBeams ?: 0)
+        val out = runCancellable(backend::cancel) { backend.translate(req.text, req.src, req.tgt, req.numBeams ?: 0) }
         // 非 auto 时按契约恒为 [src] / false，不依赖后端实现
         val auto = req.src == AiTranslatePolicy.AUTO
         val detected = if (auto) out.detected else listOf(req.src)

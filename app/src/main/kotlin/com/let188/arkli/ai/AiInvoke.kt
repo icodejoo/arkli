@@ -284,8 +284,8 @@ class AiInvoker(private val providers: () -> List<AiProvider>, private val resol
     }
 
     /**
-     * run 端口在 IO 线程上跑（其余三个端口也一样）。注意：Qwen 生成**不可取消**——引擎没有中断接口，
-     * 取消只会让调用方不再等结果，生成仍会跑完并占着重任务闸门（真取消是统一协议第 7 步，未做）。
+     * run 端口在 IO 线程上跑（其余端口也一样）。Qwen 生成可被取消：服务内部用 [runCancellable] 在协程被取消时
+     * 通知引擎在下一个 token 处中止（预填充阶段不可打断），闸门随之释放。
      */
     private suspend fun runOnIo(p: AiProvider, call: AiCall.Run): AiRunResult = withContext(Dispatchers.IO) { runText(p, call) }
 

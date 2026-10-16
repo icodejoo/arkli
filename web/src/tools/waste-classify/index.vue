@@ -7,7 +7,7 @@ import { isNativeAvailable } from '@/native/bridge'
 import { cameraItemToPicked, captureCamera, clearCamera, isAlbum, isCancelled } from '@/native/camera'
 import { aiClassifyImage, type ImageClassifyResult } from '@/native/ai'
 import { useModelsStore } from '@/stores/models'
-import { pickImages, type PickedImage } from '@/shared/image-io'
+import { EDIT_BASIC, pickImages, type PickedImage } from '@/shared/image-io'
 import { resolveImagePath } from '@/tools/_ai/aiImage'
 import {
   buildView,
@@ -142,7 +142,7 @@ async function takePhoto(): Promise<void> {
 async function fromAlbum(): Promise<void> {
   if (busy.value) return
   try {
-    const got = (await pickImages({ multiple: false }))[0]
+    const got = (await pickImages({ edit: EDIT_BASIC, multiple: false }))[0]
     if (got) await accept(got)
   } catch (e) {
     showToast((e as { message?: string }).message ?? '选图失败')
@@ -167,27 +167,27 @@ onBeforeUnmount(() => {
 <template>
   <div class="tool-page">
     <!-- 预览：任何阶段都在顶部，1:1 铺满容器宽度 -->
-    <div class="tool-card">
+    <tool-group>
       <div class="preview">
         <img v-if="image" class="preview__img" :src="image.url" alt="待识别图片" />
         <van-icon v-else name="photo-o" class="preview__empty" />
       </div>
       <p v-if="busy" class="tool-hint preview__busy">{{ busyText(elapsed) }}</p>
-    </div>
+    </tool-group>
 
     <!-- 非宿主 -->
-    <div v-if="stage === 'noHost'" class="tool-card gate">
+    <tool-group v-if="stage === 'noHost'" class="gate">
       <div class="gate__icon">📱</div>
       <p class="gate__title">{{ NO_HOST_TEXT }}</p>
       <p class="tool-hint">识别模型跑在手机上，桌面浏览器用不了。</p>
-    </div>
+    </tool-group>
 
     <!-- 模型未就绪：下载归模型选择器 / AI 中心，这里只提示 -->
-    <div v-else-if="stage === 'notReady'" class="tool-card gate">
+    <tool-group v-else-if="stage === 'notReady'" class="gate">
       <div class="gate__icon">🗑️</div>
       <p class="gate__title">识别模型还没准备好</p>
       <p class="tool-hint">请先下载模型，进度可在 AI 中心查看。</p>
-    </div>
+    </tool-group>
 
     <!-- 已就绪：选图与结果 -->
     <template v-else>
@@ -203,8 +203,7 @@ onBeforeUnmount(() => {
           <div v-if="view.headline.sub" class="hero__sub">{{ view.headline.sub }}</div>
         </div>
 
-        <div class="tool-card">
-          <h3 class="tool-card__title">{{ result?.uncertain && selected < 0 ? '更像哪一个？点一下' : '可能是这些，点选更像的' }}</h3>
+        <tool-group :title="`${result?.uncertain && selected < 0 ? '更像哪一个？点一下' : '可能是这些，点选更像的'}`">
           <div class="cands" :class="{ 'cands--hot': result?.uncertain && selected < 0 }">
             <button
               v-for="(c, i) in view.cards"
@@ -224,7 +223,7 @@ onBeforeUnmount(() => {
             </button>
           </div>
           <p v-for="h in hints" :key="h" class="hint">💡 {{ h }}</p>
-        </div>
+        </tool-group>
       </template>
 
       <p v-if="shouldWarnHeat(count)" class="tool-hint warm">{{ HEAT_TEXT }}</p>

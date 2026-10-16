@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 编辑：铅笔。viewport 24，线宽 2.16，圆头圆角 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:pathData="M4,20L4,16L16,4L20,8L8,20ZM13,7L17,11"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.16"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>

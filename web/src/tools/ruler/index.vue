@@ -553,8 +553,7 @@ onUnmounted(() => {
     <div v-if="!savedScale && autoScale" class="tool-hint ruler-warn">已按屏幕物理密度自动换算，一般不用校准；对不上实物再手动校准。</div>
     <div v-else-if="!savedScale" class="tool-hint ruler-warn">未校准，刻度仅供参考。拿银行卡或硬币校准一次就准了。</div>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">游标读数</h3>
+    <tool-group title="游标读数">
       <p class="ruler-preview">{{ previewMain }}</p>
       <p class="tool-hint ruler-preview-alt">{{ previewAlt }}</p>
       <p class="tool-hint">在尺子上按住上下拖动游标；拖不准就用下面两个按钮微调。</p>
@@ -562,10 +561,9 @@ onUnmounted(() => {
         <van-button size="small" @click="nudge(-1)">往上 0.1 mm</van-button>
         <van-button size="small" @click="nudge(1)">往下 0.1 mm</van-button>
       </div>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">标记</h3>
+    <tool-group title="标记">
       <div class="ruler-swatches" role="radiogroup" aria-label="标记颜色">
         <button
           v-for="(c, i) in MARK_COLORS"
@@ -601,11 +599,11 @@ onUnmounted(() => {
         </van-cell>
       </van-cell-group>
       <p v-else class="tool-hint ruler-gap">点"标记"会在游标当前位置留下一条选中颜色的线，并标出读数，可以连续标记。</p>
-    </div>
+    </tool-group>
 
     <van-popup v-model:show="compareOpen" position="bottom" round :style="{ height: '78%' }" safe-area-inset-bottom>
       <div class="cmp">
-        <h3 class="tool-card__title cmp__title">标记间距</h3>
+        <h3 class="tool-group__title cmp__title">标记间距</h3>
         <p class="tool-hint cmp__desc">点选两条标记，查看它们之间的间距。再点已选的取消，选第三条会替换最早选的。</p>
         <div class="cmp__scroll">
           <svg class="cmp__svg" :viewBox="`0 0 ${CMP_W} ${compareHeight}`" role="group" aria-label="标记列表，点选两条查看间距">
@@ -667,16 +665,14 @@ onUnmounted(() => {
       </div>
     </van-popup>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">怎么用</h3>
+    <tool-group title="怎么用">
       <p class="tool-hint">
         尺子贴着屏幕的长边，{{ placeText }}。把要量的东西贴着屏幕边放就行。零点在顶栏下沿，不在手机屏幕最顶端。
       </p>
       <p v-if="scaleOk" class="tool-hint ruler-total">尺长约 {{ totalText }}</p>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">单位与位置</h3>
+    <tool-group title="单位与位置">
       <van-radio-group v-model="unit" direction="horizontal">
         <van-radio name="cm">厘米</van-radio>
         <van-radio name="inch">英寸</van-radio>
@@ -685,10 +681,9 @@ onUnmounted(() => {
         <van-radio name="right">靠右</van-radio>
         <van-radio name="left">靠左</van-radio>
       </van-radio-group>
-    </div>
+    </tool-group>
 
-    <div class="tool-card">
-      <h3 class="tool-card__title">校准</h3>
+    <tool-group title="校准">
       <template v-if="!calibrating">
         <p class="tool-hint">不同手机的真实像素密度不一样，用实物对一下刻度才准。</p>
         <div class="tool-actions">
@@ -713,7 +708,7 @@ onUnmounted(() => {
           <van-button size="small" @click="calibrating = false">取消</van-button>
         </div>
       </template>
-    </div>
+    </tool-group>
   </div>
 </template>
 

@@ -20,6 +20,8 @@ pub enum ErrorKind {
     OutOfMemory,
     /// 推理或解码失败。
     DecodeFailed,
+    /// 调用方通过取消令牌打断了翻译。
+    Cancelled,
 }
 
 /// 翻译错误：类别 + 说明。

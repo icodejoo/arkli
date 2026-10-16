@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 反应力测试：等屏幕变绿再点，毫秒计时；提前点算犯规，5 轮取平均
+import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { gradeFor, isNewBest, isSuspicious, loadBest, randomWait, ROUNDS, saveBest, summarize } from './logic'
 
@@ -143,20 +144,20 @@ onBeforeUnmount(clearTimers)
       <span class="rt-pad__sub">{{ sub }}</span>
     </div>
 
-    <div v-if="phase === 'done'" class="tool-card">
-      <h3 class="tool-card__title">本组成绩</h3>
+    <tool-group v-if="phase === 'done'" title="本组成绩">
       <p class="rt-avg">平均 {{ stats.average }} ms</p>
       <p class="rt-grade">{{ grade.title }}：{{ grade.comment }}</p>
       <p class="tool-hint">最好 {{ stats.best }} ms，最慢 {{ stats.worst }} ms<span v-if="newBest">，刷新了历史最好！</span></p>
-      <van-button type="primary" block round @click="restart">再来一组</van-button>
-    </div>
+    </tool-group>
 
-    <div v-if="times.length && phase !== 'done'" class="tool-card">
-      <h3 class="tool-card__title">已完成</h3>
+    <tool-group v-if="times.length && phase !== 'done'" title="已完成">
       <div class="rt-times">
         <span v-for="(t, i) in times" :key="i" class="rt-times__item">{{ t }} ms</span>
       </div>
-    </div>
+    </tool-group>
+
+    <!-- 底部动作栏：计时点击必须落在上面的色块里（pointerdown 更准），栏上的主按钮只负责开始 / 重新开始 / 再来一组 -->
+    <bottom-actions main :main-text="phase === 'idle' ? '开始' : phase === 'done' ? '再来一组' : '重新开始'" :main-type="phase === 'idle' || phase === 'done' ? 'primary' : 'warning'" @main="restart" />
 
     <p class="tool-hint">
       历史最好：{{ best === null ? '暂无' : `${best} ms` }}。结果包含屏幕刷新和触控采样延迟，只适合和自己比，不同手机之间不可比。
