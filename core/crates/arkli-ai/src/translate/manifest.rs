@@ -4,6 +4,11 @@
 //! 编码器输入以源语言码开头、解码器第一个生成 token 强制为目标语言码，语言码取自 `lang_tokens`。
 //! 外部数据权重：`files` 可额外列出 `encoder_data` / `decoder_data`（`.onnx_data`），
 //! 文件名必须与 ONNX 图里记录的 `location` 一致，并与 `.onnx` 同目录（ORT 按 location 同目录加载并内存映射）。
+//!
+//! 两种模型格式由 `format` 区分（缺省视为 ORT，兼容旧模型）：
+//! - `onnx-merged`：`encoder` + `decoder`（merged，含 KV 分支）+ `tokenizer`；
+//! - `mnn-split`：`encoder` + `cross_kv` + `decoder`（单步）+ `embed`（int8）+ `embed_scale`（每行 float32）+ `tokenizer`，
+//!   `encoder_data` / `cross_kv_data` / `decoder_data`（`.mnn.weight`）可选。
 
 use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
@@ -24,6 +29,26 @@ pub const FILE_TOKENIZER: &str = "tokenizer";
 pub const FILE_ENCODER_DATA: &str = "encoder_data";
 /// `files` 中可选的键：解码器外部数据。
 pub const FILE_DECODER_DATA: &str = "decoder_data";
+/// `files` 中 MNN 格式必需的键：交叉注意力 KV 小图。
+pub const FILE_CROSS_KV: &str = "cross_kv";
+/// `files` 中 MNN 格式可选的键：交叉 KV 图的外置权重（`.mnn.weight`）。
+pub const FILE_CROSS_KV_DATA: &str = "cross_kv_data";
+/// `files` 中 MNN 格式必需的键：词嵌入表（行主序 int8）。
+pub const FILE_EMBED: &str = "embed";
+/// `files` 中 MNN 格式必需的键：词嵌入每行的缩放（float32，小端）。
+pub const FILE_EMBED_SCALE: &str = "embed_scale";
+/// 清单 `format` 取值：ORT 的 merged 解码器（缺省）。
+pub const FORMAT_ONNX_MERGED: &str = "onnx-merged";
+/// 清单 `format` 取值：MNN 三图拆分。
+pub const FORMAT_MNN_SPLIT: &str = "mnn-split";
+/// 每个嵌入缩放值的字节数（float32）。
+pub const EMBED_SCALE_BYTES: u64 = 4;
+/// MNN 格式缺省的解码器层数（NLLB-200 distilled 600M）。
+pub const DEFAULT_DECODER_LAYERS: usize = 12;
+/// MNN 格式缺省的 KV 头数。
+pub const DEFAULT_KV_HEADS: usize = 16;
+/// MNN 格式缺省的 KV 每头维度。
+pub const DEFAULT_KV_HEAD_DIM: usize = 64;
 /// 架构族：M2M100（NLLB）。
 pub const FAMILY_M2M100: &str = "m2m100";
 /// 清单缺省的最大输入 token 数。
@@ -54,6 +79,15 @@ pub enum ManifestError {
     Invalid(String),
 }
 
+/// 模型文件格式（由清单 `format` 决定）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModelFormat {
+    /// ORT：encoder + merged decoder。
+    OnnxMerged,
+    /// MNN：encoder + cross_kv + 单步 decoder + 图外嵌入表。
+    MnnSplit,
+}
+
 /// 生成参数（全部可选，缺省值由 `generation_config.json` / `config.json` 补齐）。
 #[derive(Debug, Clone, Default, Deserialize, PartialEq)]
 pub struct GenerationOverride {
@@ -76,6 +110,8 @@ pub struct GenerationOverride {
     /// 最小输出长度占输入 token 数的比例：生成 token 数（含强制的语言码、不含解码起始符）
     /// 不足 `ceil(比例 × 输入 token 数)` 前禁止结束符；显式写 0 即关闭。
     pub min_length_ratio: Option<f32>,
+    /// 极短输入是否启用“引号包裹法”（见 `wrap` 模块）；缺省 `true`，显式 `false` 关闭。
+    pub short_phrase_wrap: Option<bool>,
 }
 
 /// 执行参数（可选）。
@@ -145,8 +181,20 @@ pub struct Manifest {
     /// 量化类型。
     #[serde(default)]
     pub quantization: String,
-    /// 文件表：`encoder`/`decoder`/`tokenizer` 必需，`encoder_data`/`decoder_data` 可选；值为相对模型目录的路径。
+    /// 模型文件格式：`onnx-merged`（缺省）或 `mnn-split`。
+    #[serde(default)]
+    pub format: Option<String>,
+    /// 文件表：必需键随 `format` 而定（见模块说明），`*_data` 可选；值为相对模型目录的路径。
     pub files: HashMap<String, String>,
+    /// MNN 格式的解码器层数，缺省 [`DEFAULT_DECODER_LAYERS`]。
+    #[serde(default)]
+    pub decoder_layers: Option<usize>,
+    /// MNN 格式的 KV 头数，缺省 [`DEFAULT_KV_HEADS`]。
+    #[serde(default)]
+    pub kv_heads: Option<usize>,
+    /// MNN 格式的 KV 每头维度，缺省 [`DEFAULT_KV_HEAD_DIM`]。
+    #[serde(default)]
+    pub kv_head_dim: Option<usize>,
     /// 支持的语言列表（`pairs` 缺省时取其有向全排列）。
     #[serde(default)]
     pub languages: Vec<String>,
@@ -256,10 +304,28 @@ impl Manifest {
             )));
         }
         self.validate_lang_tokens()?;
-        let optional = [FILE_ENCODER_DATA, FILE_DECODER_DATA]
-            .into_iter()
-            .filter(|k| self.files.contains_key(*k));
-        for key in [FILE_ENCODER, FILE_DECODER, FILE_TOKENIZER].into_iter().chain(optional) {
+        let format = self.model_format()?;
+        for (name, v) in [
+            ("decoder_layers", self.decoder_layers),
+            ("kv_heads", self.kv_heads),
+            ("kv_head_dim", self.kv_head_dim),
+        ] {
+            if v == Some(0) {
+                return Err(bad(format!("{name} must be >= 1")));
+            }
+        }
+        let (required, optional_keys) = match format {
+            ModelFormat::OnnxMerged => (
+                vec![FILE_ENCODER, FILE_DECODER, FILE_TOKENIZER],
+                vec![FILE_ENCODER_DATA, FILE_DECODER_DATA],
+            ),
+            ModelFormat::MnnSplit => (
+                vec![FILE_ENCODER, FILE_CROSS_KV, FILE_DECODER, FILE_EMBED, FILE_EMBED_SCALE, FILE_TOKENIZER],
+                vec![FILE_ENCODER_DATA, FILE_CROSS_KV_DATA, FILE_DECODER_DATA],
+            ),
+        };
+        let optional = optional_keys.into_iter().filter(|k| self.files.contains_key(*k));
+        for key in required.into_iter().chain(optional) {
             let path = self.resolve_file(dir, key)?;
             if !path.is_file() {
                 return Err(ManifestError::Missing(format!(
@@ -267,6 +333,71 @@ impl Manifest {
                     path.display()
                 )));
             }
+        }
+        if format == ModelFormat::MnnSplit {
+            self.validate_embed_files(dir)?;
+        }
+        Ok(())
+    }
+
+    /// 模型文件格式：`format` 缺省为 ORT；未知取值返回 [`ManifestError::Invalid`]。
+    ///
+    /// # 返回
+    /// [`ModelFormat`]。
+    ///
+    /// # 示例
+    /// ```ignore
+    /// assert_eq!(manifest.model_format()?, ModelFormat::MnnSplit);
+    /// ```
+    pub fn model_format(&self) -> Result<ModelFormat, ManifestError> {
+        match self.format.as_deref() {
+            None | Some(FORMAT_ONNX_MERGED) => Ok(ModelFormat::OnnxMerged),
+            Some(FORMAT_MNN_SPLIT) => Ok(ModelFormat::MnnSplit),
+            Some(other) => Err(ManifestError::Invalid(format!(
+                "unsupported format `{other}` (expected `{FORMAT_ONNX_MERGED}` or `{FORMAT_MNN_SPLIT}`)"
+            ))),
+        }
+    }
+
+    /// MNN 格式的解码器结构：`(层数, KV 头数, KV 每头维度)`，清单缺省取 NLLB-600M 的 12/16/64。
+    ///
+    /// # 返回
+    /// 三元组，用于生成图的张量名与空 KV 的形状。
+    ///
+    /// # 示例
+    /// ```ignore
+    /// let (layers, heads, head_dim) = manifest.decoder_dims();
+    /// ```
+    pub fn decoder_dims(&self) -> (usize, usize, usize) {
+        (
+            self.decoder_layers.unwrap_or(DEFAULT_DECODER_LAYERS),
+            self.kv_heads.unwrap_or(DEFAULT_KV_HEADS),
+            self.kv_head_dim.unwrap_or(DEFAULT_KV_HEAD_DIM),
+        )
+    }
+
+    /// 校验嵌入表两个文件的大小自洽：缩放字节数是 4 的倍数且非 0，嵌入字节数能被行数整除。
+    ///
+    /// 只看文件大小（不读内容）；与分词器词数是否一致由引擎加载时再核对。
+    fn validate_embed_files(&self, dir: &Path) -> Result<(), ManifestError> {
+        let bad = ManifestError::Invalid;
+        let size = |key: &str| -> Result<u64, ManifestError> {
+            let p = self.resolve_file(dir, key)?;
+            std::fs::metadata(&p)
+                .map(|m| m.len())
+                .map_err(|e| ManifestError::Missing(format!("cannot stat {}: {e}", p.display())))
+        };
+        let (i8_len, scale_len) = (size(FILE_EMBED)?, size(FILE_EMBED_SCALE)?);
+        if scale_len == 0 || scale_len % EMBED_SCALE_BYTES != 0 {
+            return Err(bad(format!(
+                "files.{FILE_EMBED_SCALE} size {scale_len} must be a non-zero multiple of {EMBED_SCALE_BYTES}"
+            )));
+        }
+        let rows = scale_len / EMBED_SCALE_BYTES;
+        if i8_len == 0 || i8_len % rows != 0 {
+            return Err(bad(format!(
+                "files.{FILE_EMBED} size {i8_len} is not a multiple of the {rows} rows in files.{FILE_EMBED_SCALE}"
+            )));
         }
         Ok(())
     }
@@ -437,6 +568,21 @@ mod tests {
         let _ = fs::remove_dir_all(dir);
     }
 
+    /// `generation.short_phrase_wrap`：缺省为 None（引擎取 true）、显式 false 可解析、非布尔报 Invalid。
+    #[test]
+    fn parses_short_phrase_wrap_field() {
+        let dir = temp_model_dir("wrap");
+        let m = Manifest::parse(BASE, &dir).unwrap();
+        assert_eq!(m.generation.short_phrase_wrap, None);
+        let off = BASE.replace("\"languages\"", "\"generation\":{\"short_phrase_wrap\":false},\"languages\"");
+        assert_eq!(Manifest::parse(&off, &dir).unwrap().generation.short_phrase_wrap, Some(false));
+        let on = BASE.replace("\"languages\"", "\"generation\":{\"short_phrase_wrap\":true},\"languages\"");
+        assert_eq!(Manifest::parse(&on, &dir).unwrap().generation.short_phrase_wrap, Some(true));
+        let bad = BASE.replace("\"languages\"", "\"generation\":{\"short_phrase_wrap\":\"yes\"},\"languages\"");
+        assert!(matches!(Manifest::parse(&bad, &dir), Err(ManifestError::Invalid(_))));
+        let _ = fs::remove_dir_all(dir);
+    }
+
     /// 文件缺失报 Missing，路径越界报 Invalid；目录不存在报 Missing。
     #[test]
     fn checks_files_and_paths() {
@@ -473,6 +619,119 @@ mod tests {
         m2.languages = vec![];
         m2.pairs = Some(vec![("en".into(), "zh-CN".into()), ("EN".into(), "fr".into())]);
         assert_eq!(m2.supported_languages(), vec!["en".to_string()]);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// 创建带占位 MNN 三图文件的目录：`embed.scale` 为 `rows` 行，`embed.i8` 为 `rows × dim` 字节。
+    fn temp_mnn_dir(tag: &str, rows: usize, dim: usize) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("arkli-translate-mnn-{tag}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        for f in ["encoder.mnn", "cross_kv.mnn", "decoder_step.mnn", "tokenizer.json"] {
+            fs::write(dir.join(f), b"x").unwrap();
+        }
+        fs::write(dir.join("embed.i8"), vec![0u8; rows * dim]).unwrap();
+        fs::write(dir.join("embed.scale"), vec![0u8; rows * 4]).unwrap();
+        dir
+    }
+
+    /// 最小合法 MNN 清单文本。
+    const MNN_BASE: &str = r#"{"schema_version":1,"id":"m","family":"m2m100","format":"mnn-split",
+        "files":{"encoder":"encoder.mnn","cross_kv":"cross_kv.mnn","decoder":"decoder_step.mnn",
+        "embed":"embed.i8","embed_scale":"embed.scale","tokenizer":"tokenizer.json"},
+        "languages":["zh-CN","en"],"lang_tokens":{"zh-CN":"zho_Hans","en":"eng_Latn"}}"#;
+
+    /// `format` 缺省视为 ORT，显式 onnx-merged 同样；mnn-split 解析为 MNN；未知取值报 Invalid。
+    #[test]
+    fn format_dispatch() {
+        let dir = temp_model_dir("fmt");
+        assert_eq!(Manifest::parse(BASE, &dir).unwrap().model_format().unwrap(), ModelFormat::OnnxMerged);
+        let explicit = BASE.replace("\"files\"", "\"format\":\"onnx-merged\",\"files\"");
+        assert_eq!(Manifest::parse(&explicit, &dir).unwrap().model_format().unwrap(), ModelFormat::OnnxMerged);
+        let unknown = BASE.replace("\"files\"", "\"format\":\"tflite\",\"files\"");
+        assert!(matches!(Manifest::parse(&unknown, &dir), Err(ManifestError::Invalid(m)) if m.contains("tflite")));
+        let mnn_dir = temp_mnn_dir("fmt", 4, 8);
+        let m = Manifest::parse(MNN_BASE, &mnn_dir).unwrap();
+        assert_eq!(m.model_format().unwrap(), ModelFormat::MnnSplit);
+        // MNN 格式不要求 ONNX 的文件；ORT 格式（缺省）也不会去找 cross_kv/embed
+        assert!(Manifest::parse(BASE, &mnn_dir).is_err());
+        let _ = fs::remove_dir_all(dir);
+        let _ = fs::remove_dir_all(mnn_dir);
+    }
+
+    /// MNN 清单必需 cross_kv / embed / embed_scale：任一缺键报 Invalid，文件缺失报 Missing；`*_data` 可选且给了就必须存在。
+    #[test]
+    fn mnn_required_files() {
+        let dir = temp_mnn_dir("req", 4, 8);
+        for key in ["cross_kv", "embed", "embed_scale"] {
+            let needle = match key {
+                "cross_kv" => "\"cross_kv\":\"cross_kv.mnn\",",
+                "embed" => "\"embed\":\"embed.i8\",",
+                _ => "\"embed_scale\":\"embed.scale\",",
+            };
+            let raw = MNN_BASE.replace(needle, "");
+            assert!(matches!(Manifest::parse(&raw, &dir), Err(ManifestError::Invalid(m)) if m.contains(key)), "{key}");
+        }
+        fs::remove_file(dir.join("embed.i8")).unwrap();
+        assert!(matches!(Manifest::parse(MNN_BASE, &dir), Err(ManifestError::Missing(m)) if m.contains("embed")));
+        fs::write(dir.join("embed.i8"), vec![0u8; 32]).unwrap();
+        let with_data = MNN_BASE.replace("\"embed\":", "\"cross_kv_data\":\"cross_kv.mnn.weight\",\"embed\":");
+        assert!(matches!(Manifest::parse(&with_data, &dir), Err(ManifestError::Missing(_))));
+        fs::write(dir.join("cross_kv.mnn.weight"), b"x").unwrap();
+        assert!(Manifest::parse(&with_data, &dir).is_ok());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// 嵌入表文件大小不自洽报 Invalid：scale 不是 4 的倍数、i8 不能被行数整除、空文件。
+    #[test]
+    fn mnn_embed_size_checks() {
+        let dir = temp_mnn_dir("embed", 4, 8);
+        assert!(Manifest::parse(MNN_BASE, &dir).is_ok());
+        fs::write(dir.join("embed.scale"), vec![0u8; 15]).unwrap();
+        assert!(matches!(Manifest::parse(MNN_BASE, &dir), Err(ManifestError::Invalid(m)) if m.contains("embed_scale")));
+        fs::write(dir.join("embed.scale"), vec![0u8; 16]).unwrap();
+        fs::write(dir.join("embed.i8"), vec![0u8; 33]).unwrap();
+        assert!(matches!(Manifest::parse(MNN_BASE, &dir), Err(ManifestError::Invalid(m)) if m.contains("embed")));
+        fs::write(dir.join("embed.i8"), b"").unwrap();
+        assert!(matches!(Manifest::parse(MNN_BASE, &dir), Err(ManifestError::Invalid(_))));
+        fs::write(dir.join("embed.i8"), vec![0u8; 32]).unwrap();
+        fs::write(dir.join("embed.scale"), b"").unwrap();
+        assert!(matches!(Manifest::parse(MNN_BASE, &dir), Err(ManifestError::Invalid(_))));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// 解码器结构缺省 12/16/64，清单可覆盖，写 0 报 Invalid。
+    #[test]
+    fn decoder_dims_defaults_and_override() {
+        let dir = temp_mnn_dir("dims", 4, 8);
+        let m = Manifest::parse(MNN_BASE, &dir).unwrap();
+        assert_eq!(m.decoder_dims(), (DEFAULT_DECODER_LAYERS, DEFAULT_KV_HEADS, DEFAULT_KV_HEAD_DIM));
+        let over = MNN_BASE.replace("\"files\"", "\"decoder_layers\":6,\"kv_heads\":8,\"kv_head_dim\":32,\"files\"");
+        assert_eq!(Manifest::parse(&over, &dir).unwrap().decoder_dims(), (6, 8, 32));
+        let zero = MNN_BASE.replace("\"files\"", "\"kv_heads\":0,\"files\"");
+        assert!(matches!(Manifest::parse(&zero, &dir), Err(ManifestError::Invalid(_))));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// M6a 实际产物的 `model.json` 样式（含 `generation`、`execution`、`*_data`）能解析，`short_phrase_wrap` 缺省。
+    #[test]
+    fn parses_m6a_style_manifest() {
+        let dir = temp_mnn_dir("m6a", 4, 8);
+        for f in ["encoder.mnn.weight", "cross_kv.mnn.weight", "decoder_step.mnn.weight"] {
+            fs::write(dir.join(f), b"x").unwrap();
+        }
+        let raw = r#"{"schema_version":1,"family":"m2m100","format":"mnn-split",
+          "files":{"encoder":"encoder.mnn","encoder_data":"encoder.mnn.weight","cross_kv":"cross_kv.mnn",
+          "cross_kv_data":"cross_kv.mnn.weight","decoder":"decoder_step.mnn","decoder_data":"decoder_step.mnn.weight",
+          "embed":"embed.i8","embed_scale":"embed.scale","tokenizer":"tokenizer.json"},
+          "languages":["zh-CN","en"],"lang_tokens":{"zh-CN":"zho_Hans","en":"eng_Latn"},"max_input_tokens":512,
+          "generation":{"decoder_start_token_id":2,"eos_token_id":2,"pad_token_id":1,"bad_token_ids":[],
+          "max_new_tokens":256,"num_beams":2,"length_penalty":2.0,"min_length_ratio":0.7,"no_repeat_ngram_size":0},
+          "execution":{"intra_threads":0,"cpu_arena":true,"mem_pattern":true,"opt_level":3,"prepacking":true},
+          "id":"nllb600m-un6-mnn-w6","quantization":"mnn-w6-hqq"}"#;
+        let m = Manifest::parse(raw, &dir).unwrap();
+        assert_eq!(m.generation.short_phrase_wrap, None);
+        assert_eq!(m.generation.bad_token_ids, Some(vec![]));
         let _ = fs::remove_dir_all(dir);
     }
 }

@@ -1,13 +1,17 @@
-//! 本地翻译（NLLB-200 600M int4）的 FFI 面：加载模型目录、翻译一段文本、卸载。
+//! 本地翻译（NLLB-200 600M）的 FFI 面：加载模型目录、翻译一段文本、卸载。
 //!
 //! 业务逻辑都在 `arkli-ai::translate`，这里只管：进程内唯一的翻译器（加锁串行，一次只跑一个推理）、
-//! 类型转换、错误映射。ORT 环境与识物共用（`OrtBackend::load` 幂等）。
+//! 类型转换、错误映射。按 `model.json` 的 `format` 选后端：缺省 / `onnx-merged` 走 ORT（环境与识物共用，`OrtBackend::load` 幂等），
+//! `mnn-split` 走 MNN（运行库按传入的库名动态加载；本模块自己持有一个 `MnnRuntime`，与识物、OCR 各自 `load`，
+//! 底层是同一个 dlopen 句柄，全局执行器的串行由 `arkli-ai::mnn` 内的全局锁保证）。
 
 use std::path::Path;
 use std::sync::Mutex;
 
+#[cfg(feature = "mnn-backend")]
+use arkli_ai::mnn::MnnRuntime;
 use arkli_ai::ort_backend::OrtBackend;
-use arkli_ai::translate::{ErrorKind, TranslateError, Translator};
+use arkli_ai::translate::{model_format, ErrorKind, ModelFormat, TranslateError, Translator};
 
 /// 默认算子线程数（`threads` 传 0 时使用）。
 const DEFAULT_TRANSLATE_THREADS: u32 = 4;
@@ -58,6 +62,9 @@ pub struct TranslateResult {
 /// 进程内状态：当前翻译器与它加载自哪个目录（用来判断是否要重载）。
 #[derive(Default)]
 struct State {
+    /// MNN 运行时，首次加载 MNN 格式模型时创建
+    #[cfg(feature = "mnn-backend")]
+    mnn: Option<MnnRuntime>,
     /// 当前模型目录
     model_dir: Option<String>,
     /// 翻译器
@@ -73,18 +80,19 @@ fn with_state<T>(f: impl FnOnce(&mut State) -> T) -> T {
     f(guard.get_or_insert_with(State::default))
 }
 
-/// 加载 ORT 与翻译模型，已用同一目录加载过则直接返回。
+/// 加载运行库与翻译模型，已用同一目录加载过则直接返回。
 ///
 /// 参数：
-/// - `ort_lib`：ORT 动态库名或路径，APK 内传裸名 `libonnxruntime.so`
-/// - `model_dir`：模型目录绝对路径（含 `model.json`、encoder/decoder 及其 `.onnx_data`、`tokenizer.json`）
+/// - `runtime_lib`：推理运行库名或路径，按 `model.json` 的 `format` 对应：缺省 / `onnx-merged` 传 `libonnxruntime.so`，
+///   `mnn-split` 传 `libarkli-mnn.so`；APK 内都用裸名
+/// - `model_dir`：模型目录绝对路径（含 `model.json` 及其 `files` 列出的文件；MNN 格式的三张图自带 `.mnn.weight` 外置权重）
 /// - `threads`：算子线程数，0 视为默认 4
 ///
-/// 错误：`Backend`（库、模型或词表加载失败）。
+/// 错误：`Backend`（库、模型或词表加载失败，未编译 MNN 后端）。
 ///
-/// 示例（Kotlin）：`translateLoad("libonnxruntime.so", "/data/.../nllb600m-un6-ccm-int4", 4u)`
+/// 示例（Kotlin）：`translateLoad("libarkli-mnn.so", "/data/.../nllb600m-un6-mnn-w6", 4u)`
 #[uniffi::export]
-pub fn translate_load(ort_lib: String, model_dir: String, threads: u32) -> Result<(), TranslateFfiError> {
+pub fn translate_load(runtime_lib: String, model_dir: String, threads: u32) -> Result<(), TranslateFfiError> {
     with_state(|s| {
         if s.translator.is_some() && s.model_dir.as_deref() == Some(model_dir.as_str()) {
             return Ok(());
@@ -92,13 +100,35 @@ pub fn translate_load(ort_lib: String, model_dir: String, threads: u32) -> Resul
         // 先丢掉旧会话再建新的，避免两份模型同时占内存
         s.translator = None;
         s.model_dir = None;
-        OrtBackend::load(&ort_lib).map_err(|e| TranslateFfiError::Backend { reason: e.to_string() })?;
+        let dir = Path::new(&model_dir);
         let threads = if threads == 0 { DEFAULT_TRANSLATE_THREADS } else { threads };
-        let t = Translator::load(Path::new(&model_dir), threads).map_err(map_translate_err)?;
+        let t = match model_format(dir).map_err(map_translate_err)? {
+            ModelFormat::OnnxMerged => {
+                OrtBackend::load(&runtime_lib).map_err(|e| TranslateFfiError::Backend { reason: e.to_string() })?;
+                Translator::load(dir, threads).map_err(map_translate_err)?
+            }
+            ModelFormat::MnnSplit => load_mnn(s, &runtime_lib, dir, threads)?,
+        };
         s.translator = Some(t);
         s.model_dir = Some(model_dir);
         Ok(())
     })
+}
+
+/// 用 MNN 加载翻译器（首次创建运行时）。
+#[cfg(feature = "mnn-backend")]
+fn load_mnn(s: &mut State, lib: &str, dir: &Path, threads: u32) -> Result<Translator, TranslateFfiError> {
+    if s.mnn.is_none() {
+        s.mnn = Some(MnnRuntime::load(lib).map_err(|e| TranslateFfiError::Backend { reason: e.to_string() })?);
+    }
+    let rt = s.mnn.as_ref().expect(crate::ENSURED_ABOVE);
+    Translator::load_mnn(rt, dir, threads).map_err(map_translate_err)
+}
+
+/// 未编译 MNN 后端时，MNN 格式模型直接报错。
+#[cfg(not(feature = "mnn-backend"))]
+fn load_mnn(_s: &mut State, _lib: &str, _dir: &Path, _threads: u32) -> Result<Translator, TranslateFfiError> {
+    Err(TranslateFfiError::Backend { reason: crate::NO_MNN_BACKEND.into() })
 }
 
 /// 翻译一段文本。
@@ -129,7 +159,7 @@ pub fn translate_run(text: String, src: String, tgt: String, num_beams: u32) -> 
     })
 }
 
-/// 释放翻译模型（约数百 MB 内存），ORT 环境保留。下次翻译前需重新 `translate_load`。
+/// 释放翻译模型（约数百 MB 内存），ORT 环境与 MNN 运行库保留（MNN 格式在三张图释放后自动归还 MNN 内存）。下次翻译前需重新 `translate_load`。
 #[uniffi::export]
 pub fn translate_unload() {
     with_state(|s| {
@@ -149,6 +179,53 @@ mod tests {
         translate_unload();
         let r = translate_run("hi".into(), "en".into(), "fr".into(), 0);
         assert!(matches!(r, Err(TranslateFfiError::NotLoaded { .. })));
+    }
+
+    /// 在临时目录写一份最小 model.json（可选格式）与占位文件。
+    fn temp_model(tag: &str, format: Option<&str>) -> String {
+        let dir = std::env::temp_dir().join(format!("arkli-ffi-translate-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let (files, extra) = match format {
+            Some("mnn-split") => (
+                r#"{"encoder":"e.mnn","cross_kv":"c.mnn","decoder":"d.mnn","embed":"embed.i8","embed_scale":"embed.scale","tokenizer":"t.json"}"#,
+                r#""format":"mnn-split","#,
+            ),
+            _ => (r#"{"encoder":"e.mnn","decoder":"d.mnn","tokenizer":"t.json"}"#, ""),
+        };
+        let manifest = format!(
+            r#"{{"schema_version":1,"id":"m","family":"m2m100",{extra}"files":{files},"languages":["en","fr"],"lang_tokens":{{"en":"eng_Latn","fr":"fra_Latn"}}}}"#
+        );
+        std::fs::write(dir.join("model.json"), manifest).unwrap();
+        for f in ["e.mnn", "c.mnn", "d.mnn", "t.json"] {
+            std::fs::write(dir.join(f), b"x").unwrap();
+        }
+        std::fs::write(dir.join("embed.i8"), [0u8; 8]).unwrap();
+        std::fs::write(dir.join("embed.scale"), [0u8; 8]).unwrap();
+        dir.to_string_lossy().into_owned()
+    }
+
+    /// 清单 format 决定后端：缺省是 ORT，mnn-split 是 MNN（不加载任何库，只读清单）。
+    /// 不测“找不到 ORT 库”：ort 的 load-dynamic 在同一进程里第二次加载失败会 panic（clip 的测试已占用这个场景）。
+    #[test]
+    fn 清单格式决定后端() {
+        assert_eq!(model_format(Path::new(&temp_model("fmt-ort", None))).unwrap(), ModelFormat::OnnxMerged);
+        assert_eq!(model_format(Path::new(&temp_model("fmt-mnn", Some("mnn-split")))).unwrap(), ModelFormat::MnnSplit);
+    }
+
+    #[test]
+    fn mnn格式找不到mnn库报后端错误() {
+        translate_unload();
+        let dir = temp_model("mnn", Some("mnn-split"));
+        let r = translate_load("definitely-not-exist-libarkli-mnn.so".into(), dir, 4);
+        assert!(matches!(&r, Err(TranslateFfiError::Backend { .. })), "{r:?}");
+    }
+
+    #[test]
+    fn 模型目录不存在报后端错误() {
+        translate_unload();
+        let r = translate_load("x.so".into(), "Z:/definitely/not/here".into(), 4);
+        assert!(matches!(r, Err(TranslateFfiError::Backend { .. })));
     }
 
     #[test]

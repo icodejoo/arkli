@@ -1,43 +1,37 @@
 // 移植自 Cisox snow-translator（GPL-3.0-only，作者本人）。
-//! M2M100（NLLB）ONNX 推理引擎：encoder 一次 + merged decoder（KV cache）解码。
+//! M2M100（NLLB）翻译引擎：与推理后端无关的编排层。
 //!
-//! 输入输出名以运行时 `session.inputs()/outputs()` 探测为准，不硬编码层数。
-//! 束宽 1 走贪心；大于 1 走束搜索（batch 维 = 束宽，自注意力 KV 每步按父束重排，交叉注意力 KV 只在首步产生）。
+//! 引擎只做分词、分句/切块、贪心与束搜索、语言码强制、引号包裹法与标点后处理；编码、解码一步、KV 缓存与束重排
+//! 交给 [`Seq2SeqRunner`]（ORT 的 `ort_runner`、MNN 的 `mnn_runner`）。引擎对 runner 泛型化而不是用 `Box<dyn>`：
+//! 会话类型各不相同（ORT 张量 / MNN 句柄），泛型零开销，也方便用 mock runner 单测；运行时按清单 `format`
+//! 选哪种实现由 `Translator`（`mod.rs`）用枚举分派。
 //!
-//! 张量名（optimum 导出的 merged decoder）：编码器 `input_ids`/`attention_mask` → `last_hidden_state`；
-//! 解码器输入 `input_ids`、`encoder_attention_mask`、`encoder_hidden_states`、`use_cache_branch`
-//! 与 `past_key_values.{层}.{decoder|encoder}.{key|value}`（形状 `[批, 16, 序列, 64]`），输出 `logits` 与 `present.*`。
+//! 束宽 1 走贪心；大于 1 走束搜索（batch 维 = 束宽，自注意力 KV 每步按父束重排，交叉注意力 KV 整句不变）。
 //! 流程：编码器输入为 `[源语言码] + 词 + </s>`；解码器以 `</s>`（id 2）起步，第一个生成的 token 强制为目标语言码；
 //! 译文解码前剔除特殊符号与语言码。
 
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
 use std::sync::Arc;
 
-use ort::environment::Environment;
-use ort::ep;
-use ort::session::{
-    builder::GraphOptimizationLevel, RunOptions, Session, SessionInputValue, SessionOutputs,
-};
-use ort::value::{DynValue, Tensor, TensorRef, ValueType};
 use serde_json::Value;
 use tokenizers::Tokenizer;
 
-use super::beam::{gather_rows, top_k_log_softmax, Advance, BeamSearch, Candidate};
+use super::beam::{top_k_log_softmax, Advance, BeamSearch, Candidate};
 use super::detect::{classify_segments, is_auto, summarize, SegLang};
 use super::error::{ErrorKind, TranslateError};
 use super::manifest::{
-    ExecutionOptions, Manifest, ManifestError, DEFAULT_LENGTH_PENALTY, DEFAULT_MAX_NEW_TOKENS,
-    DEFAULT_MIN_LENGTH_RATIO, DEFAULT_NO_REPEAT_NGRAM, DEFAULT_NUM_BEAMS, FILE_DECODER,
-    FILE_ENCODER, FILE_TOKENIZER, MAX_BEAMS,
+    Manifest, ManifestError, DEFAULT_LENGTH_PENALTY, DEFAULT_MAX_NEW_TOKENS, DEFAULT_MIN_LENGTH_RATIO,
+    DEFAULT_NO_REPEAT_NGRAM, DEFAULT_NUM_BEAMS, MAX_BEAMS,
 };
+use super::runner::Seq2SeqRunner;
 use super::text::{
     argmax_masked, chunk_ids, fill_empty_separators, is_cjk_lang, join_translated, output_token_budget, split_sentences,
     trim_tail_repeat,
 };
+use super::wrap::{extract_wrapped, should_wrap, wrap};
 use super::zh_punct::to_fullwidth_stateful;
 
 /// Metaspace 词首标记。
@@ -55,32 +49,10 @@ const OOM_MARKERS: [&str; 6] = [
 ];
 /// 判定内存不足的中文关键词（Windows 中文系统错误信息）。
 const OOM_MARKERS_ZH: [&str; 2] = ["页面文件", "内存不足"];
-/// ORT 运行选项：让本次 Run 结束时收缩 CPU arena。
-const ARENA_SHRINK_KEY: &str = "memory.enable_memory_arena_shrinkage";
-/// 收缩的设备与 ID（`cpu:0`）。
-const ARENA_SHRINK_VALUE: &str = "cpu:0";
 /// M2M100 词表里的四个基础特殊符号。
 const M2M_SPECIAL_TOKENS: [&str; 4] = ["<s>", "<pad>", "</s>", "<unk>"];
 /// 束搜索每束取的候选数倍率（HF 取 2×束宽）。
 const BEAM_CANDIDATE_FACTOR: usize = 2;
-/// 解码器必需的输入名。
-const DECODER_REQUIRED_INPUTS: [&str; 3] = ["input_ids", "encoder_hidden_states", "use_cache_branch"];
-/// 解码器 KV 缓存输入名前缀。
-const PAST_PREFIX: &str = "past_key_values.";
-/// 解码器 KV 缓存输出名前缀。
-const PRESENT_PREFIX: &str = "present.";
-/// 解码器 KV 缓存名里的交叉注意力标记。
-const CROSS_ATTN_MARK: &str = ".encoder.";
-/// 编码器输入名：词 id。
-const INPUT_IDS: &str = "input_ids";
-/// 编码器输入名：注意力掩码。
-const ATTENTION_MASK: &str = "attention_mask";
-/// 解码器输入名：交叉注意力掩码。
-const ENCODER_ATTENTION_MASK: &str = "encoder_attention_mask";
-/// 解码器输入名：编码器隐层。
-const ENCODER_HIDDEN_STATES: &str = "encoder_hidden_states";
-/// 解码器输入名：是否走 KV 缓存分支。
-const USE_CACHE_BRANCH: &str = "use_cache_branch";
 
 /// 按错误文本归类：内存不足优先，否则用调用方给的默认类别。
 ///
@@ -215,6 +187,8 @@ pub struct GenParams {
     pub no_repeat_ngram: usize,
     /// 最小输出长度占输入 token 数的比例（0 关闭）。
     pub min_length_ratio: f32,
+    /// 极短输入是否启用引号包裹法（清单缺省 true）。
+    pub short_phrase_wrap: bool,
 }
 
 /// M2M100 族的语言配置（由清单 `lang_tokens` 与分词器词表解析而来）。
@@ -465,6 +439,7 @@ pub fn resolve_gen_params(manifest: &Manifest, dir: &Path) -> Result<GenParams, 
         length_penalty: g.length_penalty.unwrap_or(DEFAULT_LENGTH_PENALTY),
         no_repeat_ngram: g.no_repeat_ngram_size.unwrap_or(DEFAULT_NO_REPEAT_NGRAM),
         min_length_ratio: g.min_length_ratio.unwrap_or(DEFAULT_MIN_LENGTH_RATIO),
+        short_phrase_wrap: g.short_phrase_wrap.unwrap_or(true),
     })
 }
 
@@ -530,13 +505,15 @@ fn unsupported_pair(manifest: &Manifest, src: &str, tgt: &str) -> TranslateError
         format!("model `{}` does not support {src} -> {tgt}", manifest.id),
     )
 }
+/// 把推理期底层错误归为解码失败（内存不足优先）。
+pub(crate) fn decode_err(e: &dyn fmt::Display) -> TranslateError {
+    classify_error(&e.to_string(), ErrorKind::DecodeFailed)
+}
 
-/// 已加载的翻译引擎（与语言对无关，语言对随每次翻译指定）。
-pub struct Engine {
-    /// 编码器会话。
-    encoder: Session,
-    /// 合并解码器会话。
-    decoder: Session,
+/// 已加载的翻译引擎（与语言对、推理后端都无关，语言对随每次翻译指定）。
+pub struct Engine<R: Seq2SeqRunner> {
+    /// 推理后端（编码 / 解码一步 / KV 管理）。
+    runner: R,
     /// 分词器。
     tokenizer: Tokenizer,
     /// 解码参数。
@@ -545,283 +522,65 @@ pub struct Engine {
     manifest: Manifest,
     /// 已解析的语言对计划缓存（键为小写 `(src, tgt)`；只缓存清单支持的语言对，数量有界）。
     plans: HashMap<(String, String), Arc<LangPlan>>,
-    /// 解码器的 `past_key_values.*` 输入名（保持模型顺序）。
-    past_names: Vec<String>,
-    /// KV 头数。
-    kv_heads: i64,
-    /// KV 每头维度。
-    kv_head_dim: i64,
-    /// 编码器是否接受 `attention_mask`。
-    encoder_takes_mask: bool,
     /// 最大输入 token 数。
     max_input_tokens: usize,
     /// 模型 ID。
     model_id: String,
-    /// 编码器隐层维度（从解码器输入形状读出，用于收缩内存的空跑）。
-    hidden_dim: Option<usize>,
-    /// 每个请求结束后是否收缩 arena。
-    trim_after_request: bool,
 }
 
-/// 取 KV 输入的头数与每头维度（形如 `[-1, 16, -1, 64]`）。
-fn kv_dims(shape: &[i64]) -> Option<(i64, i64)> {
-    if shape.len() == 4 && shape[1] > 0 && shape[3] > 0 {
-        Some((shape[1], shape[3]))
-    } else {
-        None
-    }
-}
-
-/// 序列维为 0 的空 KV 张量（新一轮解码的初始 past）。
-///
-/// # 参数
-/// - `batch`：batch 维（束宽）。
-/// - `heads`/`head_dim`：KV 头数与每头维度。
-///
-/// # 返回
-/// 形状 `[batch, heads, 0, head_dim]` 的 f32 张量；创建失败返回 ORT 错误。
-fn empty_kv(batch: usize, heads: usize, head_dim: usize) -> Result<DynValue, ort::Error> {
-    Tensor::<f32>::from_array(([batch, heads, 0, head_dim], Vec::<f32>::new()))
-        .map(Tensor::into_dyn)
-}
-
-/// 把推理期底层错误归为解码失败（内存不足优先）。
-fn decode_err(e: &dyn fmt::Display) -> TranslateError {
-    classify_error(&e.to_string(), ErrorKind::DecodeFailed)
-}
-
-/// 解码器一次运行的输入表（名字 + 张量，借用或持有）。
-type DecoderInputs<'a> = Vec<(Cow<'a, str>, SessionInputValue<'a>)>;
-
-/// 编码器侧的借用视图：解码循环里每步不变的 mask 与隐层。
-struct EncoderView<'a> {
-    /// 交叉注意力 mask，`[rows, src_len]` 全 1。
-    mask: &'a [i64],
-    /// 展平的编码器隐层，`[rows, src_len, hidden_dim]`。
-    hidden: &'a [f32],
-    /// batch 行数（贪心 1，束搜索为束宽）。
-    rows: usize,
-    /// 源序列长度。
-    src_len: usize,
-    /// 隐层维度。
-    hidden_dim: usize,
-}
-
-/// 把 `past` 清空并重新填成 `count` 个序列维为 0 的空 KV 张量。
-fn fill_empty_past(
-    past: &mut Vec<DynValue>,
-    count: usize,
-    batch: usize,
-    heads: usize,
-    head_dim: usize,
-) -> Result<(), TranslateError> {
-    past.clear();
-    past.reserve(count);
-    for _ in 0..count {
-        past.push(empty_kv(batch, heads, head_dim).map_err(|e| decode_err(&e))?);
-    }
-    Ok(())
-}
-
-/// 组装一步解码器输入：当前 token、交叉注意力 mask/隐层（借用）、cache 开关与全部 past。
-fn decoder_inputs<'a>(
-    cur: &[i64],
-    enc: &EncoderView<'a>,
-    use_cache: bool,
-    past_names: &'a [String],
-    past: &'a [DynValue],
-) -> Result<DecoderInputs<'a>, TranslateError> {
-    let cur_ids =
-        Tensor::from_array(([enc.rows, 1usize], cur.to_vec())).map_err(|e| decode_err(&e))?;
-    let enc_mask = TensorRef::from_array_view(([enc.rows, enc.src_len], enc.mask))
-        .map_err(|e| decode_err(&e))?;
-    let flag = Tensor::from_array(([1usize], vec![use_cache])).map_err(|e| decode_err(&e))?;
-    let hidden_view =
-        TensorRef::from_array_view(([enc.rows, enc.src_len, enc.hidden_dim], enc.hidden))
-            .map_err(|e| decode_err(&e))?;
-    let mut inputs: DecoderInputs<'a> = vec![
-        (INPUT_IDS.into(), cur_ids.into()),
-        (ENCODER_ATTENTION_MASK.into(), enc_mask.into()),
-        (ENCODER_HIDDEN_STATES.into(), hidden_view.into()),
-        (USE_CACHE_BRANCH.into(), flag.into()),
-    ];
-    for (name, value) in past_names.iter().zip(past.iter()) {
-        inputs.push((name.as_str().into(), value.into()));
-    }
-    Ok(inputs)
-}
-
-/// 取 `logits` 输出：校验非空且至少含 `rows` 行，返回整块数据与词表大小。
-fn step_logits<'o>(
-    outputs: &'o SessionOutputs<'_>,
-    rows: usize,
-) -> Result<(&'o [f32], usize), TranslateError> {
-    let (shape, logits) = outputs["logits"]
-        .try_extract_tensor::<f32>()
-        .map_err(|e| decode_err(&e))?;
-    let vocab = shape.last().copied().unwrap_or(0).max(0) as usize;
-    if vocab == 0 || logits.len() < vocab * rows {
-        return Err(TranslateError::new(
-            ErrorKind::DecodeFailed,
-            "decoder returned empty logits",
-        ));
-    }
-    Ok((logits, vocab))
-}
-
-/// 把本步 `present.*` 搬回 `past`：交叉注意力 KV 只在首步采用；
-/// 自注意力 KV 直接采用，`reorder` 给出父束下标时先按其重排 batch 维。
-fn store_present(
-    past_names: &[String],
-    past: &mut [DynValue],
-    outputs: &mut SessionOutputs<'_>,
-    step: usize,
-    reorder: Option<&[usize]>,
-) -> Result<(), TranslateError> {
-    for (name, slot) in past_names.iter().zip(past.iter_mut()) {
-        let present = name.replacen(PAST_PREFIX, PRESENT_PREFIX, 1);
-        let Some(v) = outputs.remove(&present) else {
-            continue;
-        };
-        if name.contains(CROSS_ATTN_MARK) {
-            if step == 0 {
-                *slot = v;
-            }
-            continue;
-        }
-        *slot = match reorder {
-            None => v,
-            Some(parents) => reorder_kv(&v, parents).map_err(|m| decode_err(&m))?,
-        };
-    }
-    Ok(())
-}
-
-/// 并行加载分词器、编码器会话与解码器会话（ORT 建会话是单线程逐节点处理，两个会话互不依赖）。
-///
-/// 编码器、解码器各占一个子线程，分词器在调用线程；报错优先级：分词器 > 编码器 > 解码器。
-/// 子线程 panic 原样重抛。
-///
-/// # 参数
-/// - `manifest`：已加载的清单。
-/// - `dir`：模型目录。
-/// - `env`：共享的 ORT 环境。
-/// - `threads`：算子线程数，0 取清单值。
-///
-/// # 返回
-/// `(分词器, 编码器会话, 解码器会话)`。
-fn load_parts(
-    manifest: &Manifest,
-    dir: &Path,
-    env: &Environment,
-    threads: u32,
-) -> Result<(Tokenizer, Session, Session), TranslateError> {
-    let (tokenizer, encoder, decoder) = std::thread::scope(|s| {
-        let spawn_session = |key: &'static str| {
-            s.spawn(move || -> Result<Session, TranslateError> {
-                build_session(env, &manifest.resolve_file(dir, key)?, &manifest.execution, threads)
-            })
-        };
-        let encoder = spawn_session(FILE_ENCODER);
-        let decoder = spawn_session(FILE_DECODER);
-        let tokenizer = manifest
-            .resolve_file(dir, FILE_TOKENIZER)
-            .map_err(TranslateError::from)
-            .and_then(|p| load_tokenizer(&p));
-        let join = |h: std::thread::ScopedJoinHandle<'_, Result<Session, TranslateError>>| {
-            h.join().unwrap_or_else(|p| std::panic::resume_unwind(p))
-        };
-        (tokenizer, join(encoder), join(decoder))
-    });
-    Ok((tokenizer?, encoder?, decoder?))
-}
-
-impl Engine {
-    /// 加载模型并做自检；会话只建一次，之后任意语言对都用同一个引擎。
+impl<R: Seq2SeqRunner> Engine<R> {
+    /// 由已加载的各部件组装引擎并做分词器自检。
     ///
     /// # 参数
-    /// - `dir`：模型目录（含 `model.json`）。
-    /// - `env`：共享的 ORT 环境。
-    /// - `threads`：算子线程数，0 取清单值（清单也为 0 则交给 ORT 自动）。
+    /// - `manifest`：已校验的清单。
+    /// - `gen_params`：解码参数（[`resolve_gen_params`] 的结果）。
+    /// - `tokenizer`：分词器（[`load_tokenizer`] 的结果）。
+    /// - `runner`：推理后端。
     ///
     /// # 返回
-    /// 就绪的引擎；缺文件/清单非法/ORT 失败/OOM 均返回带类别的错误。
+    /// 就绪的引擎；分词器回环自检失败返回 `LoadFailed`。
     ///
     /// # 示例
     /// ```ignore
-    /// let mut engine = Engine::load(Path::new("/data/models/nllb"), &env, 4)?;
+    /// let engine = Engine::new(manifest, gen_params, tokenizer, runner)?;
     /// ```
-    pub fn load(dir: &Path, env: &Environment, threads: u32) -> Result<Self, TranslateError> {
-        let manifest = Manifest::load(dir)?;
-        let gen_params = resolve_gen_params(&manifest, dir)?;
-        let (tokenizer, encoder, decoder) = load_parts(&manifest, dir, env, threads)?;
-
-        let dec_names: Vec<&str> = decoder.inputs().iter().map(|o| o.name()).collect();
-        for required in DECODER_REQUIRED_INPUTS {
-            if !dec_names.contains(&required) {
-                return Err(TranslateError::new(
-                    ErrorKind::LoadFailed,
-                    format!(
-                        "decoder has no `{required}` input; a merged decoder (with KV cache) is required"
-                    ),
-                ));
-            }
-        }
-        let past_names: Vec<String> = dec_names
-            .iter()
-            .filter(|n| n.starts_with(PAST_PREFIX))
-            .map(|n| n.to_string())
-            .collect();
-        let dims = decoder
-            .inputs()
-            .iter()
-            .find(|o| o.name().starts_with(PAST_PREFIX))
-            .and_then(|o| match o.dtype() {
-                ValueType::Tensor { shape, .. } => kv_dims(shape),
-                _ => None,
-            });
-        let (kv_heads, kv_head_dim) = dims.ok_or_else(|| {
-            TranslateError::new(
-                ErrorKind::LoadFailed,
-                "cannot infer KV cache head dimensions from decoder inputs",
-            )
-        })?;
-        let hidden_dim = decoder
-            .inputs()
-            .iter()
-            .find(|o| o.name() == ENCODER_HIDDEN_STATES)
-            .and_then(|o| match o.dtype() {
-                ValueType::Tensor { shape, .. } => shape.get(2).copied(),
-                _ => None,
-            })
-            .filter(|&d| d > 0)
-            .map(|d| d as usize);
-        let encoder_takes_mask = encoder.inputs().iter().any(|o| o.name() == ATTENTION_MASK);
-
+    pub fn new(
+        manifest: Manifest,
+        gen_params: GenParams,
+        tokenizer: Tokenizer,
+        runner: R,
+    ) -> Result<Self, TranslateError> {
         let engine = Self {
-            encoder,
-            decoder,
+            runner,
             tokenizer,
             gen_params,
             max_input_tokens: manifest.max_input_tokens,
             model_id: manifest.id.clone(),
-            trim_after_request: manifest.execution.trim_after_request,
             manifest,
             plans: HashMap::new(),
-            past_names,
-            kv_heads,
-            kv_head_dim,
-            encoder_takes_mask,
-            hidden_dim,
         };
         engine.self_check()?;
         Ok(engine)
     }
 
+    /// 测试用：跳过分词器自检直接组装引擎（mock runner 配极简分词器）。
+    #[cfg(test)]
+    pub(crate) fn for_test(manifest: Manifest, gen_params: GenParams, tokenizer: Tokenizer, runner: R) -> Self {
+        Self {
+            runner,
+            tokenizer,
+            gen_params,
+            max_input_tokens: manifest.max_input_tokens,
+            model_id: manifest.id.clone(),
+            manifest,
+            plans: HashMap::new(),
+        }
+    }
+
     /// 取（必要时计算并缓存）一个语言对的解码计划。
     ///
     /// 只有清单支持的语言对才会进缓存，所以缓存大小有界。
-    fn plan_for(&mut self, src: &str, tgt: &str) -> Result<Arc<LangPlan>, TranslateError> {
+    pub(crate) fn plan_for(&mut self, src: &str, tgt: &str) -> Result<Arc<LangPlan>, TranslateError> {
         let key = (src.to_ascii_lowercase(), tgt.to_ascii_lowercase());
         if let Some(plan) = self.plans.get(&key) {
             return Ok(Arc::clone(plan));
@@ -857,46 +616,9 @@ impl Engine {
     pub fn default_beams(&self) -> usize {
         self.gen_params.num_beams
     }
-
-    /// 请求结束后的内存收缩：对解码器做一次最小空跑并要求 ORT 收缩 CPU arena。
-    ///
-    /// 未开启 `trim_after_request`、无法确定隐层维度或空跑失败时静默跳过（仅影响内存，不影响结果）。
+    /// 请求结束后的内存收缩，具体动作由 runner 决定（ORT 收缩 arena，MNN 无操作）。
     pub fn trim_memory(&mut self) {
-        let Some(dim) = self.hidden_dim.filter(|_| self.trim_after_request) else {
-            return;
-        };
-        let _ = self.trim_run(dim);
-    }
-
-    /// 带收缩标记的最小解码器空跑。
-    fn trim_run(&mut self, dim: usize) -> Result<(), ort::Error> {
-        let mut opts = RunOptions::new()?;
-        opts.set(ARENA_SHRINK_KEY, ARENA_SHRINK_VALUE)?;
-        let hidden = vec![0f32; dim];
-        let mut inputs: DecoderInputs<'_> = vec![
-            (
-                INPUT_IDS.into(),
-                Tensor::from_array(([1usize, 1], vec![self.gen_params.start]))?.into(),
-            ),
-            (
-                ENCODER_ATTENTION_MASK.into(),
-                Tensor::from_array(([1usize, 1], vec![1i64]))?.into(),
-            ),
-            (
-                ENCODER_HIDDEN_STATES.into(),
-                Tensor::from_array(([1usize, 1, dim], hidden))?.into(),
-            ),
-            (
-                USE_CACHE_BRANCH.into(),
-                Tensor::from_array(([1usize], vec![false]))?.into(),
-            ),
-        ];
-        for name in &self.past_names {
-            let empty = empty_kv(1, self.kv_heads as usize, self.kv_head_dim as usize)?;
-            inputs.push((name.as_str().into(), empty.into()));
-        }
-        self.decoder.run_with_options(inputs, &opts)?;
-        Ok(())
+        self.runner.trim_memory();
     }
 
     /// 分词器回环自检：样例句 encode→decode 应还原出原词。
@@ -962,6 +684,8 @@ impl Engine {
         let mut parts = Vec::with_capacity(segments.len());
         // 全角标点后处理在片段间共享引号计数，跨句的引号才能成对
         let mut quotes = 0usize;
+        // 引号包裹法只对“整段输入恰为一句”的极短文本启用
+        let single = segments.len() == 1;
         for (seg, kind) in segments.into_iter().zip(kinds) {
             let translated = match kind {
                 SegLang::Translate(lang) => {
@@ -969,8 +693,18 @@ impl Engine {
                         Some(p) => Arc::clone(p),
                         None => self.plan_for(&lang, tgt)?,
                     };
-                    let t = self.translate_segment(&seg.text, cap, beams, &plan)?;
-                    postprocess_m2m(&t, &plan.m2m, &mut quotes)
+                    let wrapped = if single && self.gen_params.short_phrase_wrap && should_wrap(&seg.text, &lang, tgt) {
+                        self.translate_wrapped(&seg.text, &lang, tgt, cap, beams, &plan)?
+                    } else {
+                        None
+                    };
+                    match wrapped {
+                        Some(t) => t,
+                        None => {
+                            let t = self.translate_segment(&seg.text, cap, beams, &plan)?;
+                            postprocess_m2m(&t, &plan.m2m, &mut quotes)
+                        }
+                    }
                 }
                 SegLang::Keep(_) | SegLang::Unknown => seg.text,
             };
@@ -983,8 +717,30 @@ impl Engine {
         Ok(EngineOutput { text: out, detected, unrecognized })
     }
 
+    /// 开关引号包裹法（测试对比用；生产由清单 `short_phrase_wrap` 决定）。
+    #[cfg(test)]
+    pub(crate) fn set_short_phrase_wrap(&mut self, on: bool) {
+        self.gen_params.short_phrase_wrap = on;
+    }
+
+    /// 引号包裹法：翻译 `前缀"X"` 并取第一对引号里的内容；任一回退条件命中返回 `None`。
+    fn translate_wrapped(
+        &mut self,
+        text: &str,
+        src_lang: &str,
+        tgt: &str,
+        cap: usize,
+        beams: usize,
+        plan: &LangPlan,
+    ) -> Result<Option<String>, TranslateError> {
+        let raw = self.translate_segment(&wrap(text, src_lang), cap, beams, plan)?;
+        // 独立的引号计数：包裹译文自成一体，不影响调用方共享的计数
+        let out = postprocess_m2m(&raw, &plan.m2m, &mut 0usize);
+        Ok(extract_wrapped(&out, tgt, text))
+    }
+
     /// 翻译一个句级片段；超过输入上限时按 token 切块分别翻译。
-    fn translate_segment(
+    pub(crate) fn translate_segment(
         &mut self,
         text: &str,
         cap: usize,
@@ -1045,36 +801,6 @@ impl Engine {
             TranslateError::new(ErrorKind::DecodeFailed, format!("detokenize failed: {e}"))
         })
     }
-
-    /// 运行编码器，返回展平的 `hidden[src_len * hidden_dim]` 与隐层维度。
-    fn run_encoder(&mut self, input_ids: &[u32]) -> Result<(Vec<f32>, usize), TranslateError> {
-        let src_len = input_ids.len();
-        let ids_i64: Vec<i64> = input_ids.iter().map(|&x| x as i64).collect();
-        let mut enc_inputs: Vec<(&str, DynValue)> = vec![(
-            INPUT_IDS,
-            Tensor::from_array(([1usize, src_len], ids_i64))
-                .map_err(|e| decode_err(&e))?
-                .into_dyn(),
-        )];
-        if self.encoder_takes_mask {
-            enc_inputs.push((
-                ATTENTION_MASK,
-                Tensor::from_array(([1usize, src_len], vec![1i64; src_len]))
-                    .map_err(|e| decode_err(&e))?
-                    .into_dyn(),
-            ));
-        }
-        let hidden: Vec<f32> = {
-            let outputs = self.encoder.run(enc_inputs).map_err(|e| decode_err(&e))?;
-            let (_, data) = outputs[0]
-                .try_extract_tensor::<f32>()
-                .map_err(|e| decode_err(&e))?;
-            data.to_vec()
-        };
-        let hidden_dim = hidden.len() / src_len.max(1);
-        Ok((hidden, hidden_dim))
-    }
-
     /// 束搜索生成：batch 维 = 束宽，首步所有束同输入，仅第 0 束参与选择。
     fn generate_beam(
         &mut self,
@@ -1084,26 +810,7 @@ impl Engine {
         forced: u32,
     ) -> Result<Vec<u32>, TranslateError> {
         let src_len = input_ids.len();
-        let (hidden1, hidden_dim) = self.run_encoder(input_ids)?;
-        let hidden = hidden1.repeat(width);
-        drop(hidden1);
-        let mask = vec![1i64; src_len * width];
-
-        let mut past: Vec<DynValue> = Vec::new();
-        fill_empty_past(
-            &mut past,
-            self.past_names.len(),
-            width,
-            self.kv_heads as usize,
-            self.kv_head_dim as usize,
-        )?;
-        let enc = EncoderView {
-            mask: &mask,
-            hidden: &hidden,
-            rows: width,
-            src_len,
-            hidden_dim,
-        };
+        let mut session = self.runner.begin(input_ids, width)?;
 
         let gp = &self.gen_params;
         let min_len = min_output_len(gp.min_length_ratio, src_len).min(max_new.saturating_sub(1));
@@ -1117,28 +824,24 @@ impl Engine {
         // 每条存活束的下一步输入 token；不足 width 的行用第 0 行补齐
         let mut current: Vec<i64> = vec![gp.start; width];
         for step in 0..max_new {
-            let inputs = decoder_inputs(&current, &enc, step > 0, &self.past_names, &past)?;
-            let mut outputs = self.decoder.run(inputs).map_err(|e| decode_err(&e))?;
+            let logits = self.runner.step(&mut session, step, &current, step > 0)?;
 
-            let cands: Vec<Vec<Candidate>> = if step == 0 {
+            let cands: Vec<Vec<Candidate>> = match logits {
                 // 首个生成位强制为目标语言码，本步 logits 不参与选择
-                forced_candidates(search.alive_len(), forced)
-            } else {
-                let block_eos = (step < min_len).then_some(gp.eos as u32);
-                let (logits, vocab) = step_logits(&outputs, width)?;
-                // 每行取最后一个位置（序列长度恒为 1）
-                let row_stride = logits.len() / width;
-                (0..search.alive_len())
-                    .map(|b| {
-                        let row = &logits[b * row_stride..(b + 1) * row_stride];
-                        masked_top_k(
-                            &row[row.len() - vocab..],
-                            &gp.banned,
-                            BEAM_CANDIDATE_FACTOR * width,
-                            block_eos,
-                        )
-                    })
-                    .collect()
+                None => forced_candidates(search.alive_len(), forced),
+                Some(logits) => {
+                    let block_eos = (step < min_len).then_some(gp.eos as u32);
+                    (0..search.alive_len())
+                        .map(|b| {
+                            masked_top_k(
+                                logits.row(b),
+                                &gp.banned,
+                                BEAM_CANDIDATE_FACTOR * width,
+                                block_eos,
+                            )
+                        })
+                        .collect()
+                }
             };
             let (parents, tokens) = match search.advance(&cands) {
                 Advance::Done => break,
@@ -1152,7 +855,7 @@ impl Engine {
 
             let identity = parents_full.iter().enumerate().all(|(i, &p)| i == p);
             let reorder = (!identity).then_some(parents_full.as_slice());
-            store_present(&self.past_names, &mut past, &mut outputs, step, reorder)?;
+            self.runner.commit(&mut session, step, reorder)?;
         }
         Ok(search.best())
     }
@@ -1165,25 +868,7 @@ impl Engine {
         forced: u32,
     ) -> Result<Vec<u32>, TranslateError> {
         let src_len = input_ids.len();
-        let mask = vec![1i64; src_len];
-        let (hidden, hidden_dim) = self.run_encoder(input_ids)?;
-
-        // 初始 past：序列维为 0 的空张量
-        let mut past: Vec<DynValue> = Vec::new();
-        fill_empty_past(
-            &mut past,
-            self.past_names.len(),
-            1,
-            self.kv_heads as usize,
-            self.kv_head_dim as usize,
-        )?;
-        let enc = EncoderView {
-            mask: &mask,
-            hidden: &hidden,
-            rows: 1,
-            src_len,
-            hidden_dim,
-        };
+        let mut session = self.runner.begin(input_ids, 1)?;
 
         let gp = &self.gen_params;
         let min_len = min_output_len(gp.min_length_ratio, src_len).min(max_new.saturating_sub(1));
@@ -1193,29 +878,26 @@ impl Engine {
         let mut generated: Vec<u32> = Vec::new();
         let mut current = gp.start;
         for step in 0..max_new {
-            let inputs = decoder_inputs(&[current], &enc, step > 0, &self.past_names, &past)?;
-
-            let mut outputs = self.decoder.run(inputs).map_err(|e| decode_err(&e))?;
-            let next = if step == 0 {
+            let logits = self.runner.step(&mut session, step, &[current], step > 0)?;
+            let next = match logits {
                 // 首个生成位强制为目标语言码
-                forced as i64
-            } else {
-                let (logits, vocab) = step_logits(&outputs, 1)?;
-                let last = &logits[logits.len() - vocab..];
-                let banned = if step < min_len {
-                    &banned_no_eos
-                } else {
-                    &gp.banned
-                };
-                argmax_masked(last, banned).ok_or_else(|| {
-                    TranslateError::new(ErrorKind::DecodeFailed, "no selectable token in logits")
-                })? as i64
+                None => forced as i64,
+                Some(logits) => {
+                    let banned = if step < min_len {
+                        &banned_no_eos
+                    } else {
+                        &gp.banned
+                    };
+                    argmax_masked(logits.row(0), banned).ok_or_else(|| {
+                        TranslateError::new(ErrorKind::DecodeFailed, "no selectable token in logits")
+                    })? as i64
+                }
             };
             if next == gp.eos {
                 break;
             }
             // 更新 KV：编码器侧 KV 只在第一步采用
-            store_present(&self.past_names, &mut past, &mut outputs, step, None)?;
+            self.runner.commit(&mut session, step, None)?;
             generated.push(next as u32);
             if trim_tail_repeat(&mut generated) {
                 break;
@@ -1224,69 +906,6 @@ impl Engine {
         }
         Ok(generated)
     }
-}
-
-/// 按父束下标重排一个 KV 张量的 batch 维（`[batch, heads, seq, dim]`）。
-fn reorder_kv(value: &DynValue, parents: &[usize]) -> Result<DynValue, String> {
-    let (shape, data) = value
-        .try_extract_tensor::<f32>()
-        .map_err(|e| e.to_string())?;
-    let dims: Vec<usize> = shape.iter().map(|&d| d.max(0) as usize).collect();
-    let batch = dims.first().copied().unwrap_or(0);
-    if batch == 0 {
-        return Err("KV tensor has an empty batch dimension".into());
-    }
-    let gathered = gather_rows(data, data.len() / batch, parents)
-        .ok_or_else(|| "KV gather index out of range".to_string())?;
-    let mut new_dims = dims;
-    new_dims[0] = parents.len();
-    Tensor::from_array((new_dims, gathered))
-        .map(Tensor::into_dyn)
-        .map_err(|e| e.to_string())
-}
-
-/// 清单的优化级别数字 → ORT 枚举（越界按最高级）。
-fn opt_level(level: u8) -> GraphOptimizationLevel {
-    match level {
-        0 => GraphOptimizationLevel::Disable,
-        1 => GraphOptimizationLevel::Level1,
-        2 => GraphOptimizationLevel::Level2,
-        _ => GraphOptimizationLevel::Level3,
-    }
-}
-
-/// 构建 ORT 会话（CPU，优化级别/预打包/arena/内存模式按清单，线程数 `threads` 优先）。
-///
-/// 外部数据权重（`.onnx_data`）由 ORT 按 ONNX 里记录的 location 在同目录加载并内存映射。
-fn build_session(
-    env: &Environment,
-    path: &Path,
-    exec: &ExecutionOptions,
-    threads: u32,
-) -> Result<Session, TranslateError> {
-    let fail = |e: &dyn fmt::Display| classify_error(&e.to_string(), ErrorKind::LoadFailed);
-    let mut builder = Session::builder(env)
-        .map_err(|e| fail(&e))?
-        .with_optimization_level(opt_level(exec.opt_level))
-        .map_err(|e| fail(&e))?;
-    if !exec.prepacking {
-        builder = builder.with_prepacking(false).map_err(|e| fail(&e))?;
-    }
-    let intra = if threads > 0 { threads as usize } else { exec.intra_threads };
-    if intra > 0 {
-        builder = builder.with_intra_threads(intra).map_err(|e| fail(&e))?;
-    }
-    if !exec.mem_pattern {
-        builder = builder.with_memory_pattern(false).map_err(|e| fail(&e))?;
-    }
-    if !exec.cpu_arena {
-        builder = builder
-            .with_execution_providers([ep::CPU::default().with_arena_allocator(false).build()])
-            .map_err(|e| fail(&e))?;
-    }
-    builder
-        .commit_from_file(path)
-        .map_err(|e| classify_error(&format!("{}: {e}", path.display()), ErrorKind::LoadFailed))
 }
 
 #[cfg(test)]
@@ -1303,7 +922,11 @@ mod tests {
             display_name: String::new(),
             family: "m2m100".into(),
             quantization: String::new(),
+            format: None,
             files: HashMap::new(),
+            decoder_layers: None,
+            kv_heads: None,
+            kv_head_dim: None,
             languages: vec![],
             max_input_tokens: 512,
             pairs: None,
@@ -1437,16 +1060,6 @@ mod tests {
         assert_eq!(decode_err(&"std::bad_alloc").kind, ErrorKind::OutOfMemory);
     }
 
-    /// 优化级别映射：0..=3 对应，越界按最高级。
-    #[test]
-    fn opt_level_mapping() {
-        assert!(matches!(opt_level(0), GraphOptimizationLevel::Disable));
-        assert!(matches!(opt_level(1), GraphOptimizationLevel::Level1));
-        assert!(matches!(opt_level(2), GraphOptimizationLevel::Level2));
-        assert!(matches!(opt_level(3), GraphOptimizationLevel::Level3));
-        assert!(matches!(opt_level(9), GraphOptimizationLevel::Level3));
-    }
-
     /// 缺省解码配置：beam=2、lp=2.0、min_ratio=0.7、no_repeat=0；清单可覆盖（含显式关闭最小长度）。
     #[test]
     fn gen_params_defaults_and_override() {
@@ -1474,6 +1087,10 @@ mod tests {
             (g.num_beams, g.length_penalty, g.min_length_ratio, g.no_repeat_ngram),
             (4, 1.0, 0.0, 3)
         );
+        // 引号包裹法缺省开启，清单显式 false 可关
+        assert!(g.short_phrase_wrap);
+        let off = GenerationOverride { short_phrase_wrap: Some(false), ..Default::default() };
+        assert!(!resolve_gen_params(&manifest_with(off), &dir).unwrap().short_phrase_wrap);
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -1635,14 +1252,6 @@ mod tests {
         assert_eq!(postprocess_m2m("真的.\"", &zh, &mut q), "真的。”");
     }
 
-    /// KV 维度推断：正常 4 维取头数与维度，动态维返回 None。
-    #[test]
-    fn kv_dims_inference() {
-        assert_eq!(kv_dims(&[-1, 16, -1, 64]), Some((16, 64)));
-        assert_eq!(kv_dims(&[-1, -1, -1, 64]), None);
-        assert_eq!(kv_dims(&[1, 2]), None);
-    }
-
     /// 带词表的 tokenizer.json 在 normalizer 为 null 的 Precompiled 时也能加载（走修补路径）。
     #[test]
     fn load_tokenizer_patches_null_charsmap() {
@@ -1657,5 +1266,93 @@ mod tests {
             ErrorKind::LoadFailed
         );
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// mock MNN runner 下的贪心与束搜索：用假三图（只收 batch=1）验证强制语言码、KV 逐步增长、交叉 KV 不变、
+    /// 最小长度屏蔽结束符与结束条件。
+    #[cfg(feature = "mnn-backend")]
+    mod mock_engine {
+        use super::*;
+        use crate::translate::mnn_runner::tests::{mock_runner, MockGraph, StepRecord, EOS};
+        use crate::translate::mnn_runner::MnnRunner;
+        use std::sync::{Arc, Mutex};
+
+        /// 假引擎的解码参数：起始 2、结束 2、最小长度比例 0.7、无惩罚。
+        fn params(beams: usize) -> GenParams {
+            GenParams {
+                start: 2,
+                eos: 2,
+                banned: vec![],
+                max_new: 16,
+                num_beams: beams,
+                length_penalty: 1.0,
+                no_repeat_ngram: 0,
+                min_length_ratio: 0.7,
+                short_phrase_wrap: false,
+            }
+        }
+
+        /// 造引擎与调用记录；`script[i]` 是第 i 次解码器调用时最高分的 token（越界后取结束符）。
+        fn engine(beams: usize, script: Vec<usize>) -> (Engine<MnnRunner<MockGraph>>, Arc<Mutex<Vec<StepRecord>>>) {
+            let log = Arc::new(Mutex::new(Vec::new()));
+            let runner = mock_runner(Box::new(move |_, call| script.get(call).copied().unwrap_or(EOS)), log.clone());
+            let e = Engine::for_test(manifest_with(GenerationOverride::default()), params(beams), tiny_m2m_tokenizer(), runner);
+            (e, log)
+        }
+
+        /// 贪心：强制位 5，随后 3、4，再到结束符；最小长度（ceil(0.7×3)=3）内结束符被屏蔽，所以脚本在第 2 步给结束符也不会提前结束。
+        #[test]
+        fn greedy_runs_forced_then_script_until_eos() {
+            // 第 0 步强制；第 1 步 3；第 2 步想结束（被屏蔽，退而取次优）；第 3 步 4；第 4 步结束
+            let (mut e, log) = engine(1, vec![0, 3, EOS, 4, EOS]);
+            let out = e.generate(&[4, 3, 2], 16, 5).unwrap();
+            // 第 2 步结束符被屏蔽：其余分数相同，argmax 取下标最小的 0
+            assert_eq!(out, vec![5, 3, 0, 4]);
+            let recs = log.lock().unwrap();
+            assert_eq!(recs.len(), 5);
+            // 喂入的 token：起始符、强制位、上一步输出……
+            let fed: Vec<i32> = recs.iter().map(|r| r.token).collect();
+            assert_eq!(fed, vec![2, 5, 3, 0, 4]);
+            // 自注意力 KV 长度逐步 +1，首步为 0；交叉 KV 整句不变
+            let lens: Vec<i64> = recs.iter().map(|r| r.past_shape[2]).collect();
+            assert_eq!(lens, vec![0, 1, 2, 3, 4]);
+            assert!(recs.iter().all(|r| r.cross_key == recs[0].cross_key));
+        }
+
+        /// 预算耗尽也会停：强制位 + 两个生成 token。
+        #[test]
+        fn greedy_stops_on_budget() {
+            let (mut e, log) = engine(1, vec![0, 3, 3, 3, 3, 3, 3, 3]);
+            let out = e.generate(&[4, 3, 2], 3, 5).unwrap();
+            assert_eq!(out, vec![5, 3, 3]);
+            assert_eq!(log.lock().unwrap().len(), 3);
+        }
+
+        /// 束搜索：最终序列以强制位开头；每次调用的 KV 都能追溯到更早某次调用的 KV 加上该次的输入 token（重排没串行）；
+        /// 首步与补齐行（同 token 同 KV）不重复计算。
+        #[test]
+        fn beam_search_keeps_kv_lineage_and_forced_first() {
+            let (mut e, log) = engine(2, vec![0, 3, 4, 3, 4, EOS, EOS, EOS, EOS, EOS]);
+            let out = e.generate_beam(&[4, 3, 2], 8, 2, 5).unwrap();
+            assert_eq!(out[0], 5, "{out:?}");
+            assert!(out.len() > 1);
+            let recs = log.lock().unwrap();
+            assert!(recs.len() >= 3);
+            assert_eq!(recs[0].past_shape, vec![1, 1, 0, 2]);
+            for (i, r) in recs.iter().enumerate() {
+                assert_eq!(r.mask_shape, vec![1, 3]);
+                if r.past_shape[2] == 0 {
+                    continue;
+                }
+                let found = recs[..i].iter().any(|e| {
+                    let mut want = e.past_key.clone();
+                    want.extend_from_slice(&[e.token as f32, 0.0]);
+                    want == r.past_key
+                });
+                assert!(found, "第 {i} 次调用的 KV 找不到来源：{:?}", r.past_key);
+            }
+            // 首步两行同输入，只算一次：第 0 次调用之后紧跟的是 past 长度为 1 的调用
+            assert_eq!(recs[1].past_shape[2], 1);
+        }
     }
 }

@@ -1,17 +1,25 @@
-//! 本地翻译（NLLB-200 distilled 600M，int4 ONNX）：进程内库，encoder + 带 KV cache 的 merged decoder。
+//! 本地翻译（NLLB-200 distilled 600M）：进程内库，encoder + 带 KV cache 的解码器。
 //!
-//! 仅在 feature `ort-backend` 下编译。使用前须先 [`crate::ort_backend::OrtBackend::load`] 初始化共享 ORT 环境。
+//! 两种模型格式由 `model.json` 的 `format` 区分：`onnx-merged`（缺省，ORT，需 feature `ort-backend`，
+//! 先 [`crate::ort_backend::OrtBackend::load`] 初始化共享 ORT 环境）与 `mnn-split`（MNN 三图，需 feature `mnn-backend`，
+//! 用 [`crate::mnn::MnnRuntime`] 加载）。编排逻辑（分句、束搜索、引号包裹法、后处理）在 `engine`，
+//! 与后端无关，后端只实现 [`runner::Seq2SeqRunner`]。
 //! 逻辑移植自 Cisox snow-translator（GPL-3.0-only，作者本人），只保留 m2m100 家族路径。
 //!
 //! ## 模块
-//! - `manifest`：`model.json` 解析（语言码映射、解码参数、执行参数）
-//! - `engine`：会话加载、分词、编码/解码循环、束搜索接线、语言码强制与后处理
-//! - `beam`：束搜索纯逻辑；`text`：分句/切块/重复检测；`zh_punct`：中日文全角标点后处理
+//! - `manifest`：`model.json` 解析（格式、语言码映射、解码参数、执行参数）
+//! - `engine`：与后端无关的引擎（分词、编码/解码循环、束搜索接线、语言码强制与后处理）
+//! - `runner`：`Seq2SeqRunner` 抽象；`ort_runner`（ORT merged decoder）、`mnn_runner`（MNN 三图 + 图外嵌入表）、`embed`（int8 嵌入表）
+//! - `beam`：束搜索纯逻辑；`text`：分句/切块/重复检测；`zh_punct`：中日文全角标点后处理；`wrap`：极短输入引号包裹法
 //!
 //! ## 示例
 //! ```ignore
+//! // ORT 格式
 //! OrtBackend::load("libonnxruntime.so")?;
 //! let mut t = Translator::load(Path::new("/data/.../nllb600m-un6-ccm-int4"), 4)?;
+//! // MNN 格式
+//! let rt = MnnRuntime::load("libarkli-mnn.so")?;
+//! let mut t = Translator::load_mnn(&rt, Path::new("/data/.../nllb600m-un6-mnn-w6"), 4)?;
 //! let out = t.translate("你好，世界。", "zh-CN", "en", None)?;
 //! println!("{} ({} ms)", out.text, out.elapsed_ms);
 //! t.unload();
@@ -19,19 +27,33 @@
 
 pub mod beam;
 pub mod detect;
+pub mod embed;
 pub mod engine;
 pub mod error;
 pub mod manifest;
+#[cfg(feature = "mnn-backend")]
+pub mod mnn_runner;
+#[cfg(feature = "ort-backend")]
+pub mod ort_runner;
+pub mod runner;
 pub mod text;
+pub mod wrap;
 pub mod zh_punct;
+
+#[cfg(all(test, feature = "mnn-backend"))]
+mod mnn_real_tests;
 
 use std::path::Path;
 use std::time::Instant;
 
+#[cfg(feature = "mnn-backend")]
+use crate::mnn::{MnnNet, MnnRuntime};
+#[cfg(feature = "ort-backend")]
 use crate::ort_backend::shared_environment;
 
 pub use engine::TranslateOptions;
 pub use error::{ErrorKind, TranslateError};
+pub use manifest::ModelFormat;
 
 /// 一次翻译的结果。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,18 +68,59 @@ pub struct TranslateOutput {
     pub unrecognized: bool,
 }
 
+/// 读取模型目录 `model.json` 的格式，宿主据此选 ORT 还是 MNN 加载。
+///
+/// # 参数
+/// - `model_dir`：模型目录。
+///
+/// # 返回
+/// [`ModelFormat`]；`format` 缺省为 ORT。目录或文件缺失 `ModelMissing`、清单非法 `ManifestInvalid`。
+///
+/// # 示例
+/// ```ignore
+/// match model_format(Path::new("/data/models/nllb"))? {
+///     ModelFormat::OnnxMerged => { /* Translator::load */ }
+///     ModelFormat::MnnSplit => { /* Translator::load_mnn */ }
+/// }
+/// ```
+pub fn model_format(model_dir: &Path) -> Result<ModelFormat, TranslateError> {
+    Ok(manifest::Manifest::load(model_dir)?.model_format()?)
+}
+
+/// 已加载的引擎，按后端分派（会话类型不同，用枚举而非 trait 对象）。
+enum Inner {
+    /// ORT 引擎。
+    #[cfg(feature = "ort-backend")]
+    Ort(engine::Engine<ort_runner::OrtRunner>),
+    /// MNN 引擎。
+    #[cfg(feature = "mnn-backend")]
+    Mnn(engine::Engine<mnn_runner::MnnRunner<MnnNet>>),
+}
+
+/// 对 `Inner` 的每个变体执行同一段代码（`$e` 绑定到引擎）。
+macro_rules! dispatch {
+    ($inner:expr, $e:ident => $body:expr) => {
+        match $inner {
+            #[cfg(feature = "ort-backend")]
+            Inner::Ort($e) => $body,
+            #[cfg(feature = "mnn-backend")]
+            Inner::Mnn($e) => $body,
+        }
+    };
+}
+
 /// 已加载的本地翻译器（持有编码器/解码器会话与分词器）。
 pub struct Translator {
     /// 推理引擎。
-    engine: engine::Engine,
+    inner: Inner,
 }
 
 impl Translator {
-    /// 加载模型目录里的 NLLB 模型。
+    /// 加载模型目录里的 ORT 格式 NLLB 模型（需 feature `ort-backend`）。
     ///
     /// # 参数
     /// - `model_dir`：模型目录，须含 `model.json`、`encoder.onnx(+_data)`、`decoder.onnx(+_data)`、`tokenizer.json`；
-    ///   外部数据文件必须与 `.onnx` 同目录（ORT 内存映射加载）。
+    ///   外部数据文件必须与 `.onnx` 同目录（ORT 内存映射加载）。清单 `format` 为 `mnn-split` 的目录请用 [`Translator::load_mnn`]。
     /// - `threads`：算子线程数，0 取清单缺省（再为 0 则 ORT 自动）。
     ///
     /// # 返回
@@ -68,6 +131,7 @@ impl Translator {
     /// ```ignore
     /// let mut t = Translator::load(Path::new("/data/models/nllb"), 4)?;
     /// ```
+    #[cfg(feature = "ort-backend")]
     pub fn load(model_dir: &Path, threads: u32) -> Result<Self, TranslateError> {
         // 先校验清单（缺文件早失败），再要 ORT 环境
         manifest::Manifest::load(model_dir)?;
@@ -78,7 +142,29 @@ impl Translator {
             )
         })?;
         Ok(Self {
-            engine: engine::Engine::load(model_dir, &env, threads)?,
+            inner: Inner::Ort(engine::Engine::load(model_dir, &env, threads)?),
+        })
+    }
+
+    /// 加载模型目录里的 MNN 格式（`mnn-split`）NLLB 模型（需 feature `mnn-backend`）。
+    ///
+    /// # 参数
+    /// - `rt`：已加载运行库的 [`MnnRuntime`]。
+    /// - `model_dir`：模型目录，须含 `model.json`（`format: "mnn-split"`）、三张 `.mnn`（含外置权重）、`embed.i8`、`embed.scale`、`tokenizer.json`。
+    /// - `threads`：算子线程数，0 取清单缺省（再为 0 取 4）。
+    ///
+    /// # 返回
+    /// 就绪的 [`Translator`]；错误类别同 [`Translator::load`]，另有嵌入行数与词表不符 `ManifestInvalid`。
+    ///
+    /// # 示例
+    /// ```ignore
+    /// let rt = MnnRuntime::load("libarkli-mnn.so")?;
+    /// let mut t = Translator::load_mnn(&rt, Path::new("/data/models/nllb-mnn"), 4)?;
+    /// ```
+    #[cfg(feature = "mnn-backend")]
+    pub fn load_mnn(rt: &MnnRuntime, model_dir: &Path, threads: u32) -> Result<Self, TranslateError> {
+        Ok(Self {
+            inner: Inner::Mnn(engine::Engine::load_mnn(rt, model_dir, threads)?),
         })
     }
 
@@ -110,7 +196,7 @@ impl Translator {
             max_len: None,
             num_beams,
         };
-        let out = self.engine.translate(text, src, tgt, &opts)?;
+        let out = dispatch!(&mut self.inner, e => e.translate(text, src, tgt, &opts))?;
         Ok(TranslateOutput {
             text: out.text,
             elapsed_ms: started.elapsed().as_millis() as u64,
@@ -119,12 +205,18 @@ impl Translator {
         })
     }
 
+    /// 开关引号包裹法（仅测试用，对比启用前后的译文）。
+    #[cfg(test)]
+    fn set_short_phrase_wrap(&mut self, on: bool) {
+        dispatch!(&mut self.inner, e => e.set_short_phrase_wrap(on));
+    }
+
     /// 模型 ID（来自 `model.json` 的 `id`）。
     ///
     /// # 返回
     /// 形如 `nllb600m-un6-ccm-int4`。
     pub fn model_id(&self) -> &str {
-        self.engine.model_id()
+        dispatch!(&self.inner, e => e.model_id())
     }
 
     /// 是否支持某个有向语言对（不区分大小写；相同语言不支持）。
@@ -135,10 +227,10 @@ impl Translator {
     /// # 返回
     /// 支持返回 `true`。
     pub fn supports_pair(&self, src: &str, tgt: &str) -> bool {
-        self.engine.supports_pair(src, tgt)
+        dispatch!(&self.inner, e => e.supports_pair(src, tgt))
     }
 
-    /// 卸载模型，释放会话与分词器占用的内存。
+    /// 卸载模型，释放会话与分词器占用的内存（MNN 格式还会在三张图释放后归还 MNN 内存）。
     ///
     /// # 示例
     /// ```ignore
@@ -149,7 +241,7 @@ impl Translator {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "ort-backend"))]
 mod tests {
     use super::*;
     use serde_json::Value;
@@ -234,6 +326,35 @@ mod tests {
         assert_eq!(t.translate("Hi.", "en", "en", None).unwrap_err().kind, ErrorKind::UnsupportedPair);
         assert_eq!(t.translate("Hi.", "en", "de", None).unwrap_err().kind, ErrorKind::UnsupportedPair);
         assert!(t.translate("Hi.", "en", "fr", Some(1)).is_ok());
+        t.unload();
+    }
+
+    /// 真实模型：极短输入引号包裹法；长句结果与关闭该功能时一致。
+    #[test]
+    #[ignore = "需要 ARKLI_NLLB_DIR 与 ORT_DYLIB_PATH"]
+    fn 真实模型极短输入引号包裹法() {
+        let mut t = load_real();
+        let cases = [
+            ("你好", "zh-CN", "en", "Hello"),
+            ("谢谢", "zh-CN", "en", "Thank you"),
+            ("你好！", "zh-CN", "en", "Hello!"),
+            ("Hello", "en", "zh-CN", "你好"),
+        ];
+        for (text, src, tgt, want) in cases {
+            let o = t.translate(text, src, tgt, None).unwrap();
+            println!("[wrap {src}->{tgt}] {text} => {} ({} ms)", o.text, o.elapsed_ms);
+            assert_eq!(o.text, want);
+        }
+        // auto 识别为 zh-CN 时同样启用
+        let o = t.translate("你好", "auto", "en", None).unwrap();
+        println!("[wrap auto->en] 你好 => {}", o.text);
+        // 长句：不满足条件，开关前后必须一致
+        let long = "The quick brown fox jumps over the lazy dog. It was a sunny day in the city.";
+        let on = t.translate(long, "en", "zh-CN", None).unwrap().text;
+        t.set_short_phrase_wrap(false);
+        let off = t.translate(long, "en", "zh-CN", None).unwrap().text;
+        println!("[wrap long] on={on} off={off}");
+        assert_eq!(on, off);
         t.unload();
     }
 

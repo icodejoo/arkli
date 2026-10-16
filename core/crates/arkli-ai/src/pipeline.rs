@@ -87,6 +87,84 @@ pub struct OcrModelPaths {
     pub dict: PathBuf,
 }
 
+/// MNN 版模型目录里的检测模型文件名。
+pub const OCR_DET_FILE: &str = "det.mnn";
+/// MNN 版模型目录里的识别模型文件名。
+pub const OCR_REC_FILE: &str = "rec.mnn";
+/// MNN 版模型目录里的方向分类模型文件名。
+pub const OCR_CLS_FILE: &str = "cls.mnn";
+/// 模型目录里的识别字典文件名（一行一字）。
+pub const OCR_DICT_FILE: &str = "ppocr_keys.txt";
+/// PP-OCRv5 方向分类模型（PP-LCNet_x0_25）的输入高。
+pub const OCR_V5_CLS_HEIGHT: u32 = 80;
+/// PP-OCRv5 方向分类模型的输入宽。
+pub const OCR_V5_CLS_WIDTH: u32 = 160;
+
+impl OcrModelPaths {
+    /// 按约定文件名拼出模型目录里的四个路径（det / rec / cls / 字典，cls 总是带上）。
+    ///
+    /// ```
+    /// use arkli_ai::OcrModelPaths;
+    /// let p = OcrModelPaths::in_dir(std::path::Path::new("m"));
+    /// assert!(p.det.ends_with("det.mnn") && p.dict.ends_with("ppocr_keys.txt"));
+    /// ```
+    pub fn in_dir(dir: &std::path::Path) -> Self {
+        Self {
+            det: dir.join(OCR_DET_FILE),
+            rec: dir.join(OCR_REC_FILE),
+            cls: Some(dir.join(OCR_CLS_FILE)),
+            dict: dir.join(OCR_DICT_FILE),
+        }
+    }
+}
+
+/// PP-OCRv6 small 的识别字典项数（rec 输出类别数 = 它 + 2：blank 与末尾空格）。
+pub const OCR_V6_DICT_SIZE: usize = 18_708;
+/// PP-OCRv6 官方 det 后处理：二值化阈值（inference.yml 的 `thresh`）。
+pub const OCR_V6_DET_THRESH: f32 = 0.2;
+/// PP-OCRv6 官方 det 后处理：框平均得分阈值（`box_thresh`）。
+pub const OCR_V6_DET_BOX_THRESH: f32 = 0.45;
+/// PP-OCRv6 官方 det 后处理：unclip 比例（`unclip_ratio`）。
+pub const OCR_V6_DET_UNCLIP_RATIO: f32 = 1.4;
+
+impl OcrOptions {
+    /// PP-OCRv5 模型组的参数：方向分类输入是 80x160（该 onnx/mnn 的固定输入），其余沿用默认。
+    pub fn for_ppocr_v5() -> Self {
+        Self {
+            cls_height: OCR_V5_CLS_HEIGHT,
+            cls_width: OCR_V5_CLS_WIDTH,
+            ..Self::default()
+        }
+    }
+
+    /// PP-OCRv6 small 模型组的参数：det 后处理取官方 inference.yml 的值
+    /// （thresh 0.2 / box_thresh 0.45 / unclip 1.4），方向分类沿用 v5 的 80x160；识别预处理与 v5 相同。
+    pub fn for_ppocr_v6() -> Self {
+        let mut o = Self::for_ppocr_v5();
+        o.det_post.thresh = OCR_V6_DET_THRESH;
+        o.det_post.box_thresh = OCR_V6_DET_BOX_THRESH;
+        o.det_post.unclip_ratio = OCR_V6_DET_UNCLIP_RATIO;
+        o
+    }
+
+    /// 按字典项数判别模型代际：恰为 [`OCR_V6_DICT_SIZE`] 用 v6 参数，其余一律按 v5。
+    ///
+    /// - `dict_len`：字典文件的项数（一行一字）
+    ///
+    /// ```
+    /// use arkli_ai::OcrOptions;
+    /// assert_eq!(OcrOptions::for_dict_len(18_708), OcrOptions::for_ppocr_v6());
+    /// assert_eq!(OcrOptions::for_dict_len(18_383), OcrOptions::for_ppocr_v5());
+    /// ```
+    pub fn for_dict_len(dict_len: usize) -> Self {
+        if dict_len == OCR_V6_DICT_SIZE {
+            Self::for_ppocr_v6()
+        } else {
+            Self::for_ppocr_v5()
+        }
+    }
+}
+
 /// 一行识别结果。
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextLine {
@@ -142,13 +220,26 @@ impl OcrPipeline {
         session_opts: &SessionOptions,
         options: OcrOptions,
     ) -> Result<Self> {
+        Self::load_with(paths, &mut |p| backend.load_model(p, session_opts), options)
+    }
+
+    /// 用自定义的“路径 -> 会话”加载函数组装（MNN 等不走 [`InferenceBackend`] 的后端用）。
+    ///
+    /// - `paths`：模型与字典路径
+    /// - `loader`：按路径加载一个单输入单输出会话
+    /// - `options`：管线参数
+    pub fn load_with(
+        paths: &OcrModelPaths,
+        loader: &mut dyn FnMut(&std::path::Path) -> Result<Box<dyn Session>>,
+        options: OcrOptions,
+    ) -> Result<Self> {
         let dict = std::fs::read_to_string(&paths.dict)
             .map_err(|e| AiError::InvalidConfig(format!("读取字典失败：{e}")))?;
         let decoder = CtcDecoder::from_dict_text(&dict, true)?;
-        let det = backend.load_model(&paths.det, session_opts)?;
-        let rec = backend.load_model(&paths.rec, session_opts)?;
+        let det = loader(&paths.det)?;
+        let rec = loader(&paths.rec)?;
         let cls = match &paths.cls {
-            Some(p) => Some(backend.load_model(p, session_opts)?),
+            Some(p) => Some(loader(p)?),
             None => None,
         };
         Ok(Self::new(det, rec, cls, decoder, options))
@@ -487,6 +578,57 @@ mod tests {
             p.recognize(&white(), &CancelToken::new(), &mut |_| {}),
             Err(AiError::Backend("boom".into()))
         );
+    }
+
+    #[test]
+    fn 按目录拼路径且v5参数用80x160分类输入() {
+        let p = OcrModelPaths::in_dir(std::path::Path::new("m"));
+        assert_eq!(p.det, std::path::Path::new("m").join("det.mnn"));
+        assert_eq!(p.cls, Some(std::path::Path::new("m").join("cls.mnn")));
+        let o = OcrOptions::for_ppocr_v5();
+        assert_eq!((o.cls_height, o.cls_width), (80, 160));
+        assert_eq!(o.drop_score, OcrOptions::default().drop_score);
+    }
+
+    #[test]
+    fn v6参数取官方后处理且按字典项数判别() {
+        let v6 = OcrOptions::for_ppocr_v6();
+        assert_eq!(v6.det_post.thresh, 0.2);
+        assert_eq!(v6.det_post.box_thresh, 0.45);
+        assert_eq!(v6.det_post.unclip_ratio, 1.4);
+        assert_eq!((v6.cls_height, v6.cls_width), (80, 160));
+        assert_eq!(OcrOptions::for_dict_len(OCR_V6_DICT_SIZE), v6);
+        assert_eq!(OcrOptions::for_dict_len(18_383), OcrOptions::for_ppocr_v5());
+        // v5 的 det 后处理保持库默认值
+        assert_eq!(OcrOptions::for_ppocr_v5().det_post, DbConfig::default());
+    }
+
+    #[test]
+    fn load_with按序加载三个模型并读字典() {
+        let dir = std::env::temp_dir().join(format!("arkli-ocr-lw-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(OCR_DICT_FILE), "a
+b
+c
+").unwrap();
+        let paths = OcrModelPaths::in_dir(&dir);
+        let mut seen = Vec::new();
+        let p = OcrPipeline::load_with(
+            &paths,
+            &mut |path| {
+                seen.push(path.file_name().unwrap().to_string_lossy().to_string());
+                Ok(fake_det())
+            },
+            OcrOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(seen, vec!["det.mnn", "rec.mnn", "cls.mnn"]);
+        assert!(p.cls.is_some());
+        // 字典缺失报配置错误
+        std::fs::remove_file(dir.join(OCR_DICT_FILE)).unwrap();
+        let r = OcrPipeline::load_with(&paths, &mut |_| Ok(fake_det()), OcrOptions::default());
+        assert!(matches!(r, Err(AiError::InvalidConfig(_))));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

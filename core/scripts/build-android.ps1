@@ -21,6 +21,28 @@ $ErrorActionPreference = 'Stop'
 $LibName = 'libarkli_ffi.so'
 $CrateName = 'arkli-ffi'
 
+# 读 cargo 的 dep-info（与宿主库同目录的 <库名>.d），返回其中最新修改的依赖文件；找不到 dep-info 或没有可用条目时返回 $null。
+# dep-info 只有一行：`<产物路径>: <依赖1> <依赖2> ...`，路径里的空格以 `\ ` 转义。
+function Get-DepInfoNewest {
+    param([System.IO.FileInfo]$Lib)
+    $stem = [System.IO.Path]::GetFileNameWithoutExtension($Lib.Name)
+    $dep = $null
+    foreach ($n in "$stem.d", "lib$stem.d") {
+        $p = Join-Path $Lib.DirectoryName $n
+        if (Test-Path $p) { $dep = $p; break }
+    }
+    if (-not $dep) { return $null }
+    $text = (Get-Content $dep -Raw).Trim()
+    # 产物路径含盘符冒号，依赖列表从第一个 ": " 之后开始
+    $idx = $text.IndexOf(': ')
+    if ($idx -lt 0) { return $null }
+    [regex]::Split($text.Substring($idx + 2), '(?<!\\) +') |
+        ForEach-Object { $_.Replace('\ ', ' ') } |
+        Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } |
+        ForEach-Object { Get-Item -LiteralPath $_ } |
+        Sort-Object LastWriteTime -Descending | Select-Object -First 1
+}
+
 # 路径：core 目录与仓库根
 $CoreDir = Split-Path -Parent $PSScriptRoot
 $RepoRoot = Split-Path -Parent $CoreDir
@@ -72,10 +94,31 @@ try {
         Invoke-Step '构建宿主机 debug 库（仅供读取元数据）' {
             cargo build -p $CrateName
         }
-        $hostLib = Get-ChildItem (Join-Path $CoreDir 'target\debug') -File |
+        # 产物目录以 cargo 自己的为准（尊重 CARGO_TARGET_DIR / .cargo/config 的 target-dir），不能写死 core\target
+        $targetDir = (cargo metadata --format-version 1 --no-deps | ConvertFrom-Json).target_directory
+        if ($LASTEXITCODE -ne 0 -or -not $targetDir) { throw '读取 cargo metadata 的 target_directory 失败' }
+        $hostLib = Get-ChildItem (Join-Path $targetDir 'debug') -File -ErrorAction SilentlyContinue |
             Where-Object { $_.Name -in 'arkli_ffi.dll', 'libarkli_ffi.so', 'libarkli_ffi.dylib' } |
             Select-Object -First 1
-        if (-not $hostLib) { throw '未找到宿主机 debug 库（arkli_ffi.dll/.so/.dylib）' }
+        if (-not $hostLib) { throw "未找到宿主机 debug 库（arkli_ffi.dll/.so/.dylib），目录：$targetDir\debug" }
+
+        # 过期检查：宿主库必须不早于它真正依赖的源码，否则会按旧元数据生成过期绑定。
+        # 只看 cargo 的 dep-info（<库名>.d 列出的依赖文件）：整个 core 下的 *.rs / Cargo.* 里有 uniffi-bindgen、
+        # arkli-ai/tests 这类 arkli-ffi 并不依赖的文件，改了它们 cargo 判定无变化、库时间戳不动，会永远误报“已过期”。
+        $newestSrc = Get-DepInfoNewest $hostLib
+        if (-not $newestSrc) {
+            # 找不到 dep-info（极少见）：退回只比 arkli-ffi 及其依赖 crate 的源码
+            $newestSrc = Get-ChildItem (Join-Path $CoreDir 'crates') -Directory |
+                Where-Object { $_.Name -in 'arkli-ffi', 'arkli-core', 'arkli-ai' } |
+                ForEach-Object {
+                    $src = Join-Path $_.FullName 'src'
+                    if (Test-Path $src) { Get-ChildItem $src -Recurse -File -Filter '*.rs' }
+                    Get-Item (Join-Path $_.FullName 'Cargo.toml') -ErrorAction SilentlyContinue
+                } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        }
+        if ($newestSrc -and $hostLib.LastWriteTime -lt $newestSrc.LastWriteTime) {
+            throw "宿主机库已过期（$($hostLib.FullName) 早于 $($newestSrc.FullName)），请先重新编译：cargo build -p $CrateName"
+        }
         Invoke-Step '生成 Kotlin 绑定' {
             cargo run -q -p uniffi-bindgen -- generate --library $hostLib.FullName --language kotlin --no-format --out-dir $KotlinOutDir
         }

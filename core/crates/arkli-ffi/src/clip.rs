@@ -1,14 +1,17 @@
 //! 识物（SigLIP2）的 FFI 面：加载模型与词表、对一张图分类。
 //!
 //! 业务逻辑都在 `arkli-ai`，这里只管：进程内唯一的会话状态（加锁串行，一次只跑一个推理）、
-//! 类型转换、错误映射。ORT 动态库通过 `ort` 的 load-dynamic 按裸名 `libonnxruntime.so` 加载。
+//! 类型转换、错误映射。按模型扩展名选后端：`.mnn` 走 MNN（`libarkli-mnn.so`），其余走 ORT（`libonnxruntime.so`），
+//! 两者都按调用方传入的库名/路径动态加载。
 
 use std::path::Path;
 use std::sync::Mutex;
 
-use arkli_ai::backend::InferenceBackend;
+use arkli_ai::backend::{backend_for_model, BackendKind, InferenceBackend};
 use arkli_ai::classify::{classify_image, ClassifyOptions, Vocab, VocabEntry};
 use arkli_ai::clip::ClipEncoder;
+#[cfg(feature = "mnn-backend")]
+use arkli_ai::mnn::MnnRuntime;
 use arkli_ai::ort_backend::OrtBackend;
 use arkli_ai::provider::{Provider, SessionOptions};
 use arkli_ai::{AiError, PixelFormat, RawImage};
@@ -87,11 +90,14 @@ pub struct ClipClassifyResult {
     pub uncertain: bool,
 }
 
-/// 进程内状态：ORT 后端（只加载一次）、编码器（会话复用）、词表。
+/// 进程内状态：两种后端（各只加载一次）、编码器（会话复用）、词表。
 #[derive(Default)]
 struct State {
     /// ORT 后端，首次 `clip_load` 时创建
     backend: Option<OrtBackend>,
+    /// MNN 运行时，首次加载 `.mnn` 模型时创建
+    #[cfg(feature = "mnn-backend")]
+    mnn: Option<MnnRuntime>,
     /// 当前模型路径，用来判断是否要重载
     model_path: Option<String>,
     /// 编码器
@@ -109,37 +115,64 @@ fn with_state<T>(f: impl FnOnce(&mut State) -> T) -> T {
     f(guard.get_or_insert_with(State::default))
 }
 
-/// 加载 ORT 与模型，已用同一模型加载过则直接返回。
+/// 加载运行库与模型，已用同一模型加载过则直接返回。
 ///
 /// 参数：
-/// - `ort_lib`：ORT 动态库名或路径，APK 内传裸名 `libonnxruntime.so`
-/// - `model_path`：`q4_half.onnx` 绝对路径
+/// - `runtime_lib`：推理运行库名或路径，按 `model_path` 扩展名对应：`.mnn` 传 `libarkli-mnn.so`，
+///   其余（ORT）传 `libonnxruntime.so`；APK 内都用裸名
+/// - `model_path`：模型绝对路径（`.mnn` 旁有 `.mnn.weight` 时自动作为外置权重）
 /// - `threads`：算子线程数，0 视为默认 4
 ///
-/// 错误：`Backend`（库或模型加载失败）。
+/// 错误：`Backend`（库或模型加载失败、未编译 MNN 后端）。
 ///
-/// 示例（Kotlin）：`clipLoad("libonnxruntime.so", "/data/.../q4_half.onnx", 4u)`
+/// 示例（Kotlin）：`clipLoad("libarkli-mnn.so", "/data/.../model.mnn", 4u)`
 #[uniffi::export]
-pub fn clip_load(ort_lib: String, model_path: String, threads: u32) -> Result<(), ClipFfiError> {
+pub fn clip_load(runtime_lib: String, model_path: String, threads: u32) -> Result<(), ClipFfiError> {
     with_state(|s| {
         if s.encoder.is_some() && s.model_path.as_deref() == Some(model_path.as_str()) {
             return Ok(());
         }
-        if s.backend.is_none() {
-            s.backend = Some(OrtBackend::load(&ort_lib).map_err(map_err)?);
-        }
-        let opts = SessionOptions {
-            provider: Provider::Cpu,
-            intra_threads: if threads == 0 { arkli_ai::provider::DEFAULT_THREADS } else { threads },
-        };
         // 先丢掉旧会话再建新的，避免两份模型同时占内存
         s.encoder = None;
-        let backend = s.backend.as_ref().expect("上面已确保存在");
-        let session = backend.load_model(Path::new(&model_path), &opts).map_err(map_err)?;
-        s.encoder = Some(ClipEncoder::new(session));
+        let path = Path::new(&model_path);
+        let encoder = match backend_for_model(path) {
+            BackendKind::Ort => load_ort(s, &runtime_lib, path, threads)?,
+            BackendKind::Mnn => load_mnn(s, &runtime_lib, path, threads)?,
+        };
+        s.encoder = Some(encoder);
         s.model_path = Some(model_path);
         Ok(())
     })
+}
+
+/// 用 ORT 加载编码器（首次创建后端）。
+fn load_ort(s: &mut State, lib: &str, path: &Path, threads: u32) -> Result<ClipEncoder, ClipFfiError> {
+    if s.backend.is_none() {
+        s.backend = Some(OrtBackend::load(lib).map_err(map_err)?);
+    }
+    let opts = SessionOptions {
+        provider: Provider::Cpu,
+        intra_threads: if threads == 0 { arkli_ai::provider::DEFAULT_THREADS } else { threads },
+    };
+    let backend = s.backend.as_ref().expect(crate::ENSURED_ABOVE);
+    let session = backend.load_model(path, &opts).map_err(map_err)?;
+    Ok(ClipEncoder::new(session))
+}
+
+/// 用 MNN 加载编码器（首次创建运行时）。
+#[cfg(feature = "mnn-backend")]
+fn load_mnn(s: &mut State, lib: &str, path: &Path, threads: u32) -> Result<ClipEncoder, ClipFfiError> {
+    if s.mnn.is_none() {
+        s.mnn = Some(MnnRuntime::load(lib).map_err(map_err)?);
+    }
+    let rt = s.mnn.as_ref().expect(crate::ENSURED_ABOVE);
+    rt.load_clip_encoder(path, threads).map_err(map_err)
+}
+
+/// 未编译 MNN 后端时，`.mnn` 模型直接报错。
+#[cfg(not(feature = "mnn-backend"))]
+fn load_mnn(_s: &mut State, _lib: &str, _path: &Path, _threads: u32) -> Result<ClipEncoder, ClipFfiError> {
+    Err(ClipFfiError::Backend { reason: crate::NO_MNN_BACKEND.into() })
 }
 
 /// 设置词表。可反复调用，后一次覆盖前一次。
@@ -196,12 +229,19 @@ pub fn clip_classify(width: u32, height: u32, rgb: Vec<u8>, top_k: u32) -> Resul
     })
 }
 
-/// 释放模型会话（约 100MB 内存），词表与 ORT 库保留。下次分类前需重新 `clip_load`。
+/// 释放模型会话（约 100MB 内存），词表与运行库保留。下次分类前需重新 `clip_load`。
 #[uniffi::export]
 pub fn clip_unload() {
     with_state(|s| {
         s.encoder = None;
         s.model_path = None;
+    });
+    // MNN：先让它丢缓存缓冲、退还空闲页，再让进程分配器归还
+    #[cfg(feature = "mnn-backend")]
+    with_state(|s| {
+        if let Some(rt) = &s.mnn {
+            rt.release_memory();
+        }
     });
     // 会话释放后让分配器归还空闲页
     crate::mem::purge_heap();
@@ -242,6 +282,12 @@ mod tests {
     #[test]
     fn 找不到ort库报后端错误() {
         let r = clip_load("definitely-not-exist-libonnxruntime.so".into(), "x.onnx".into(), 4);
+        assert!(matches!(r, Err(ClipFfiError::Backend { .. })));
+    }
+
+    #[test]
+    fn 找不到mnn库报后端错误() {
+        let r = clip_load("definitely-not-exist-libarkli-mnn.so".into(), "x.mnn".into(), 4);
         assert!(matches!(r, Err(ClipFfiError::Backend { .. })));
     }
 }

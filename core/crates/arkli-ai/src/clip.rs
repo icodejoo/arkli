@@ -5,7 +5,7 @@
 //! 它缩小时带抗锯齿（滤波核随缩放比例变宽）；安卓 `createScaledBitmap` 没有这一步，结果会偏。
 //! 这里按 PIL 的系数公式实现，并在测试里与 PIL 的输出对表。
 
-use crate::backend::{Session, Tensor};
+use crate::backend::{GraphSession, GraphTensorSession, Session, Tensor};
 use crate::error::{AiError, Result};
 use crate::image::RawImage;
 
@@ -15,6 +15,8 @@ pub const INPUT_SIZE: u32 = 224;
 pub const NORM_MEAN: f32 = 0.5;
 /// 归一化标准差（RGB 三通道相同）。
 pub const NORM_STD: f32 = 0.5;
+/// 模型输入名（MNN 后端按名字绑定；ORT 后端取第一个输入，不依赖它）。
+pub const INPUT_NAME: &str = "pixel_values";
 /// 取向量用的模型输出名。
 pub const OUTPUT_NAME: &str = "pooler_output";
 /// 像素最大值，用于 0..255 到 0..1。
@@ -182,6 +184,13 @@ impl ClipEncoder {
         Self { session }
     }
 
+    /// 用图推理会话（如 MNN 的 `MnnNet`，或测试里的 mock）构造。
+    ///
+    /// - `graph`：单输入会话，输出里须有名为 [`OUTPUT_NAME`] 的那一个
+    pub fn from_graph<G: GraphSession + 'static>(graph: G) -> Self {
+        Self::new(Box::new(GraphTensorSession::new(graph)))
+    }
+
     /// 对一张图算向量。
     ///
     /// - `img`：已解码像素（任意尺寸）
@@ -204,6 +213,7 @@ impl ClipEncoder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::backend::GraphValue;
     use crate::image::PixelFormat;
 
     /// 记录输入并返回固定输出的假会话。
@@ -221,6 +231,138 @@ mod tests {
             assert_eq!(input.shape, vec![1, 3, 224, 224]);
             Ok(self.out.clone())
         }
+    }
+
+    /// 假图值：只存形状与数据。
+    struct MockValue {
+        /// 形状
+        shape: Vec<i64>,
+        /// 数据
+        data: Vec<f32>,
+    }
+
+    impl GraphValue for MockValue {
+        fn shape(&self) -> Vec<i64> {
+            self.shape.clone()
+        }
+        fn to_f32(&self) -> Result<Vec<f32>> {
+            Ok(self.data.clone())
+        }
+        fn to_i32(&self) -> Result<Vec<i32>> {
+            Err(AiError::BadModelOutput("mock 无 i32".into()))
+        }
+    }
+
+    /// 记录的一次输入：(形状, 数据)
+    type Seen = (Vec<i64>, Vec<f32>);
+
+    /// 假图会话：记录收到的输入，返回固定输出（按 `out_names` 顺序）。
+    struct MockGraph {
+        /// 输入名
+        ins: Vec<String>,
+        /// 输出名
+        outs: Vec<String>,
+        /// 每个输出的 (形状, 数据)
+        results: Vec<(Vec<i64>, Vec<f32>)>,
+        /// 收到的输入形状与数据前几个值，供断言
+        seen: std::sync::Arc<std::sync::Mutex<Vec<Seen>>>,
+        /// 让 run 失败
+        fail: bool,
+    }
+
+    impl MockGraph {
+        /// 构造：输出名 `last_hidden_state`、`pooler_output`，后者是 `pooled`。
+        fn new(pooled: Vec<f32>) -> Self {
+            let n = pooled.len() as i64;
+            Self {
+                ins: vec![INPUT_NAME.into()],
+                outs: vec!["last_hidden_state".into(), OUTPUT_NAME.into()],
+                results: vec![(vec![1, 2, 2], vec![9.0; 4]), (vec![1, n], pooled)],
+                seen: Default::default(),
+                fail: false,
+            }
+        }
+    }
+
+    impl GraphSession for MockGraph {
+        type Value = MockValue;
+        fn input_names(&self) -> &[String] {
+            &self.ins
+        }
+        fn output_names(&self) -> &[String] {
+            &self.outs
+        }
+        fn value_f32(&self, shape: &[i64], data: &[f32]) -> Result<MockValue> {
+            Ok(MockValue { shape: shape.to_vec(), data: data.to_vec() })
+        }
+        fn value_i32(&self, _: &[i64], _: &[i32]) -> Result<MockValue> {
+            Err(AiError::Unsupported("mock".into()))
+        }
+        fn run(&mut self, inputs: &[&MockValue]) -> Result<Vec<MockValue>> {
+            if self.fail {
+                return Err(AiError::Backend("mock 推理失败".into()));
+            }
+            self.seen.lock().unwrap().push((inputs[0].shape.clone(), inputs[0].data.clone()));
+            Ok(self.results.iter().map(|(s, d)| MockValue { shape: s.clone(), data: d.clone() }).collect())
+        }
+    }
+
+    #[test]
+    fn 图会话驱动编码器_形状与归一化() {
+        let g = MockGraph::new(vec![1.0, 2.0, 2.0, 4.0]);
+        let seen = g.seen.clone();
+        let mut enc = ClipEncoder::from_graph(g);
+        let v = enc.embed(&golden_image()).unwrap();
+        // 取的是 pooler_output（不是第一个输出），且已 L2 归一化
+        assert_eq!(v.len(), 4);
+        assert!((v.iter().map(|x| x * x).sum::<f32>() - 1.0).abs() < 1e-6);
+        assert!((v[3] - 4.0 / 5.0).abs() < 1e-6);
+        // 输入是 [1,3,224,224] 且值在 [-1, 1]
+        let seen = seen.lock().unwrap();
+        assert_eq!(seen.len(), 1);
+        assert_eq!(seen[0].0, vec![1, 3, 224, 224]);
+        assert_eq!(seen[0].1.len(), 3 * 224 * 224);
+        assert!(seen[0].1.iter().all(|x| (-1.0..=1.0).contains(x)));
+    }
+
+    #[test]
+    fn 图会话错误会向上传播() {
+        let mut g = MockGraph::new(vec![1.0]);
+        g.fail = true;
+        let mut enc = ClipEncoder::from_graph(g);
+        assert!(matches!(enc.embed(&golden_image()), Err(AiError::Backend(_))));
+    }
+
+    #[test]
+    fn 图会话缺少同名输出报错() {
+        let mut g = MockGraph::new(vec![1.0]);
+        g.outs = vec!["a".into(), "b".into()];
+        let mut enc = ClipEncoder::from_graph(g);
+        assert!(matches!(enc.embed(&golden_image()), Err(AiError::BadModelOutput(_))));
+    }
+
+    #[test]
+    fn 图会话输出形状异常被拒() {
+        let mut g = MockGraph::new(vec![1.0; 4]);
+        g.results[1] = (vec![2, 2], vec![1.0; 4]);
+        let mut enc = ClipEncoder::from_graph(g);
+        assert!(matches!(enc.embed(&golden_image()), Err(AiError::BadModelOutput(_))));
+    }
+
+    #[test]
+    fn 多输入图会话不能用单输入适配器() {
+        let mut g = MockGraph::new(vec![1.0]);
+        g.ins.push("extra".into());
+        let mut enc = ClipEncoder::from_graph(g);
+        assert!(matches!(enc.embed(&golden_image()), Err(AiError::Unsupported(_))));
+    }
+
+    #[test]
+    fn 适配器run取第一个输出() {
+        let mut s = GraphTensorSession::new(MockGraph::new(vec![1.0, 2.0]));
+        let t = Tensor::new(vec![1, 1], vec![0.5]).unwrap();
+        let out = s.run(t).unwrap();
+        assert_eq!(out.shape, vec![1, 2, 2]);
     }
 
     /// 与 PIL 对表用的图：像素 = (x*37 + y*91 + c*53) % 256，11x7。
