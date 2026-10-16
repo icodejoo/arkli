@@ -25,7 +25,7 @@ RELEASE_BASE = "https://github.com/icodejoo/arkli/releases/download"
 MODEL_DIR_PREFIX = "models"
 # 按文件名后缀推断 role
 ROLE_BY_SUFFIX = ((".mnn.weight", "weights"), (".i8", "weights"), (".scale", "weights"), (".mnn", "model"))
-ROLE_BY_NAME = {"tokenizer.json": "tokenizer", "tokens.txt": "tokenizer", "ppocr_keys.txt": "tokenizer", "model.json": "config"}
+ROLE_BY_NAME = {"tokenizer.json": "tokenizer", "tokens.txt": "tokenizer", "vocab.txt": "tokenizer", "ppocr_keys.txt": "tokenizer", "model.json": "config"}
 
 
 def role_of(name):

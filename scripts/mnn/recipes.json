@@ -116,6 +116,55 @@
         "fp16": {"id": "ppocrv6-small-mnn-fp16", "quant": ["--fp16"]},
         "fp32": {"id": "ppocrv6-small-mnn-fp32", "quant": []}
       }
+    },
+    "couplet": {
+      "group": "couplet",
+      "display_name": "本地对联模型（GPT-2 对联 uer/gpt2-chinese-couplet）",
+      "license": "unknown",
+      "release_tag": "couplet-gpt2-mnn-v1",
+      "prepare": "couplet",
+      "default": "w6hqq",
+      "graphs": [
+        {"name": "model", "input": "couplet:model_e8.onnx", "output": "model.mnn"}
+      ],
+      "common_args": ["--saveExternalData"],
+      "copy": ["dl:couplet/vocab.txt", "dl:couplet/UER-py_LICENSE_Apache-2.0.txt", "dl:couplet/couplet-clean-dataset_LICENSE_MIT.txt"],
+      "notice": "data:couplet/NOTICE.txt",
+      "model_json": {
+        "schema_version": 1,
+        "family": "gpt2-couplet",
+        "format": "mnn-single",
+        "files": {"model": "model.mnn", "model_data": "model.mnn.weight", "vocab": "vocab.txt"},
+        "inputs": [
+          {"name": "input_ids", "dtype": "int32", "shape": ["1", "seq"]},
+          {"name": "position_ids", "dtype": "int32", "shape": ["1", "seq"]}
+        ],
+        "outputs": [{"name": "logits", "dtype": "float32", "shape": ["1", "1", "21128"], "note": "只含最后一个输入位置的 logits"}],
+        "tokenizer": {"type": "bert-char", "vocab_size": 21128, "cls": 101, "sep": 102, "unk": 100, "pad": 0, "dash": 118,
+                      "prompt": "[CLS] + 上联逐字 + '-'；不要在末尾加 [SEP]"},
+        "generation": {
+          "no_kv_cache": true, "recompute_full_sequence": true,
+          "equal_length": true, "top_k": 40, "temperature": 0.8, "stop_token_id": 102,
+          "max_upper_chars": 14, "max_positions": 64,
+          "allowed_output": "汉字；上联对应位是标点则照抄",
+          "reject_input": ["英文字母", "数字", "括号"]
+        },
+        "execution": {"threads": 4, "memory": "low", "precision": "normal"}
+      },
+      "variants": {
+        "w6hqq": {"id": "couplet-gpt2-mnn", "quant": ["--weightQuantBits", "6", "--hqq"],
+                  "quant_label": "mnn-w6-hqq", "quant_desc": "MNN 6-bit weight quantization (HQQ, per-channel) of all MatMul weights including lm_head; the token embedding table is stored in-graph as int8 with a per-row scale",
+                  "display_name": "GPT-2 Chinese couplet (MNN 6-bit)"},
+        "w8": {"id": "couplet-gpt2-mnn-w8", "quant": ["--weightQuantBits", "8", "--weightQuantAsymmetric"],
+               "quant_label": "mnn-w8", "quant_desc": "MNN 8-bit asymmetric weight quantization (per-channel) of all MatMul weights including lm_head; the token embedding table is stored in-graph as int8 with a per-row scale",
+               "display_name": "GPT-2 Chinese couplet (MNN 8-bit)"},
+        "w4b32hqq": {"id": "couplet-gpt2-mnn-w4", "quant": ["--weightQuantBits", "4", "--weightQuantBlock", "32", "--hqq"],
+                     "quant_label": "mnn-w4-b32-hqq", "quant_desc": "MNN 4-bit weight quantization (block 32, HQQ) of all MatMul weights including lm_head; the token embedding table is stored in-graph as int8 with a per-row scale",
+                     "display_name": "GPT-2 Chinese couplet (MNN 4-bit)"},
+        "fp32": {"id": "couplet-gpt2-mnn-fp32", "quant": [],
+                 "quant_label": "mnn-fp32", "quant_desc": "no weight quantization (the token embedding table is still stored in-graph as int8 with a per-row scale)",
+                 "display_name": "GPT-2 Chinese couplet (MNN fp32 weights)"}
+      }
     }
   }
 }

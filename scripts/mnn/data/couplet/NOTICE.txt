@@ -1,0 +1,37 @@
+NOTICE
+
+This package contains a Chinese couplet generation model: GPT-2 (12 layers, 768 dims, vocabulary 21,128 characters), converted to the MNN runtime format.
+
+Original work
+- Model: uer/gpt2-chinese-couplet
+- Creators: the UER-py (dbiir) authors
+- Source: https://huggingface.co/uer/gpt2-chinese-couplet (commit 91b9465fb1be617f69c6f003b0bd6e6642537bec)
+- Training framework: https://github.com/dbiir/UER-py
+- Training data (as stated by the model's authors): a cleaned couplet corpus, https://github.com/v-zich/couplet-clean-dataset (repository LICENSE: MIT),
+  which is derived from https://github.com/wb14123/couplet-dataset (repository LICENSE: AGPL-3.0; the text was collected from public blogs).
+
+License status: UNCONFIRMED
+- The Hugging Face model card has no license field and does not state a license in its text.
+- The UER-py repository contains an Apache-2.0 LICENSE file, while its README badge says MIT; neither says anything about the redistribution of the pre-trained weights.
+- The training data's upstream is AGPL-3.0 and its collected texts have an unclear authorization chain. Whether the weights are affected cannot be determined.
+- Therefore it is NOT CONFIRMED that these weights may be redistributed or used commercially. This package is NOT released under Apache-2.0 or MIT, and
+  nobody should read the two LICENSE files shipped here (UER-py_LICENSE_Apache-2.0.txt, couplet-clean-dataset_LICENSE_MIT.txt) as a grant for the weights;
+  they are included only so the provenance is visible. The distributor decided not to contact the authors and distributes at their own risk.
+  If the authors ask for removal, remove this package.
+
+Modifications made in this package
+- Exported from the original weights to ONNX with a minimal hand-written GPT-2 forward (logits match the Hugging Face implementation within 1e-5), then converted to MNN.
+- Removed the KV cache inputs/outputs: the graph recomputes the whole sequence at every step (sequences are at most about 40 tokens).
+- The token embedding table is stored in the graph as int8 with a per-row scale; the output projection (lm_head, tied with the embedding) is a separate weight.
+- Quantization: {quant_desc}.
+- Stored the weights as an external data file (model.mnn.weight). Added model.json (runtime manifest) and file checksums.
+- No retraining or fine-tuning was done. Outputs of the modified weights can differ slightly from those of the original model.
+
+Known limits
+- Trained on couplets, not poems; classical poems and idioms are handled weakly. Rare characters become [UNK]; English letters, digits and brackets in the input give garbage, so
+  the app must reject them and keep the upper line within 14 characters (the pre-training sequence length is only 64).
+
+Disclaimers
+- This package is not affiliated with, endorsed by, or sponsored by the original authors.
+- The model is provided "as is", without warranty of any kind. Generated text may be inappropriate or wrong.
+- This notice is not legal advice.

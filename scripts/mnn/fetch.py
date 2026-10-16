@@ -28,6 +28,8 @@ MS_OCR = "https://modelscope.cn/models/RapidAI/RapidOCR/resolve/master/onnx/PP-O
 GH_ASR = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models"
 GH_CISOX = "https://github.com/icodejoo/Cisox/releases/download/models"
 GH_ARKLI_SIGLIP = "https://github.com/icodejoo/arkli/releases/download/siglip2-q4half-v1"
+# 对联模型（couplet-gpt2-v1）的 release 下载前缀
+GH_COUPLET = "https://github.com/icodejoo/arkli/releases/download/couplet-gpt2-v1"
 # 语音包文件名前缀
 ASR_PREFIX = "sherpa-onnx-x-asr-480ms-streaming-zipformer-transducer-zh-en-punct"
 
@@ -81,6 +83,16 @@ FILES = {
         ("ocr6/rec/inference.yml", 150579, "ab078671bb49f06228eadccd34f1bb501e157f7a047095ffb943ba81512c77d1",
          hf("PaddlePaddle/PP-OCRv6_small_rec_onnx", "inference.yml")),
     ],
+    # 对联 GPT-2（uer/gpt2-chinese-couplet，导出的 fp32 ONNX，带 past 输入，couplet_prepare.py 会去掉）、词表与两份许可证文件（随包带上，如实写来源）
+    "couplet": [
+        ("couplet/couplet-gpt2-fp32.onnx", 408379974, "afa4a249f5e73826a5722204a89b089802624161f94caf5f02521bf84591561f",
+         [f"{GH_COUPLET}/couplet-gpt2-fp32.onnx"]),
+        ("couplet/vocab.txt", 109516, "3db3f345cf52a1102831aa1fe7ddeb031dd5f117412f91ad11645c4e71fc8f4b", [f"{GH_COUPLET}/vocab.txt"]),
+        ("couplet/UER-py_LICENSE_Apache-2.0.txt", 11357, "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+         [f"{GH_COUPLET}/UER-py_LICENSE_Apache-2.0.txt"]),
+        ("couplet/couplet-clean-dataset_LICENSE_MIT.txt", 1068, "e5ba66a650e1701d75ba5706af41b6dfaca7297c97ae8c93d7458db9c90d1e05",
+         [f"{GH_COUPLET}/couplet-clean-dataset_LICENSE_MIT.txt"]),
+    ],
     # 评测对照用：现网 ORT 版 SigLIP2 q4_half、NLLB int4、语音 int8
     "baseline": [
         ("siglip2/q4_half.onnx", 54662805, "6b4ea1ecba627b754df325d86cc971620ac961b47d81310a3c0659827dff217a",
@@ -94,7 +106,7 @@ FILES = {
     ],
 }
 # 缺省下载的分组（baseline 体积大且只用于对照，需显式指定）
-DEFAULT_GROUPS = ["siglip2", "nllb", "asr", "ocr", "ocr6"]
+DEFAULT_GROUPS = ["siglip2", "nllb", "asr", "ocr", "ocr6", "couplet"]
 # 要解压的包：tar 相对路径 -> 解压目录
 EXTRACT = {"asr/asr-fp32.tar.bz2": "asr/fp32", "asr/asr-int8.tar.bz2": "asr/int8"}
 

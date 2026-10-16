@@ -1,6 +1,6 @@
-"""一键转换：按 recipes.json 把四类模型（siglip2 / nllb / asr / ocr，ocr6 为 PP-OCRv6 small）从 fp32 ONNX 原版转成 MNN 产物。
+"""一键转换：按 recipes.json 把模型（siglip2 / nllb / asr / ocr，ocr6 为 PP-OCRv6 small，couplet 为对联 GPT-2）从 fp32 ONNX 原版转成 MNN 产物。
 
-流程（每个模型）：检查原版是否已下载 -> 前处理（仅 nllb：词表裁剪拆图、交叉 KV 小图、嵌入表 int8）
+流程（每个模型）：检查原版是否已下载 -> 前处理（nllb：词表裁剪拆图、交叉 KV 小图、嵌入表 int8；couplet：去 KV cache、词嵌入 int8）
 -> 逐张图调 mnnconv.convert -> 拷贝附带文件 -> 打印产物体积。产物放 out_dir()/<清单 id>/，转换日志放 work/logs/。
 
 用法：
@@ -48,9 +48,16 @@ def resolve(ref):
         return os.path.join(dl_dir(), rel)
     if kind == "split":
         return os.path.join(split_dir(), rel)
+    if kind == "couplet":
+        return os.path.join(couplet_prep_dir(), rel)
     if kind == "asr":
         return os.path.join(find_asr_model_dir(os.path.join(dl_dir(), "asr", "fp32")), rel)
     die(f"配方里的路径前缀不认识：{ref}")
+
+
+def couplet_prep_dir():
+    """对联前处理产物目录（去 past + 词嵌入 int8 的 onnx）：<split 目录的上一级>/couplet。"""
+    return os.path.join(os.path.dirname(split_dir()), "couplet")
 
 
 def run_script(name, *args):
@@ -85,8 +92,22 @@ def prepare_nllb(rec):
         f.write(want)
 
 
+# 对联前处理产物文件名
+COUPLET_PREP_ONNX = "model_e8.onnx"
+
+
+def prepare_couplet(rec):
+    """对联前处理：fp32 ONNX 去掉 KV cache（整句重算）并把词嵌入改成图内 int8，输出到 couplet_prep_dir()。已有就跳过。"""
+    out = os.path.join(couplet_prep_dir(), COUPLET_PREP_ONNX)
+    if os.path.isfile(out):
+        log(f"对联前处理产物已有，跳过：{out}")
+        return
+    src = need_file(os.path.join(dl_dir(), "couplet", "couplet-gpt2-fp32.onnx"), "先运行 fetch.py couplet")
+    run_script("couplet_prepare.py", "--int8-embed", src, out)
+
+
 # 前处理钩子表：recipes.json 的 prepare 字段 -> 函数
-PREPARE = {"nllb": prepare_nllb}
+PREPARE = {"nllb": prepare_nllb, "couplet": prepare_couplet}
 
 
 def render_model_json(rec, var):
@@ -120,9 +141,12 @@ def write_package_files(rec, var, dst, overwrite_model_json=True):
         return
     write_model_json(rec, var, dst, overwrite_model_json)
     if rec.get("notice"):
-        tok = json.load(open(os.path.join(dst, "tokenizer.json"), encoding="utf-8"))
+        tok_path = os.path.join(dst, "tokenizer.json")  # 对联用 vocab.txt，没有 tokenizer.json，不填 {vocab_size}
         text = open(resolve(rec["notice"]), encoding="utf-8").read()
-        text = text.replace("{vocab_size}", f"{len(tok['model']['vocab']):,}").replace("{quant_desc}", var.get("quant_desc", ""))
+        if os.path.isfile(tok_path):
+            tok = json.load(open(tok_path, encoding="utf-8"))
+            text = text.replace("{vocab_size}", f"{len(tok['model']['vocab']):,}")
+        text = text.replace("{quant_desc}", var.get("quant_desc", ""))
         with open(os.path.join(dst, "NOTICE.txt"), "w", encoding="utf-8", newline=LF) as f:
             f.write(text)
 

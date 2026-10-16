@@ -35,6 +35,8 @@ $py = "E:\venv\arkli-mnn\Scripts\python.exe"
 & $py -I scripts\mnn\eval_nllb.py
 & $py -I scripts\mnn\eval_asr.py
 & $py -I scripts\mnn\eval_ocr.py
+& $py -I scripts\mnn\fetch.py couplet && & $py -I scripts\mnn\convert_all.py couplet   # 对联 GPT-2（默认 w6hqq，产物 couplet-gpt2-mnn）
+& $py -I scripts\mnn\eval_couplet.py mnn_w6=<产物目录>\model.mnn
 & $py -I scripts\mnn\ocr_case.py --out <目录>   # （可选）Rust 真库 OCR 测试用例：case.rgb + expect.txt
 & $py -I scripts\mnn\pack.py siglip2-mnn-w8       # 登记字节数与 sha256，生成 models.json 条目片段
 ```
@@ -82,6 +84,8 @@ $py = "E:\venv\arkli-mnn\Scripts\python.exe"
 | `eval_ocr.py` | 合成文字图（或自己的图）、MNN 产物 | det IoU、rec/cls argmax 一致 | 合成图需要中文字体，默认微软雅黑；生成图时同目录写 `expect.json`（每张图画了哪些行） |
 | `ocr_case.py` | 合成图目录（缺省生成） | `case.rgb`（前 8 字节小端 u32 宽高，其后 RGB）与 `expect.txt`（真值，一行一句） | 给 Rust 真库测试 `mnn::real_tests::真库跑通ocr管线` 与 `arkli-ffi` 的 `真库经ffi识别并可卸载重载` 用（环境变量 `ARKLI_OCR_RGB` / `ARKLI_OCR_EXPECT` / `ARKLI_OCR_DIR` / `ARKLI_MNN_DYLIB`） |
 | `fetch.py ocr ocr6` / `convert_all.py ocr6` | HF 官方 PP-OCRv6 small 的 det/rec ONNX 与 rec 的 `inference.yml` | `ppocrv6-small-mnn-fp16`（det/rec fp16，cls 沿用 v5 的） | 字典取自 yml（需 PyYAML）；评测见 migration 文档“M8 升级”一节 |
+| `couplet_prepare.py` | 对联 fp32 ONNX（带 past） | 无 KV cache、词嵌入 int8 的 `model_e8.onnx` | 去掉 24 个 past 与 present，Concat 改 Identity，past_len 换常量 0；`--int8-embed` 把 wte 改成图内 int8 + 逐行 scale（MNN 的权重量化不量化 Gather 常量），lm_head 用独立 fp32 副本交给 MNN 量化；`convert_all.py couplet` 会自动调用 |
+| `eval_couplet.py` | 产物 `.mnn`/`.onnx`、`data/couplet/pairs.tsv`（52 条自写上联+真下联） | 对 ORT fp32 的 logits 余弦/top-1、等长约束贪心一致率、困惑度涨幅、7 字耗时 | MNN 经 ctypes 调 `arkli-mnn.dll`（同 Rust 的 C ABI，memory=low）；门槛：余弦均值 >= 0.999、top-1 >= 0.95、困惑度涨幅 <= 2% |
 | `pack.py` | 产物目录 | 字节数、sha256、`models.json` 条目片段 | 只读；上传 release 由人执行；`ppocr_keys.txt` 登记为 `tokenizer` |
 | `data/sentences.tsv` | - | - | NLLB 评测句子（原 29 句） |
 | `data/sentences_m6.tsv` | - | - | NLLB 评测集（149 句，30 个有向语言对；门槛判定用） |
