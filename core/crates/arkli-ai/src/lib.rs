@@ -1,13 +1,12 @@
 //! # arkli-ai
 //!
 //! Arkli 的 AI 运行时核心：推理后端抽象、provider 探测、PP-OCR 管线。
-//! 刻意与 `arkli-core`（零依赖）分开，ORT 依赖只会出现在本 crate 的 `ort-backend` feature 里。
+//! 刻意与 `arkli-core`（零依赖）分开，MNN 动态加载与翻译依赖只出现在本 crate 的 `mnn-backend` feature 里。
 //!
 //! ## 模块
 //! - [`backend`]：`InferenceBackend` / `Session` / `Tensor`，管线只认这几个 trait
-//! - [`backend`] 里的 `GraphSession` / `GraphValue`：多输入多输出图推理抽象，ORT 或 MNN 实现，也便于 mock；
-//!   `backend_for_model` 按扩展名选后端（`.mnn` 走 MNN，其余走 ORT）
-//! - `ort_backend`（feature `ort-backend`）：基于 `ort` 的真实实现，动态加载 `libonnxruntime.so`
+//! - [`backend`] 里的 `GraphSession` / `GraphValue`：多输入多输出图推理抽象，MNN 实现，也便于 mock；
+//!   `is_mnn_model` 按扩展名判断是否 MNN 模型
 //! - `mnn`（feature `mnn-backend`）：基于 `libloading` 的 MNN 实现，动态加载 `libarkli-mnn.so`（C ABI 见 `native/mnn/arkli_mnn_capi.h`）
 //! - [`provider`]：启动时 provider 探测式选择 + 线程数策略（纯函数）
 //! - [`image`]：原始像素缓冲、自写双线性缩放、四边形裁剪
@@ -17,11 +16,10 @@
 //! - [`pipeline`]：`OcrPipeline::recognize`，支持取消令牌与进度回调
 //! - [`clip`]：CLIP 类图像编码器（缩放、归一化、向量），用于 SigLIP2 识物
 //! - [`classify`]：词表向量与零样本分类（top-k、按分类聚合的 softmax 概率、置信度）
-//! - `translate`（feature `ort-backend` 或 `mnn-backend`）：本地翻译（NLLB-200；ONNX 与 MNN 三图两种后端，分词、束搜索、标点后处理）
+//! - `translate`（feature `mnn-backend`）：本地翻译（NLLB-200；MNN 三图后端，分词、束搜索、标点后处理）
 //!
 //! ## 测试
-//! 默认 `cargo test -p arkli-ai` 只用 mock 会话，不需要 ORT 动态库与模型文件。
-//! 真实 ORT 的测试在 `ort-backend` feature 下并标了 `#[ignore]`，运行条件见 `ort_backend` 模块的测试注释。
+//! 默认 `cargo test -p arkli-ai` 只用 mock 会话，不需要 MNN 动态库与模型文件。
 //! 真实 MNN 的测试在 `mnn-backend` feature 下并标了 `#[ignore]`，需要 `ARKLI_MNN_DYLIB` / `ARKLI_MNN_CASE` / `ARKLI_MNN_MODEL`。
 //!
 //! ## 已知约定（需真机复验）
@@ -43,13 +41,11 @@ pub mod task;
 
 #[cfg(feature = "mnn-backend")]
 pub mod mnn;
-#[cfg(feature = "ort-backend")]
-pub mod ort_backend;
-#[cfg(any(feature = "ort-backend", feature = "mnn-backend"))]
+#[cfg(feature = "mnn-backend")]
 pub mod translate;
 
 pub use backend::{
-    backend_for_model, BackendKind, GraphSession, GraphTensorSession, GraphValue, InferenceBackend, Session, Tensor,
+    is_mnn_model, GraphSession, GraphTensorSession, GraphValue, InferenceBackend, Session, Tensor,
 };
 pub use error::{AiError, Result};
 pub use image::{PixelFormat, RawImage};

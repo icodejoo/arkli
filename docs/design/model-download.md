@@ -8,7 +8,7 @@ summary: native.model.* 的清单格式、下载器安全设计（白名单、�
 - 本地模型（决策 [0005](../decisions/0005-ai-four-layers.md)）一律**按需下载**，由原生 `ModelManager` 统一管：清单随包、下载在后台、断点续传、sha256 校验、用户可删除并看到占用空间。
 - **页面只能传模型 id，不能传 URL**。下载地址只来自随包的 `assets/ai/models.json`，防止被页面或注入内容指向任意地址（SSRF、恶意模型）。
 - 桥方法契约见 [Bridge 协议](bridge-protocol.md) 的「模型下载管理方法」；代码在 `com.let188.arkli.model`，前端在 `web/src/native/model.ts` 与 `web/src/stores/models.ts`。
-- **识物已换 MNN 版（2026-10-15）**：清单里新增 `siglip2-mnn-w8`（`models/siglip2-mnn-w8/model.mnn`，94,775,452 B，sha256 `8af99950…60d5`，release `siglip2-mnn-v1` **待用户上传**），`ClipEnv.modelFile()` 指向它；旧条目 `siglip2-q4_half` 暂留，验收通过后再进 `retired`。下面的示例与托管说明是旧 ONNX 版的记录。
+- **识物已换 MNN 版（2026-10-15）**：清单里新增 `siglip2-mnn-w8`（`models/siglip2-mnn-w8/model.mnn`，94,775,452 B，sha256 `8af99950…60d5`，release `siglip2-mnn-v1` **待用户上传**），`ClipEnv.modelFile()` 指向它；旧条目 `siglip2-q4_half` 已在 M9（2026-10-16）移入 `retired`。下面的托管说明（`siglip2-q4half-v1` release）是旧 ONNX 版的记录，该 release 不删但清单不再引用。
 - **托管位置**：清单里的 URL（`https://github.com/icodejoo/arkli/releases/download/siglip2-q4half-v1/q4_half.onnx`）对应的 release 已于 2026-10-15 发布（公开仓库，Apache-2.0，附许可证文本与 `SHA256SUMS`）。真实链路已实测：302 直接落到 `release-assets.githubusercontent.com`（所以 `DOWNLOAD_HOSTS` 里这个域名要保留），下载后字节数 54,662,805 与 sha256 `6b4ea1ec…217a` 和清单一致。App 内的下载（含 302 与白名单校验）还没在真机上用真实地址走过，之前只用本机 Range 服务验证过下载器。
 - **第二个托管模型**：Qwen3.5-0.8B MNN 文本模型（6 个文件，合计 484,349,699 字节）在 release `qwen35-mnn-v1`，来源、sha256 与使用建议见 [Qwen3.5 MNN 模型](../research/qwen35-mnn-model.md)。
 
@@ -19,23 +19,24 @@ summary: native.model.* 的清单格式、下载器安全设计（白名单、�
 ```json
 {
   "schema": 1,
+  "retired": [{ "id": "siglip2-q4_half", "dir": "models/siglip2-q4_half" }],
   "models": [{
-    "id": "siglip2-q4_half",
-    "displayName": "本地识物模型（SigLIP2）",
+    "id": "siglip2-mnn-w8",
+    "displayName": "本地识物模型（SigLIP2，MNN 版）",
     "version": "1",
-    "dir": "models/siglip2-q4_half",
-    "totalBytes": 54662805,
+    "dir": "models/siglip2-mnn-w8",
+    "totalBytes": 94775452,
     "license": "apache-2.0",
     "files": [{
-      "name": "q4_half.onnx", "bytes": 54662805, "role": "model",
-      "sha256": "6b4ea1ecba627b754df325d86cc971620ac961b47d81310a3c0659827dff217a",
-      "urls": ["https://github.com/icodejoo/arkli/releases/download/siglip2-q4half-v1/q4_half.onnx"]
+      "name": "model.mnn", "bytes": 94775452, "role": "model",
+      "sha256": "8af99950b0fb39c2df90e66d67181eecc4e538617fbfdc0242ee420b36ac60d5",
+      "urls": ["https://github.com/icodejoo/arkli/releases/download/siglip2-mnn-v1/model.mnn"]
     }]
   }]
 }
 ```
 
-- `dir` 必须是 `models/<单段名>`，相对 `filesDir`；识物的 `ClipEnv.modelFile()`（`models/siglip2-q4_half/q4_half.onnx`）与它一致，有单测盯着。
+- `dir` 必须是 `models/<单段名>`，相对 `filesDir`；识物的 `ClipEnv.modelFile()`（`models/siglip2-mnn-w8/model.mnn`）与它一致，有单测盯着。
 - `urls` 放在**每个文件**上（不是模型级）：多文件模型各文件的镜像可能不同，也与 [基础设施草案](platform-infrastructure.md) 里“每项含 `urls[]`”一致。按序回退，支持多镜像。
 - `totalBytes` 必须等于各文件字节数之和；`sha256` 小写 64 位十六进制；文件名单段、不以点开头、不以 `.part` 结尾；id 与目录不得重复。
 - `version` 变了，旧的校验标记失效，状态回到 `unverified`。
@@ -49,6 +50,7 @@ summary: native.model.* 的清单格式、下载器安全设计（白名单、�
 - 回收时机：`ModelModule.install` 之后在后台、排在 `AiHeavyGate` 之后执行，每个进程一次；不阻塞启动，失败只记日志。
 - 规则（`ModelPolicy.retiredDirsToDelete`）：目录必须是 `models/<单段名>`；与现行条目的 `dir` 重名则跳过；只删设备上实际存在的目录。删除前再规范化路径，确认目标是 `filesDir/models` 的直接子目录（防路径穿越、符号链接逃逸）。
 - 退役条目不在现行清单里，没有下载入口、也没有会话在用，所以不额外判断下载状态；往里加条目时不要复用现行条目的目录。
+- **当前已登记（M9，2026-10-16）**：`siglip2-q4_half`（旧识物 ONNX）、`nllb600m-un6-ccm-int4`（旧翻译 ONNX）、`asr-zipformer-zh-en-int8`（旧语音，此前手动放置）、`ppocrv5-mnn-fp16`（OCR v5，被 v6 取代）。有单测 `ModelRetiredTest.shippedManifest_retiresOldOnnxDirs` 盯着。
 
 ## 下载器安全设计
 

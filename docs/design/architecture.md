@@ -67,13 +67,14 @@ arkli/
 1. **只发 arm64-v8a**：Rust 和 native 库只编一个 ABI。
 2. **Rust 瘦身**：release 开 `opt-level = "s"`、LTO、`strip`、`panic = "abort"`、`codegen-units = 1`，已写进 `core/Cargo.toml`。
 3. **模型按需下载**：OCR 模型（约 10MB 量级，待实测）首次使用时下载，APK 里不带；下载与校验由原生壳负责。
-4. **SPA 懒加载**：每个工具单独成 chunk，进到哪个工具才加载。
-5. **资源克制**：字体只带必要字形，图片优先矢量。
-6. **R8 全量**：开混淆和资源压缩，去掉未使用的 Compose/AppCompat 组件。
+4. **推理运行时只留一套 MNN**（M9，2026-10-16）：随包的是 `libMNN.so`（4.9MB）、我们的 C ABI 封装 `libarkli-mnn.so` 与语音用的 `libsherpa-mnn-jni.so`；ORT 与 sherpa-onnx（原 27MB 量级）已整体移除，见 [0002](../decisions/0002-ai-inference-base.md)。MNN 运行库由 Gradle 任务 `fetchMnnRuntime` 构建时下载并校验 sha256。
+5. **SPA 懒加载**：每个工具单独成 chunk，进到哪个工具才加载。
+6. **资源克制**：字体只带必要字形，图片优先矢量。
+7. **R8 全量**：开混淆和资源压缩，去掉未使用的 Compose/AppCompat 组件。
 
 ## 构建流水线（目标形态）
 
-1. `core/`：`cargo ndk` 交叉编译出 arm64 `.so`，拷进 `app/src/main/jniLibs/arm64-v8a/`。
+1. `core/`：`cargo ndk` 交叉编译出 arm64 `.so`（`core/scripts/build-android.ps1`，同时生成 Kotlin 绑定），拷进 `app/src/main/jniLibs/arm64-v8a/`。
 2. `web/`：Vite 打包，产物拷进 `app/src/main/assets/web/`。
 3. `app/`：Gradle 打 APK，WebView 通过 `https://appassets.androidplatform.net/` 域名加载 assets，不用 `file://`。
 

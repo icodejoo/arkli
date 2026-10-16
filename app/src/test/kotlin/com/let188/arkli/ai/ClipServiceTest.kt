@@ -70,23 +70,23 @@ class ClipServiceTest {
 
     @Test
     fun warmup_loadsVocabAndModel_idempotent_thenClassifyDoesNotReload() {
-        val model = tmp.newFile("m.onnx").apply { writeText("x") }
+        val model = tmp.newFile("m.mnn").apply { writeText("x") }
         val b = FakeBackend()
         val svc = ClipService(env(model), b, FakeCodec())
         val r = runBlocking { svc.warmup() }
         runBlocking { svc.warmup() }
         assertEquals(LocalClipProvider.ID, r.provider)
-        assertEquals(listOf("vocab:1", "load:m.onnx"), b.calls)
+        assertEquals(listOf("vocab:1", "load:m.mnn"), b.calls)
         runBlocking { svc.classify(File("x.jpg"), 3) }
-        assertEquals(listOf("vocab:1", "load:m.onnx", "classify:3"), b.calls)
+        assertEquals(listOf("vocab:1", "load:m.mnn", "classify:3"), b.calls)
     }
 
     @Test
     fun warmup_notReady_andUnloadReportsWhetherLoaded() {
-        val missing = ClipService(env(File(tmp.root, "nope.onnx")), FakeBackend(), FakeCodec())
+        val missing = ClipService(env(File(tmp.root, "nope.mnn")), FakeBackend(), FakeCodec())
         val e = assertThrows(BridgeException::class.java) { runBlocking { missing.warmup() } }
         assertEquals(BridgeErrors.NOT_READY, e.code)
-        val model = tmp.newFile("m2.onnx").apply { writeText("x") }
+        val model = tmp.newFile("m2.mnn").apply { writeText("x") }
         val svc = ClipService(env(model), FakeBackend(), FakeCodec())
         assertFalse(runBlocking { svc.unload() })
         runBlocking { svc.warmup() }
@@ -95,7 +95,7 @@ class ClipServiceTest {
 
     @Test
     fun notReady_whenModelMissing() {
-        val svc = ClipService(env(File(tmp.root, "nope.onnx")), FakeBackend(), FakeCodec())
+        val svc = ClipService(env(File(tmp.root, "nope.mnn")), FakeBackend(), FakeCodec())
         assertFalse(svc.isModelReady())
         val e = assertThrows(BridgeException::class.java) { runBlocking { svc.classify(File("x.jpg"), 3) } }
         assertEquals(BridgeErrors.NOT_READY, e.code)
@@ -103,7 +103,7 @@ class ClipServiceTest {
 
     @Test
     fun notReady_whenModelEmpty() {
-        val m = tmp.newFile("empty.onnx")
+        val m = tmp.newFile("empty.mnn")
         assertFalse(ClipService(env(m), FakeBackend(), FakeCodec()).isModelReady())
     }
 

@@ -152,4 +152,14 @@ class ModelRetiredTest {
         assertFalse(FileRetiredFs(files, setOf("models/m1")).delete("models/m1"))
         assertTrue(File(files, "models/m1").exists())
     }
+
+    /** M9：随包清单把四个旧 ONNX 时代目录退役，且不与任何现行模型目录重名 */
+    @Test
+    fun shippedManifest_retiresOldOnnxDirs() {
+        val m = ModelManifestParser.parse(File("src/main/assets/ai/models.json").readText())
+        val expected = setOf("siglip2-q4_half", "nllb600m-un6-ccm-int4", "asr-zipformer-zh-en-int8", "ppocrv5-mnn-fp16")
+        assertEquals(expected, m.retired.map { it.id }.toSet())
+        assertTrue(m.retired.all { it.dir == "models/${it.id}" })
+        assertTrue(m.models.none { it.id in expected || it.dir in m.retired.map { r -> r.dir } })
+    }
 }

@@ -17,12 +17,6 @@ import java.io.File
 private const val CLIP_LOG_TAG = "ArkliClip"
 
 /**
- * ORT 动态库名。**必须用裸名**：Rust 的 load-dynamic 会 dlopen 它，系统按本应用的 native 库命名空间解析，
- * 找到的就是 APK 里 `lib/arm64-v8a/libonnxruntime.so`（来自 sherpa-onnx 1.13.8，ORT 1.28.2）。
- */
-const val ORT_LIB_NAME = "libonnxruntime.so"
-
-/**
  * MNN 运行库名（识物默认后端）。**用裸名**：[MnnNative] 先 `System.loadLibrary("arkli-mnn")` 把它载入本应用命名空间，
  * Rust 的 dlopen 再按同名命中已加载的那份（APK 内 so 不解压，没有可用的 nativeLibraryDir 绝对路径）。
  */

@@ -4,12 +4,6 @@ version = "0.1.0"
 edition = "2021"
 description = "Arkli 的 UniFFI 桥接层：把 arkli-core 暴露给 Kotlin"
 
-[features]
-# 默认就带 MNN 后端：安卓产物（build-android.ps1 不传 feature）因此同时含 ORT 与 MNN
-default = ["mnn-backend"]
-# 识物按 .mnn 扩展名走 MNN；关掉则 .mnn 模型报“未编译 MNN 后端”
-mnn-backend = ["arkli-ai/mnn-backend"]
-
 [lib]
 # cdylib 供安卓加载，lib 供单测与 bindgen
 name = "arkli_ffi"
@@ -17,6 +11,6 @@ crate-type = ["cdylib", "lib"]
 
 [dependencies]
 arkli-core = { path = "../arkli-core" }
-# 识物：真实 ORT 后端（load-dynamic，运行时才找 libonnxruntime.so，宿主机编译不需要它）
-arkli-ai = { path = "../arkli-ai", features = ["ort-backend"] }
+# 推理：MNN 后端（运行时按库名 dlopen libarkli-mnn.so，宿主机编译不需要它）与翻译引擎
+arkli-ai = { path = "../arkli-ai", features = ["mnn-backend"] }
 uniffi = "0.32.2"

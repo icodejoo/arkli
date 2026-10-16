@@ -1,9 +1,23 @@
 ---
 title: 0002 AI 推理基座
-status: active
-updated: 2026-10-15
-summary: 需要 AI 模型的工具统一用 sherpa-onnx 做基座，模型不干涉，只要兼容 ONNX；2026-10-15 起 L2 本地大模型例外，用 MNN
+status: superseded
+updated: 2026-10-16
+summary: 已被 MNN 取代（2026-10-16）：原决定“统一用 sherpa-onnx + 共享 ORT”已退役，识物、翻译、语音、OCR、文本大模型现在全部走 MNN（语音用 sherpa-mnn）
 ---
+## TL;DR
+**当前结论（2026-10-16）：推理基座是 MNN，ORT 与 sherpa-onnx 已从 App 里整体移除。** 本文原决定（统一用 sherpa-onnx、模型只要兼容 ONNX）已被取代，保留正文作为决策历史。
+
+## 取代说明（2026-10-16，M9 完成）
+- **取代者**：MNN（钉死提交 `478c10e8d2351c7a4ea6f6243b97841a1eb39190`）+ 我们自己的 C ABI 封装 `libarkli-mnn.so`；语音用 sherpa-mnn（sherpa-onnx 的 MNN 改版 1.10.46，JNI 为 `libsherpa-mnn-jni.so`）。模型格式统一为 `.mnn`。
+- **为什么换**：同一台真机（STG-AL00，无点积、无 fp16）上，MNN 的 Qwen 速度约为 ORT 的 5 倍（17 vs 3.1 tok/s，见 [端侧 LLM 对比](../research/on-device-llm-comparison.md)）；2026-10-15 起 L2 文本模型已用 MNN，此时 APK 里同时带两套运行时（其中 ORT 一份就 22MB），且模型格式、下载、加载代码各养两份。用户 2026-10-15 拍板“全部迁到 MNN”，识物、翻译、语音、OCR 逐个转换量化、桌面对拍、真机验收后，2026-10-16 做 M9 把 ORT 一套整体删除。迁移的盘点、量化与验收数据见 [ONNX→MNN 迁移](../research/onnx-to-mnn-migration.md)，M9 落地情况见该文“M9 落地情况”一节。
+- **M9 删掉的东西**：Rust 的 `ort` 依赖与 `ort-backend` feature、`ort_backend.rs`、翻译的 `ort_runner.rs`；Gradle 的 `fetchOrtRuntime`（`libonnxruntime.so` 22MB、`libsherpa-onnx-jni.so` 4.8MB、sherpa-onnx 的 Kotlin jar）；Kotlin 的 `ORT_LIB_NAME`；`proguard-rules.pro` 里 sherpa-onnx 规则。旧模型目录（`siglip2-q4_half`、`nllb600m-un6-ccm-int4`、`asr-zipformer-zh-en-int8`、`ppocrv5-mnn-fp16`）登记进 `models.json` 的 `retired`，用户设备启动后台回收。
+- **哪些决定仍然成立**：模型是可替换资源、按需下载不进 APK（清单 + sha256）；NPU 现阶段不做（结论不变）；CPU 路径永远可用。
+- **不再成立**：“推理基座固定为 sherpa-onnx”“视觉类复用 sherpa 自带的 ORT”“模型只要兼容 ONNX”“不再引入 MNN”，以及下文关于 `ort` 钉死 `=2.0.0-rc.14` 与 load-dynamic 的约定。ONNX 仍只作为模型转换的上游格式（`scripts/mnn/`），不进 App。
+- **仍待做**：在有点积与 fp16 的新机型上复测 MNN 的速度（见对比文档第 10 节）；对联 GPT-2 接入时按 NLLB decoder 的做法转 MNN（MNN 的 LLM 导出器不支持纯 GPT-2 结构，未实测）。
+
+---
+以下为历史记录，保持原文，**不再代表现状**。
+
 ## TL;DR
 推理基座固定为 sherpa-onnx；模型是可替换的资源，只要是 ONNX 就行，按需下载，不进 APK。**例外（2026-10-15，用户拍板）**：L2 本地大模型（Qwen）改用 MNN 运行时，不走 ORT，见文末「修订」。
 

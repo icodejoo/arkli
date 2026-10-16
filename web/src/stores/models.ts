@@ -20,11 +20,7 @@ const PURPOSE_TRANSLATE = '多语翻译'
 /** 模型 id 到用途说明的映射（原生清单不带用途，这里补） */
 const MODEL_PURPOSES: Record<string, string> = {
   'siglip2-mnn-w8': PURPOSE_CLASSIFY,
-  // 旧 ONNX 版仍在清单里（待 M9 退役），用途不变
-  'siglip2-q4_half': PURPOSE_CLASSIFY,
   'nllb600m-un6-mnn-w6': PURPOSE_TRANSLATE,
-  // 旧 ONNX 版仍在清单里（待 M9 退役），用途不变
-  'nllb600m-un6-ccm-int4': PURPOSE_TRANSLATE,
 }
 
 /** 没登记用途的模型的兜底文案 */

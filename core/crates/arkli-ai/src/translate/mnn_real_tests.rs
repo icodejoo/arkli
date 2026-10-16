@@ -63,8 +63,6 @@ fn load_real() -> (MnnRuntime, Translator) {
 fn mnn_engine(t: &mut Translator) -> &mut engine::Engine<mnn_runner::MnnRunner<MnnNet>> {
     match &mut t.inner {
         Inner::Mnn(e) => e,
-        #[cfg(feature = "ort-backend")]
-        _ => panic!("不是 MNN 引擎"),
     }
 }
 

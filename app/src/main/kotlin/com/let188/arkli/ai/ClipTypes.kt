@@ -97,7 +97,7 @@ interface ImageClassifier {
  */
 interface ClipBackend {
     /**
-     * 加载 ORT 与模型；同一模型重复调用无副作用。
+     * 加载 MNN 运行库与模型；同一模型重复调用无副作用。
      *
      * @param modelPath 模型文件绝对路径
      */

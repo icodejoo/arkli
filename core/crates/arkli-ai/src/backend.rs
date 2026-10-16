@@ -1,4 +1,4 @@
-//! 推理后端抽象。管线只依赖这里的 trait，真实 ORT 实现见 `ort_backend`（feature `ort-backend`）。
+//! 推理后端抽象。管线只依赖这里的 trait，真实实现见 `mnn` 模块（feature `mnn-backend`）。
 
 use std::path::Path;
 
@@ -55,12 +55,12 @@ pub trait Session: Send {
 
 /// 推理后端：能列出可用 provider、能加载模型。
 pub trait InferenceBackend {
-    /// 后端当前可用的 provider 名称（生产环境来自 ORT 的 `GetAvailableProviders`）。
+    /// 后端当前可用的 provider 名称。
     fn available_providers(&self) -> Result<Vec<String>>;
 
     /// 加载模型文件并按选项创建会话。
     ///
-    /// - `model_path`：onnx 文件路径
+    /// - `model_path`：模型文件路径
     /// - `options`：provider 与线程数，通常由 [`crate::provider::resolve_options`] 得出
     fn load_model(&self, model_path: &Path, options: &SessionOptions) -> Result<Box<dyn Session>>;
 }
@@ -77,7 +77,7 @@ pub trait GraphValue: Send {
     fn to_i32(&self) -> Result<Vec<i32>>;
 }
 
-/// 多输入多输出的图推理会话，ORT 与 MNN 都可实现；上层引擎（识物、翻译）只依赖它，便于 mock 单测。
+/// 多输入多输出的图推理会话，由 MNN 实现；上层引擎（识物、翻译）只依赖它，便于 mock 单测。
 ///
 /// 调用方负责串行（`run` 要 `&mut self`，跨会话的串行由上层的锁保证）。
 pub trait GraphSession: Send {
@@ -157,36 +157,22 @@ impl<G: GraphSession> Session for GraphTensorSession<G> {
     }
 }
 
-/// 模型文件对应的推理后端种类。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BackendKind {
-    /// ONNX Runtime（`.onnx` 等）
-    Ort,
-    /// MNN（`.mnn`）
-    Mnn,
-}
-
 /// MNN 模型的文件扩展名（不含点，比较时忽略大小写）。
 pub const MNN_EXTENSION: &str = "mnn";
 
-/// 按模型文件扩展名选后端：`.mnn` 走 MNN，其余一律走 ORT（保持旧行为）。
+/// 是否 MNN 模型文件（按扩展名，忽略大小写）；外置权重 `.mnn.weight` 与无扩展名都不算。
 ///
 /// ```
-/// use arkli_ai::backend::{backend_for_model, BackendKind};
+/// use arkli_ai::backend::is_mnn_model;
 /// use std::path::Path;
-/// assert_eq!(backend_for_model(Path::new("a/model.mnn")), BackendKind::Mnn);
-/// assert_eq!(backend_for_model(Path::new("a/q4_half.onnx")), BackendKind::Ort);
+/// assert!(is_mnn_model(Path::new("a/model.mnn")));
+/// assert!(!is_mnn_model(Path::new("a/q4_half.onnx")));
 /// ```
-pub fn backend_for_model(model_path: &Path) -> BackendKind {
-    let is_mnn = model_path
+pub fn is_mnn_model(model_path: &Path) -> bool {
+    model_path
         .extension()
         .and_then(|e| e.to_str())
-        .is_some_and(|e| e.eq_ignore_ascii_case(MNN_EXTENSION));
-    if is_mnn {
-        BackendKind::Mnn
-    } else {
-        BackendKind::Ort
-    }
+        .is_some_and(|e| e.eq_ignore_ascii_case(MNN_EXTENSION))
 }
 
 #[cfg(test)]
@@ -194,13 +180,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn 按扩展名选后端() {
-        assert_eq!(backend_for_model(Path::new("m/model.mnn")), BackendKind::Mnn);
-        assert_eq!(backend_for_model(Path::new("M/MODEL.MNN")), BackendKind::Mnn);
-        assert_eq!(backend_for_model(Path::new("m/q4_half.onnx")), BackendKind::Ort);
+    fn 按扩展名判断mnn模型() {
+        assert!(is_mnn_model(Path::new("m/model.mnn")));
+        assert!(is_mnn_model(Path::new("M/MODEL.MNN")));
+        assert!(!is_mnn_model(Path::new("m/q4_half.onnx")));
         // 外置权重文件与无扩展名都不算 MNN 模型
-        assert_eq!(backend_for_model(Path::new("m/model.mnn.weight")), BackendKind::Ort);
-        assert_eq!(backend_for_model(Path::new("m/model")), BackendKind::Ort);
+        assert!(!is_mnn_model(Path::new("m/model.mnn.weight")));
+        assert!(!is_mnn_model(Path::new("m/model")));
     }
 
     #[test]

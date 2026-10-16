@@ -9,7 +9,6 @@ use std::sync::Mutex;
 use std::time::Instant;
 
 use arkli_ai::task::CancelToken;
-#[cfg(feature = "mnn-backend")]
 use arkli_ai::mnn::MnnRuntime;
 use arkli_ai::pipeline::OcrPipeline;
 use arkli_ai::{AiError, PixelFormat, RawImage};
@@ -85,7 +84,6 @@ pub struct OcrResult {
 #[derive(Default)]
 struct State {
     /// MNN 运行时，首次加载时创建
-    #[cfg(feature = "mnn-backend")]
     mnn: Option<MnnRuntime>,
     /// 当前模型目录
     model_dir: Option<String>,
@@ -132,19 +130,12 @@ pub fn ocr_load(runtime_lib: String, model_dir: String, threads: u32) -> Result<
 }
 
 /// 用 MNN 加载管线（首次创建运行时）。
-#[cfg(feature = "mnn-backend")]
 fn load_mnn(s: &mut State, lib: &str, dir: &Path, threads: u32) -> Result<OcrPipeline, OcrFfiError> {
     if s.mnn.is_none() {
         s.mnn = Some(MnnRuntime::load(lib).map_err(map_err)?);
     }
     let rt = s.mnn.as_ref().expect(crate::ENSURED_ABOVE);
     rt.load_ocr_pipeline(dir, threads).map_err(map_err)
-}
-
-/// 未编译 MNN 后端时直接报错。
-#[cfg(not(feature = "mnn-backend"))]
-fn load_mnn(_s: &mut State, _lib: &str, _dir: &Path, _threads: u32) -> Result<OcrPipeline, OcrFfiError> {
-    Err(OcrFfiError::Backend { reason: crate::NO_MNN_BACKEND.into() })
 }
 
 /// 识别一张图里的文字。
@@ -200,8 +191,7 @@ pub fn ocr_unload() {
         s.model_dir = None;
     });
     // MNN：先让它丢缓存缓冲、退还空闲页，再让进程分配器归还
-    #[cfg(feature = "mnn-backend")]
-    with_state(|s| {
+        with_state(|s| {
         if let Some(rt) = &s.mnn {
             rt.release_memory();
         }

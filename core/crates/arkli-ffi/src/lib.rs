@@ -8,10 +8,6 @@ pub mod mem;
 pub mod ocr;
 pub mod translate;
 
-/// 未编译 MNN 后端时，加载 `.mnn` 模型报的错误原因（clip / ocr / translate 共用）。
-#[cfg(not(feature = "mnn-backend"))]
-pub(crate) const NO_MNN_BACKEND: &str = "本构建未编译 MNN 后端（feature mnn-backend）";
-
 /// `expect` 的说明：调用前已经把运行时 / 后端建好（clip / ocr / translate 共用）。
 pub(crate) const ENSURED_ABOVE: &str = "上面已确保存在";
 

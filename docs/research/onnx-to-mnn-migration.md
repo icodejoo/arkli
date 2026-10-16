@@ -587,7 +587,7 @@ pub trait GraphSession: Send {
 **真机待测**：同 M8 的清单（正确性、1080×2400 ≤ 2.2 s、峰值 RSS ≤ 210MB，rec 增大约 2.2MB 权重，det 的大核卷积在无 fp16 的 STG-AL00 上的速度是风险点），用 `scripts/device-push-models.sh` 推 `ppocrv6-small-mnn-fp16` 并 `native.model.verify`。
 
 **M9 移除 ORT**
-- 删 `ort_backend.rs`、翻译的 ORT runner、`ort` 依赖与 `ort-backend` feature（`arkli-ffi/Cargo.toml` 同步）、`fetchOrtRuntime` 与 sherpa-onnx jar、`ORT_LIB_NAME`、`proguard-rules.pro` 里的 sherpa-onnx 规则；更新决策 0002（用户确认后）、`docs/status.md`、`docs/design/architecture.md`。
+- 删 `ort_backend.rs`、翻译的 ORT runner、`ort` 依赖与 `ort-backend` feature（`arkli-ffi/Cargo.toml` 同步）、`fetchOrtRuntime` 与 sherpa-onnx jar、`ORT_LIB_NAME`、`proguard-rules.pro` 里的 sherpa-onnx 规则；更新决策 0002（用户确认后）、`docs/status.md`、`docs/design/architecture.md`。**已完成，见文末“M9 落地情况”。**
 - 验证：全部测试；`assembleRelease` 前后 APK 与各 so 体积（`gzip -9` 口径）写进 status。完成判据：APK 里不再有 `libonnxruntime.so`、`libsherpa-onnx-jni.so`。
 
 ## 7. 风险、回滚与验收
@@ -633,3 +633,33 @@ pub trait GraphSession: Send {
 | 并发 | **发现缺陷**：语音识别与 OCR/翻译/识图并发时进程 SIGSEGV/SIGABRT，且识别结果被截断（共用 MNN 全局执行器）。修复：`SpeechDecoder.feed/finish` 改为 suspend，每块解码走 `AiHeavyGate`。修复后连续 3 轮并发无崩溃、文字与单跑一致，重叠时语音被排队拉长 | 通过 |
 
 未测：麦克风口述（需人说话）、1080×2400 整屏 OCR、冷缓存加载。
+
+## M9 落地情况（2026-10-16）
+
+真机验收通过后，把 ONNX 一套整体清掉。完成判据：APK 里不再有 `libonnxruntime.so`、`libsherpa-onnx-jni.so`，且仍有 `libMNN.so`、`libarkli-mnn.so`、`libsherpa-mnn-jni.so`、`libarkli_ffi.so`——已满足。
+
+**删了什么**
+- **Rust**：`arkli-ai` 的 `ort_backend.rs`、`translate/ort_runner.rs`（共 776 行）、`ort` 依赖与 `ort-backend` feature、`translate` 中间 feature（并入 `mnn-backend`）；`backend_for_model` / `BackendKind` 换成 `is_mnn_model`（识物只认 `.mnn`，其余报“不支持的模型格式”）；清单 `format` 只认 `mnn-split`（缺省或旧的 `onnx-merged` 报 Invalid）；ORT 专属的翻译对拍测试模块删除。`Seq2SeqRunner` 抽象保留，只剩 MNN 一个实现。`arkli-ffi` 去掉自己的 `mnn-backend` feature，固定依赖 `arkli-ai/mnn-backend`（翻译模块在该 feature 下，关掉就无法编译，留着开关没有意义），相关 `cfg` 分支与 `NO_MNN_BACKEND` 删掉。`Cargo.lock` 里的 `ort` 及其传递依赖随之消失。`build-android.ps1` 重新生成了 arm64 so 与 Kotlin 绑定（绑定文件不入库）。
+- **Gradle**：`fetchOrtRuntime` 整个任务、sherpa-onnx AAR 的下载与 sha256、`libonnxruntime.so` / `libsherpa-onnx-jni.so` / `classes.jar` 的提取与打包、`ZipFile` import；`proguard-rules.pro` 里 `com.k2fsa.sherpa.onnx.**` 规则。本地缓存 `.gradle/arkli-ort/` 已删（未入库）。`com.k2fsa.sherpa.onnx` 此前就只在 jar 里，源码目录里没有，无需删源文件。
+- **Kotlin**：`ORT_LIB_NAME`；几处“ORT / 本地 ONNX”注释。
+- **native/**：没有只为 ORT 或 sherpa-onnx 存在的文件（`native/mnn/` 下的脚本都服务于 MNN 与 sherpa-mnn），无需删除；`build-sherpa-mnn.sh` 里引用的 `sherpa-onnx-cmake-deps` 镜像是 sherpa-mnn 的第三方源码依赖名，不是 ORT。
+- **前端**：`stores/models.ts` 里两条旧 id 的用途映射；`useModelChoice` 与 `aiCatalog.ts` 的 `LEGACY_CHOICE_MIGRATION`（旧 id → 新提供者）**保留**，用于把用户已存的旧选择迁到新 id。AI 中心的“旧 ONNX 版”条目本来就由清单驱动，清单条目删掉后自然消失。
+
+**退役登记**（`models.json` 的 `retired`，目录均为 `models/<id>`；启动后台回收，规则不变：只清 `models/` 直接子目录、不跟随符号链接、与现行条目 `dir` 重名则跳过）：`siglip2-q4_half`、`nllb600m-un6-ccm-int4`、`asr-zipformer-zh-en-int8`、`ppocrv5-mnn-fp16`。对应的旧清单条目（除语音那个本来就没在清单里）已删。旧 release `siglip2-q4half-v1` 不删。`couplet-gpt2` 没接入 App，没动。
+
+**体积**（debug APK，`assembleDebug`，字节）：M9 前 57,923,226 → M9 后 49,426,775，减 8,496,451。`libarkli_ffi.so` 3,696,328 → 3,561,408（release 构建，减 134,920）。
+
+| so（arm64-v8a，未压缩字节） | M9 前 | M9 后 |
+|---|---|---|
+| libonnxruntime.so | 22,249,560 | 删除 |
+| libsherpa-onnx-jni.so | 4,771,760 | 删除 |
+| libMNN.so | 4,899,952 | 4,899,952 |
+| libsherpa-mnn-jni.so | 2,690,520 | 2,690,520 |
+| libarkli_ffi.so | 3,696,328 | 3,561,408 |
+| libarkli-mnn.so | 71,592 | 71,592 |
+
+APK 只减 8.5MB 而 so 减了 27MB，是因为 APK 内对 so 做了 deflate 压缩（这两个 so 压缩后合计约 8.5MB）。release APK 与 `gzip -9` 口径的体积这次没有测。
+
+**验证**：`cargo test --workspace` 全绿（arkli-ai 190 + 21 文档测试，arkli-ffi 17，arkli-core 1 + 1；忽略的是需要真库的用例）；`./gradlew :app:testDebugUnitTest --offline` 726 个用例 0 失败（1 个跳过）；`pnpm vitest run` 157 个文件 2183 个用例通过；`pnpm vue-tsc --noEmit` 无错误；`:app:assembleDebug --offline` 成功；`unzip -l` 确认 APK 里没有 `libonnxruntime*.so`、`libsherpa-onnx*.so`。没有上真机。
+
+**残留（合理）**：`scripts/mnn/*.py` 与 `requirements.txt` 的 `onnxruntime`（桌面转换与对拍用，不进 App）、`fetch.py` 里 sherpa-onnx 的 ASR 模型 release 地址（转换的上游来源）、`com.k2fsa.sherpa.mnn.OnlineRecognizer.kt` 注释里提到 sherpa-onnx 的来源说明、`core/crates/arkli-ai/tests/fixtures/translate/nllb_parity.json`（原 ORT 对拍夹具，现在没有测试引用，留作参考数据）。

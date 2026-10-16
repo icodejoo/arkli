@@ -299,12 +299,11 @@ class TranslateServiceTest {
         assertEquals(BridgeErrors.NOT_READY, e.code)
     }
 
+    /** M9：旧 ONNX 翻译条目已从清单移除，目录登记到 retired */
     @Test
-    fun shippedManifest_keepsOldOnnxEntry_notRetired() {
+    fun shippedManifest_retiresOldOnnxEntry() {
         val m = ModelManifestParser.parse(File("src/main/assets/ai/models.json").readText())
-        val old = m.find("nllb600m-un6-ccm-int4")
-        assertNotNull(old)
-        assertTrue(old!!.displayName.contains("旧 ONNX 版"))
-        assertTrue(m.retired.none { it.id == "nllb600m-un6-ccm-int4" })
+        assertNull(m.find("nllb600m-un6-ccm-int4"))
+        assertTrue(m.retired.any { it.id == "nllb600m-un6-ccm-int4" && it.dir == "models/nllb600m-un6-ccm-int4" })
     }
 }

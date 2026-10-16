@@ -2,11 +2,8 @@
 //! 模型清单（`model.json`）解析与校验（只保留 m2m100 族，即 NLLB）。
 //!
 //! 编码器输入以源语言码开头、解码器第一个生成 token 强制为目标语言码，语言码取自 `lang_tokens`。
-//! 外部数据权重：`files` 可额外列出 `encoder_data` / `decoder_data`（`.onnx_data`），
-//! 文件名必须与 ONNX 图里记录的 `location` 一致，并与 `.onnx` 同目录（ORT 按 location 同目录加载并内存映射）。
 //!
-//! 两种模型格式由 `format` 区分（缺省视为 ORT，兼容旧模型）：
-//! - `onnx-merged`：`encoder` + `decoder`（merged，含 KV 分支）+ `tokenizer`；
+//! 模型格式由 `format` 标明，目前只支持（且必须写）：
 //! - `mnn-split`：`encoder` + `cross_kv` + `decoder`（单步）+ `embed`（int8）+ `embed_scale`（每行 float32）+ `tokenizer`，
 //!   `encoder_data` / `cross_kv_data` / `decoder_data`（`.mnn.weight`）可选。
 
@@ -21,11 +18,11 @@ pub const SUPPORTED_SCHEMA_VERSION: u32 = 1;
 pub const MANIFEST_FILE: &str = "model.json";
 /// `files` 中必需的键：编码器。
 pub const FILE_ENCODER: &str = "encoder";
-/// `files` 中必需的键：合并解码器。
+/// `files` 中必需的键：解码器（单步）。
 pub const FILE_DECODER: &str = "decoder";
 /// `files` 中必需的键：分词器。
 pub const FILE_TOKENIZER: &str = "tokenizer";
-/// `files` 中可选的键：编码器外部数据（`.onnx_data`，与 `.onnx` 同目录）。
+/// `files` 中可选的键：编码器外置权重（`.mnn.weight`，与 `.mnn` 同目录）。
 pub const FILE_ENCODER_DATA: &str = "encoder_data";
 /// `files` 中可选的键：解码器外部数据。
 pub const FILE_DECODER_DATA: &str = "decoder_data";
@@ -37,8 +34,6 @@ pub const FILE_CROSS_KV_DATA: &str = "cross_kv_data";
 pub const FILE_EMBED: &str = "embed";
 /// `files` 中 MNN 格式必需的键：词嵌入每行的缩放（float32，小端）。
 pub const FILE_EMBED_SCALE: &str = "embed_scale";
-/// 清单 `format` 取值：ORT 的 merged 解码器（缺省）。
-pub const FORMAT_ONNX_MERGED: &str = "onnx-merged";
 /// 清单 `format` 取值：MNN 三图拆分。
 pub const FORMAT_MNN_SPLIT: &str = "mnn-split";
 /// 每个嵌入缩放值的字节数（float32）。
@@ -53,7 +48,7 @@ pub const DEFAULT_KV_HEAD_DIM: usize = 64;
 pub const FAMILY_M2M100: &str = "m2m100";
 /// 清单缺省的最大输入 token 数。
 pub const DEFAULT_MAX_INPUT_TOKENS: usize = 512;
-/// 缺省 ORT 图优化级别。
+/// 缺省图优化级别（兼容旧清单字段，MNN 不使用）。
 pub const DEFAULT_OPT_LEVEL: u8 = 3;
 /// 最大优化级别。
 pub const MAX_OPT_LEVEL: u8 = 3;
@@ -82,8 +77,6 @@ pub enum ManifestError {
 /// 模型文件格式（由清单 `format` 决定）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelFormat {
-    /// ORT：encoder + merged decoder。
-    OnnxMerged,
     /// MNN：encoder + cross_kv + 单步 decoder + 图外嵌入表。
     MnnSplit,
 }
@@ -120,25 +113,25 @@ pub struct ExecutionOptions {
     /// 单算子内并行线程数，0 表示自动。
     #[serde(default)]
     pub intra_threads: usize,
-    /// 是否启用 ORT CPU 内存 arena；缺省 `true`。
+    /// （兼容旧清单，MNN 不使用）是否启用 CPU 内存 arena；缺省 `true`。
     #[serde(default = "default_true")]
     pub cpu_arena: bool,
-    /// 是否启用 ORT 内存模式规划；缺省 `true`。
+    /// （兼容旧清单，MNN 不使用）是否启用内存模式规划；缺省 `true`。
     #[serde(default = "default_true")]
     pub mem_pattern: bool,
-    /// ORT 图优化级别 0..=3（0 关闭），缺省 3。
+    /// （兼容旧清单，MNN 不使用）图优化级别 0..=3（0 关闭），缺省 3。
     #[serde(default = "default_opt_level")]
     pub opt_level: u8,
     /// 是否启用权重预打包；缺省 `true`。
     #[serde(default = "default_true")]
     pub prepacking: bool,
-    /// 每个翻译请求结束后收缩 ORT arena，把闲置内存还给系统；缺省 `false`。
+    /// 每个翻译请求结束后收缩内存 arena，把闲置内存还给系统；缺省 `false`。
     #[serde(default)]
     pub trim_after_request: bool,
 }
 
 impl Default for ExecutionOptions {
-    /// 缺省：自动线程，arena 与内存模式保持 ORT 默认（开）。
+    /// 缺省：自动线程，arena 与内存模式保持默认（开）。
     fn default() -> Self {
         Self {
             intra_threads: 0,
@@ -181,7 +174,7 @@ pub struct Manifest {
     /// 量化类型。
     #[serde(default)]
     pub quantization: String,
-    /// 模型文件格式：`onnx-merged`（缺省）或 `mnn-split`。
+    /// 模型文件格式：必须为 `mnn-split`。
     #[serde(default)]
     pub format: Option<String>,
     /// 文件表：必需键随 `format` 而定（见模块说明），`*_data` 可选；值为相对模型目录的路径。
@@ -315,10 +308,6 @@ impl Manifest {
             }
         }
         let (required, optional_keys) = match format {
-            ModelFormat::OnnxMerged => (
-                vec![FILE_ENCODER, FILE_DECODER, FILE_TOKENIZER],
-                vec![FILE_ENCODER_DATA, FILE_DECODER_DATA],
-            ),
             ModelFormat::MnnSplit => (
                 vec![FILE_ENCODER, FILE_CROSS_KV, FILE_DECODER, FILE_EMBED, FILE_EMBED_SCALE, FILE_TOKENIZER],
                 vec![FILE_ENCODER_DATA, FILE_CROSS_KV_DATA, FILE_DECODER_DATA],
@@ -340,7 +329,7 @@ impl Manifest {
         Ok(())
     }
 
-    /// 模型文件格式：`format` 缺省为 ORT；未知取值返回 [`ManifestError::Invalid`]。
+    /// 模型文件格式：`format` 缺省或未知取值（含旧的 `onnx-merged`）返回 [`ManifestError::Invalid`]。
     ///
     /// # 返回
     /// [`ModelFormat`]。
@@ -351,10 +340,12 @@ impl Manifest {
     /// ```
     pub fn model_format(&self) -> Result<ModelFormat, ManifestError> {
         match self.format.as_deref() {
-            None | Some(FORMAT_ONNX_MERGED) => Ok(ModelFormat::OnnxMerged),
             Some(FORMAT_MNN_SPLIT) => Ok(ModelFormat::MnnSplit),
             Some(other) => Err(ManifestError::Invalid(format!(
-                "unsupported format `{other}` (expected `{FORMAT_ONNX_MERGED}` or `{FORMAT_MNN_SPLIT}`)"
+                "unsupported format `{other}` (expected `{FORMAT_MNN_SPLIT}`)"
+            ))),
+            None => Err(ManifestError::Invalid(format!(
+                "missing `format` (expected `{FORMAT_MNN_SPLIT}`; the old ONNX format is no longer supported)"
             ))),
         }
     }
@@ -520,21 +511,13 @@ mod tests {
     use super::*;
     use std::fs;
 
-    /// 创建带占位模型文件的临时目录。
+    /// 创建带占位 MNN 三图文件的临时目录（嵌入表 4 行 × 8 维）。
     fn temp_model_dir(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("arkli-translate-mf-{tag}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        for f in ["encoder.onnx", "decoder.onnx", "tokenizer.json"] {
-            fs::write(dir.join(f), b"x").unwrap();
-        }
-        dir
+        temp_mnn_dir(tag, 4, 8)
     }
 
-    /// 最小合法清单文本。
-    const BASE: &str = r#"{"schema_version":1,"id":"m","family":"m2m100",
-        "files":{"encoder":"encoder.onnx","decoder":"decoder.onnx","tokenizer":"tokenizer.json"},
-        "languages":["zh-CN","en"],"lang_tokens":{"zh-CN":"zho_Hans","en":"eng_Latn"}}"#;
+    /// 最小合法清单文本（MNN 三图）。
+    const BASE: &str = MNN_BASE;
 
     /// 合法清单：缺省值生效，语言对大小写不敏感，相同语言不支持。
     #[test]
@@ -587,9 +570,9 @@ mod tests {
     #[test]
     fn checks_files_and_paths() {
         let dir = temp_model_dir("files");
-        let escape = BASE.replace("encoder.onnx", "../encoder.onnx");
+        let escape = BASE.replace("encoder.mnn", "../encoder.mnn");
         assert!(matches!(Manifest::parse(&escape, &dir), Err(ManifestError::Invalid(_))));
-        fs::remove_file(dir.join("decoder.onnx")).unwrap();
+        fs::remove_file(dir.join("decoder_step.mnn")).unwrap();
         assert!(matches!(Manifest::parse(BASE, &dir), Err(ManifestError::Missing(_))));
         assert!(matches!(
             Manifest::load(Path::new("Z:/definitely/not/here")),
@@ -641,22 +624,19 @@ mod tests {
         "embed":"embed.i8","embed_scale":"embed.scale","tokenizer":"tokenizer.json"},
         "languages":["zh-CN","en"],"lang_tokens":{"zh-CN":"zho_Hans","en":"eng_Latn"}}"#;
 
-    /// `format` 缺省视为 ORT，显式 onnx-merged 同样；mnn-split 解析为 MNN；未知取值报 Invalid。
+    /// `format` 只认 mnn-split：缺省、旧的 onnx-merged、未知取值都报 Invalid。
     #[test]
     fn format_dispatch() {
         let dir = temp_model_dir("fmt");
-        assert_eq!(Manifest::parse(BASE, &dir).unwrap().model_format().unwrap(), ModelFormat::OnnxMerged);
-        let explicit = BASE.replace("\"files\"", "\"format\":\"onnx-merged\",\"files\"");
-        assert_eq!(Manifest::parse(&explicit, &dir).unwrap().model_format().unwrap(), ModelFormat::OnnxMerged);
-        let unknown = BASE.replace("\"files\"", "\"format\":\"tflite\",\"files\"");
-        assert!(matches!(Manifest::parse(&unknown, &dir), Err(ManifestError::Invalid(m)) if m.contains("tflite")));
-        let mnn_dir = temp_mnn_dir("fmt", 4, 8);
-        let m = Manifest::parse(MNN_BASE, &mnn_dir).unwrap();
+        let m = Manifest::parse(BASE, &dir).unwrap();
         assert_eq!(m.model_format().unwrap(), ModelFormat::MnnSplit);
-        // MNN 格式不要求 ONNX 的文件；ORT 格式（缺省）也不会去找 cross_kv/embed
-        assert!(Manifest::parse(BASE, &mnn_dir).is_err());
+        let missing = BASE.replace("\"format\":\"mnn-split\",", "");
+        assert!(matches!(Manifest::parse(&missing, &dir), Err(ManifestError::Invalid(m)) if m.contains("format")));
+        let onnx = BASE.replace("mnn-split", "onnx-merged");
+        assert!(matches!(Manifest::parse(&onnx, &dir), Err(ManifestError::Invalid(m)) if m.contains("onnx-merged")));
+        let unknown = BASE.replace("mnn-split", "tflite");
+        assert!(matches!(Manifest::parse(&unknown, &dir), Err(ManifestError::Invalid(m)) if m.contains("tflite")));
         let _ = fs::remove_dir_all(dir);
-        let _ = fs::remove_dir_all(mnn_dir);
     }
 
     /// MNN 清单必需 cross_kv / embed / embed_scale：任一缺键报 Invalid，文件缺失报 Missing；`*_data` 可选且给了就必须存在。

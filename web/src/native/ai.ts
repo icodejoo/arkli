@@ -1,6 +1,6 @@
 /**
  * 本地 AI 能力封装：OCR、超分、人像抠图、人脸融合、黑白上色。
- * 对应原生 `native.ai.*`。模型运行时（sherpa-onnx + ort）由原生侧提供，页面只管调用与降级。
+ * 对应原生 `native.ai.*`。模型运行时（MNN / sherpa-mnn）由原生侧提供，页面只管调用与降级。
  *
  * 所有 `path` 都是缓存相对路径：页面先用 `writeBlobToCache` 写进去，
  * 结果路径用 {@link fetchAiResult} 以 `/files/<path>` 取回为 Blob。

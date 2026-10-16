@@ -240,12 +240,12 @@ sealed class AiRunResult {
 }
 
 /**
- * AI 提供者：一层抽象，将来与本地 ONNX、在线 OpenAI、ML Kit GenAI 并列。
+ * AI 提供者：一层抽象，将来与本地 MNN 模型、在线 OpenAI、ML Kit GenAI 并列。
  * 页面（Web）只看 [capabilities] 与 [availability]，不认厂商。
  *
  * 规划中的实现（当前代码里只有 [IntentHandoffProvider]）：
  * - `MlKitGenAiProvider`：谷歌 ML Kit GenAI，依赖 AICore 与白名单机型，要 minSdk 26 以上，未接入；
- * - 本地 ONNX、在线 OpenAI 兼容接口：见 docs/decisions/0004-ai-provider-abstraction.md。
+ * - 在线 OpenAI 兼容接口：见 docs/decisions/0004-ai-provider-abstraction.md。
  *
  * 使用示例：`registry.get("intent-handoff")?.run(AiTask.TRANSLATE, "hello")`
  */

@@ -1,26 +1,25 @@
 {
   "schema": 1,
-  "note": "随包信任锚：下载地址只能来自这里，页面不能传 URL。siglip2-q4_half（旧 ONNX 版）已被 siglip2-mnn-w8 取代但暂时保留，待真机验收通过后（方案 M9）再移入 retired。siglip2-mnn-w8 的 release siglip2-mnn-v1 待用户上传（model.mnn），上传前下载会失败；上传后需核对 sha256 与清单一致。nllb600m-un6-mnn-w6（MNN 版，已取代旧 ONNX 版）的 release nllb-mnn-v1 待用户上传（12 个文件，清单见 docs/research/onnx-to-mnn-migration.md M6c 一节），上传前下载会失败；上传后需逐个核对 sha256。旧条目 nllb600m-un6-ccm-int4 暂时保留、不进 retired，待真机验收通过后（方案 M9）再移入 retired；其 URL 也是占位（托管待定：解压后的单文件尚未上传到 release，见 docs/status.md「待确认」）；该模型为 CC-BY-NC-4.0，仅限非商业使用，署名与授权说明见 docs/design/bridge-protocol.md。asr-zipformer-zh-en-mnn-w8（语音输入，MNN 版，原模型 X-ASR 480ms 流式 zipformer 中英，Apache-2.0）为首次进入清单，release asr-mnn-v1 待用户上传（4 个文件：encoder.mnn、decoder.mnn、joiner.mnn、tokens.txt），上传前下载会失败；上传后需逐个核对 sha256。此前语音模型靠手动放置在 models/asr-zipformer-zh-en-int8，该目录暂不进 retired，待真机验收通过后（方案 M9）再移入。 ppocrv5-mnn-fp16（文字识别，PP-OCRv5 mobile 的 det/rec/cls，MNN fp16 版，Apache-2.0；模型来自 RapidOCR 的 ModelScope 仓库，上游 PaddleOCR 与 RapidOCR 的 GitHub 仓库均标 Apache-2.0，ModelScope 模型页许可证标注待核实）为首次进入清单，release ocr-mnn-v1 待用户上传（6 个文件：det.mnn、rec.mnn、cls.mnn、ppocr_keys.txt、NOTICE.txt、LICENSE-Apache-2.0.txt），上传前下载会失败；上传后需逐个核对 sha256。 ppocrv6-small-mnn-fp16（文字识别，PP-OCRv6 small 的 det/rec 来自官方 HF 仓库 PaddlePaddle/PP-OCRv6_small_{det,rec}_onnx，cls 沿用 PP-OCRv5 方向分类，MNN fp16 版，Apache-2.0，两个 HF 模型页均标 apache-2.0）取代 ppocrv5-mnn-fp16，release ocr-mnn-v2 待用户上传（6 个文件：det.mnn、rec.mnn、cls.mnn、ppocr_keys.txt、NOTICE.txt、LICENSE-Apache-2.0.txt），上传前下载会失败；上传后需逐个核对 sha256。旧条目 ppocrv5-mnn-fp16 暂时保留、不进 retired，待真机验收通过后再移入 retired。",
-  "models": [
+  "note": "随包信任锚：下载地址只能来自这里，页面不能传 URL。M9（2026-10-16）已把旧 ONNX 模型整体退役，目录登记在 retired，启动后台回收：siglip2-q4_half（旧识物）、nllb600m-un6-ccm-int4（旧翻译）、asr-zipformer-zh-en-int8（旧语音，此前靠手动放置）、ppocrv5-mnn-fp16（OCR v5，已被 v6 取代）；这些目录名不要再复用给新模型。siglip2-mnn-w8 的 release siglip2-mnn-v1 待用户上传（model.mnn），上传前下载会失败；上传后需核对 sha256 与清单一致。nllb600m-un6-mnn-w6 的 release nllb-mnn-v1 待用户上传（12 个文件，清单见 docs/research/onnx-to-mnn-migration.md M6c 一节），上传前下载会失败；上传后需逐个核对 sha256；该模型为 CC-BY-NC-4.0，仅限非商业使用，署名与授权说明见 docs/design/bridge-protocol.md。asr-zipformer-zh-en-mnn-w8（语音输入，原模型 X-ASR 480ms 流式 zipformer 中英，Apache-2.0）的 release asr-mnn-v1 待用户上传（4 个文件：encoder.mnn、decoder.mnn、joiner.mnn、tokens.txt），上传前下载会失败；上传后需逐个核对 sha256。ppocrv6-small-mnn-fp16（文字识别，PP-OCRv6 small 的 det/rec 来自官方 HF 仓库 PaddlePaddle/PP-OCRv6_small_{det,rec}_onnx，cls 沿用 PP-OCRv5 方向分类，MNN fp16 版，Apache-2.0，两个 HF 模型页均标 apache-2.0）的 release ocr-mnn-v2 待用户上传（6 个文件：det.mnn、rec.mnn、cls.mnn、ppocr_keys.txt、NOTICE.txt、LICENSE-Apache-2.0.txt），上传前下载会失败；上传后需逐个核对 sha256。",
+  "retired": [
     {
       "id": "siglip2-q4_half",
-      "displayName": "本地识物模型（SigLIP2，旧 ONNX 版）",
-      "version": "1",
-      "dir": "models/siglip2-q4_half",
-      "totalBytes": 54662805,
-      "license": "apache-2.0",
-      "files": [
-        {
-          "name": "q4_half.onnx",
-          "bytes": 54662805,
-          "sha256": "6b4ea1ecba627b754df325d86cc971620ac961b47d81310a3c0659827dff217a",
-          "role": "model",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/siglip2-q4half-v1/q4_half.onnx"
-          ]
-        }
-      ]
+      "dir": "models/siglip2-q4_half"
     },
+    {
+      "id": "nllb600m-un6-ccm-int4",
+      "dir": "models/nllb600m-un6-ccm-int4"
+    },
+    {
+      "id": "asr-zipformer-zh-en-int8",
+      "dir": "models/asr-zipformer-zh-en-int8"
+    },
+    {
+      "id": "ppocrv5-mnn-fp16",
+      "dir": "models/ppocrv5-mnn-fp16"
+    }
+  ],
+  "models": [
     {
       "id": "siglip2-mnn-w8",
       "displayName": "本地识物模型（SigLIP2，MNN 版）",
@@ -159,70 +158,6 @@
       ]
     },
     {
-      "id": "nllb600m-un6-ccm-int4",
-      "displayName": "本地翻译模型（NLLB-200 600M，6 语，旧 ONNX 版）",
-      "version": "1",
-      "dir": "models/nllb600m-un6-ccm-int4",
-      "totalBytes": 404501627,
-      "license": "cc-by-nc-4.0",
-      "files": [
-        {
-          "name": "encoder.onnx",
-          "bytes": 4440868,
-          "sha256": "68308e2858410378fb208625d80fb11c6801a96c0e8dcc57301838c1b25f4bc2",
-          "role": "model",
-          "urls": [
-            "https://github.com/icodejoo/Cisox/releases/download/models/encoder.onnx"
-          ]
-        },
-        {
-          "name": "encoder.onnx_data",
-          "bytes": 158297088,
-          "sha256": "9c8ad41d3ba3bc1cf7f0b37820fcc32f121703e1734c8d5ee1d77df7a0b17e49",
-          "role": "weights",
-          "urls": [
-            "https://github.com/icodejoo/Cisox/releases/download/models/encoder.onnx_data"
-          ]
-        },
-        {
-          "name": "decoder.onnx",
-          "bytes": 9185018,
-          "sha256": "05687c19b11c4ff6ffa1c3a03c22d8936716c23f043e1626e3908d03a352073d",
-          "role": "model",
-          "urls": [
-            "https://github.com/icodejoo/Cisox/releases/download/models/decoder.onnx"
-          ]
-        },
-        {
-          "name": "decoder.onnx_data",
-          "bytes": 229598080,
-          "sha256": "d0f06b5c89c80eb657efa961418e8568d62d7e250e7517180cb91ec548619549",
-          "role": "weights",
-          "urls": [
-            "https://github.com/icodejoo/Cisox/releases/download/models/decoder.onnx_data"
-          ]
-        },
-        {
-          "name": "tokenizer.json",
-          "bytes": 2979534,
-          "sha256": "d7c3b1f913f4af10503b41202e36623c997aca6480a97643a6105d364000bebb",
-          "role": "tokenizer",
-          "urls": [
-            "https://github.com/icodejoo/Cisox/releases/download/models/tokenizer.json"
-          ]
-        },
-        {
-          "name": "model.json",
-          "bytes": 1039,
-          "sha256": "e04baa1238772af4dc9bbd0febb0833741be2380e79a3cfb6823c7a9be5c7a57",
-          "role": "config",
-          "urls": [
-            "https://github.com/icodejoo/Cisox/releases/download/models/model.json"
-          ]
-        }
-      ]
-    },
-    {
       "id": "asr-zipformer-zh-en-mnn-w8",
       "displayName": "本地语音输入模型（zipformer 中英，MNN 版）",
       "version": "1",
@@ -328,70 +263,6 @@
           "role": "config",
           "urls": [
             "https://github.com/icodejoo/arkli/releases/download/qwen35-mnn-v1/config.json"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "ppocrv5-mnn-fp16",
-      "displayName": "本地文字识别模型（PP-OCRv5，MNN 版）",
-      "version": "1",
-      "dir": "models/ppocrv5-mnn-fp16",
-      "totalBytes": 11438043,
-      "license": "apache-2.0",
-      "files": [
-        {
-          "name": "cls.mnn",
-          "bytes": 516824,
-          "sha256": "58ac0a454c0414352e41450220f4249d7c542eef3dbcf62290756a0815480d7c",
-          "role": "model",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/ocr-mnn-v1/cls.mnn"
-          ]
-        },
-        {
-          "name": "det.mnn",
-          "bytes": 2411040,
-          "sha256": "73d519a359883d440efce876a52691d2afa064ccdb5120f4c1cedff1a9d7d319",
-          "role": "model",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/ocr-mnn-v1/det.mnn"
-          ]
-        },
-        {
-          "name": "rec.mnn",
-          "bytes": 8423236,
-          "sha256": "9350d716fa78ae220736e3141ec89382367b3bf01d0592c379bec5db31437c18",
-          "role": "model",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/ocr-mnn-v1/rec.mnn"
-          ]
-        },
-        {
-          "name": "ppocr_keys.txt",
-          "bytes": 74012,
-          "sha256": "d1979e9f794c464c0d2e0b70a7fe14dd978e9dc644c0e71f14158cdf8342af1b",
-          "role": "tokenizer",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/ocr-mnn-v1/ppocr_keys.txt"
-          ]
-        },
-        {
-          "name": "LICENSE-Apache-2.0.txt",
-          "bytes": 11376,
-          "sha256": "3840c5c0c61c294264d2dd77b8777be6ddd90121ef4e0e64abcd22edea581d6e",
-          "role": "aux",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/ocr-mnn-v1/LICENSE-Apache-2.0.txt"
-          ]
-        },
-        {
-          "name": "NOTICE.txt",
-          "bytes": 1555,
-          "sha256": "9eb926caa8f5415e75a0b612a423cd30e86741ce10554101a1fdf26b2b9b7cb0",
-          "role": "aux",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/ocr-mnn-v1/NOTICE.txt"
           ]
         }
       ]

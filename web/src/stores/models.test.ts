@@ -41,13 +41,13 @@ describe('useModelsStore', () => {
     expect(m.progress).toBe(1)
   })
 
-  it('翻译模型新旧 id 都登记了用途', async () => {
+  it('翻译模型登记了用途；旧 ONNX id 已退役，回落到兜底文案', async () => {
     h.list = [st('nllb600m-un6-mnn-w6', 'installed', 100), st('nllb600m-un6-ccm-int4', 'installed', 100)]
     const s = useModelsStore()
     s.init()
     await vi.waitFor(() => expect(s.get('nllb600m-un6-mnn-w6')).toBeTruthy())
     expect(s.get('nllb600m-un6-mnn-w6')!.purpose).toBe('多语翻译')
-    expect(s.get('nllb600m-un6-ccm-int4')!.purpose).toBe('多语翻译')
+    expect(s.get('nllb600m-un6-ccm-int4')!.purpose).toBe('AI 模型')
   })
 
   it('推送整体替换对象并更新进度', async () => {

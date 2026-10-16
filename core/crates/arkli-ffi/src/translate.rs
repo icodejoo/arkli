@@ -1,16 +1,13 @@
 //! 本地翻译（NLLB-200 600M）的 FFI 面：加载模型目录、翻译一段文本、卸载。
 //!
 //! 业务逻辑都在 `arkli-ai::translate`，这里只管：进程内唯一的翻译器（加锁串行，一次只跑一个推理）、
-//! 类型转换、错误映射。按 `model.json` 的 `format` 选后端：缺省 / `onnx-merged` 走 ORT（环境与识物共用，`OrtBackend::load` 幂等），
-//! `mnn-split` 走 MNN（运行库按传入的库名动态加载；本模块自己持有一个 `MnnRuntime`，与识物、OCR 各自 `load`，
+//! 类型转换、错误映射。模型只认 `model.json` 里 `format` 为 `mnn-split` 的 MNN 格式（运行库按传入的库名动态加载；本模块自己持有一个 `MnnRuntime`，与识物、OCR 各自 `load`，
 //! 底层是同一个 dlopen 句柄，全局执行器的串行由 `arkli-ai::mnn` 内的全局锁保证）。
 
 use std::path::Path;
 use std::sync::Mutex;
 
-#[cfg(feature = "mnn-backend")]
 use arkli_ai::mnn::MnnRuntime;
-use arkli_ai::ort_backend::OrtBackend;
 use arkli_ai::translate::{model_format, ErrorKind, ModelFormat, TranslateError, Translator};
 
 /// 默认算子线程数（`threads` 传 0 时使用）。
@@ -23,7 +20,7 @@ pub enum TranslateFfiError {
     NotLoaded { reason: String },
     /// 入参不合法（束宽越界、语言对不支持等）
     InvalidInput { reason: String },
-    /// 后端出错（找不到 ORT 库、模型缺失或损坏、推理失败、内存不足）
+    /// 后端出错（找不到 MNN 库、模型缺失或损坏、推理失败、内存不足）
     Backend { reason: String },
 }
 
@@ -63,7 +60,6 @@ pub struct TranslateResult {
 #[derive(Default)]
 struct State {
     /// MNN 运行时，首次加载 MNN 格式模型时创建
-    #[cfg(feature = "mnn-backend")]
     mnn: Option<MnnRuntime>,
     /// 当前模型目录
     model_dir: Option<String>,
@@ -83,12 +79,11 @@ fn with_state<T>(f: impl FnOnce(&mut State) -> T) -> T {
 /// 加载运行库与翻译模型，已用同一目录加载过则直接返回。
 ///
 /// 参数：
-/// - `runtime_lib`：推理运行库名或路径，按 `model.json` 的 `format` 对应：缺省 / `onnx-merged` 传 `libonnxruntime.so`，
-///   `mnn-split` 传 `libarkli-mnn.so`；APK 内都用裸名
+/// - `runtime_lib`：MNN 运行库名或路径，传 `libarkli-mnn.so`（APK 内用裸名）
 /// - `model_dir`：模型目录绝对路径（含 `model.json` 及其 `files` 列出的文件；MNN 格式的三张图自带 `.mnn.weight` 外置权重）
 /// - `threads`：算子线程数，0 视为默认 4
 ///
-/// 错误：`Backend`（库、模型或词表加载失败，未编译 MNN 后端）。
+/// 错误：`Backend`（库、模型或词表加载失败，清单不是 `mnn-split`）。
 ///
 /// 示例（Kotlin）：`translateLoad("libarkli-mnn.so", "/data/.../nllb600m-un6-mnn-w6", 4u)`
 #[uniffi::export]
@@ -103,10 +98,6 @@ pub fn translate_load(runtime_lib: String, model_dir: String, threads: u32) -> R
         let dir = Path::new(&model_dir);
         let threads = if threads == 0 { DEFAULT_TRANSLATE_THREADS } else { threads };
         let t = match model_format(dir).map_err(map_translate_err)? {
-            ModelFormat::OnnxMerged => {
-                OrtBackend::load(&runtime_lib).map_err(|e| TranslateFfiError::Backend { reason: e.to_string() })?;
-                Translator::load(dir, threads).map_err(map_translate_err)?
-            }
             ModelFormat::MnnSplit => load_mnn(s, &runtime_lib, dir, threads)?,
         };
         s.translator = Some(t);
@@ -116,19 +107,12 @@ pub fn translate_load(runtime_lib: String, model_dir: String, threads: u32) -> R
 }
 
 /// 用 MNN 加载翻译器（首次创建运行时）。
-#[cfg(feature = "mnn-backend")]
 fn load_mnn(s: &mut State, lib: &str, dir: &Path, threads: u32) -> Result<Translator, TranslateFfiError> {
     if s.mnn.is_none() {
         s.mnn = Some(MnnRuntime::load(lib).map_err(|e| TranslateFfiError::Backend { reason: e.to_string() })?);
     }
     let rt = s.mnn.as_ref().expect(crate::ENSURED_ABOVE);
     Translator::load_mnn(rt, dir, threads).map_err(map_translate_err)
-}
-
-/// 未编译 MNN 后端时，MNN 格式模型直接报错。
-#[cfg(not(feature = "mnn-backend"))]
-fn load_mnn(_s: &mut State, _lib: &str, _dir: &Path, _threads: u32) -> Result<Translator, TranslateFfiError> {
-    Err(TranslateFfiError::Backend { reason: crate::NO_MNN_BACKEND.into() })
 }
 
 /// 翻译一段文本。
@@ -205,11 +189,10 @@ mod tests {
         dir.to_string_lossy().into_owned()
     }
 
-    /// 清单 format 决定后端：缺省是 ORT，mnn-split 是 MNN（不加载任何库，只读清单）。
-    /// 不测“找不到 ORT 库”：ort 的 load-dynamic 在同一进程里第二次加载失败会 panic（clip 的测试已占用这个场景）。
+    /// 清单 format：mnn-split 是 MNN（不加载任何库，只读清单）；缺省（旧 ONNX）报清单非法。
     #[test]
-    fn 清单格式决定后端() {
-        assert_eq!(model_format(Path::new(&temp_model("fmt-ort", None))).unwrap(), ModelFormat::OnnxMerged);
+    fn 清单格式只认mnn() {
+        assert!(model_format(Path::new(&temp_model("fmt-old", None))).is_err());
         assert_eq!(model_format(Path::new(&temp_model("fmt-mnn", Some("mnn-split")))).unwrap(), ModelFormat::MnnSplit);
     }
 

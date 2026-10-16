@@ -74,11 +74,11 @@ class SpeechPolicyTest {
         assertTrue(e.files.all { f -> f.urls.all { NetPolicy.isAllowedDownload(it) } })
     }
 
-    /** 旧的手动放置目录此阶段不进 retired（M9 / 真机验收后再退役） */
+    /** M9：旧的手动放置目录已登记到 retired */
     @Test
-    fun shippedManifest_doesNotRetireOldAsrDir() {
+    fun shippedManifest_retiresOldAsrDir() {
         val m = ModelManifestParser.parse(File("src/main/assets/ai/models.json").readText())
-        assertTrue(m.retired.none { it.dir.endsWith("asr-zipformer-zh-en-int8") })
+        assertTrue(m.retired.any { it.dir == "models/asr-zipformer-zh-en-int8" })
     }
 
     /** lang 缺省或为 zh-en 都通过 */

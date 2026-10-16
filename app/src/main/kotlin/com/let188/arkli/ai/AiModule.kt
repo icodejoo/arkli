@@ -10,7 +10,7 @@ import org.json.JSONObject
 
 /**
  * 原生 AI 模块：
- * - `native.ai.status`：本地模型就绪状态，运行时尚未接入，一律报未就绪，待 sherpa / ort 接入后替换；
+ * - `native.ai.status`：本地模型就绪状态；
  * - `native.ai.providers` / `native.ai.run`：AI 提供者抽象（见 [AiProvider]），交接类提供者与本地识物提供者；
  * - `native.ai.classify`：本地 SigLIP2 识物，见 [AiClassifyPolicy] 与 [ClipService]；
  * - `native.ai.ocr`：本地 PP-OCRv6 small 文字识别，是第一个按统一协议新增的任务（新增任务的步骤见 docs/design/ai-protocol.md），
