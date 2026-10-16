@@ -132,7 +132,18 @@ export const tools: ToolMeta[] = [
   { id: 'wifi-qr', name: 'WiFi 二维码', description: '输入 WiFi 信息生成可扫码连接的二维码', load: () => import('./wifi-qr/index.vue') },
   { id: 'sys-helper', name: '系统调试助手', description: '按参数生成 ADB 命令，可一键复制', load: () => import('./sys-helper/index.vue') },
   { id: 'personality-test', name: '人格倾向测试', description: '28 道原创题，测出十六型人格倾向', load: () => import('./personality-test/index.vue') },
-  { id: 'couplet', name: '对联生成', description: '自编对联库，可筛选，还能手写对联导出图', load: () => import('./couplet/index.vue') },
+  {
+    id: 'couplet',
+    name: '对联生成',
+    description: '随机抽 73 万副对联不重复，本地模型对下联、按要求写对联，可导出图',
+    tags: [TAG_AI],
+    // 对下联走 native.ai.couplet；大模型（Qwen）走 native.ai.run 的 prompt；随机用的语料库是数据包，不在模型选择器里
+    tasks: [
+      { task: 'couplet', entry: AI_METHODS.couplet },
+      { task: 'prompt', entry: AI_METHODS.run },
+    ],
+    load: () => import('./couplet/index.vue'),
+  },
   { id: 'image-search', name: '以图搜图', description: '选图后分享，并跳转各搜图站入口', load: () => import('./image-search/index.vue') },
   { id: 'typing-board', name: '打字板', description: '全屏横屏大字，没超出屏幕就静止，超出就滚动，可闪烁', load: () => import('./typing-board/index.vue') },
   {

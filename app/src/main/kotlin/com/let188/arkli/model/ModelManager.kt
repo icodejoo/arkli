@@ -226,7 +226,8 @@ class ModelManager internal constructor(
         releaseHooks[id]?.let { runCatching { it() } }
         withContext(Dispatchers.IO) {
             val dir = dir(entry)
-            val names = entry.files.flatMap { listOf(it.name, it.name + PART_SUFFIX) } + MARKER_NAME
+            val all = entry.files + listOfNotNull(entry.archive)
+            val names = all.flatMap { listOf(it.name, it.name + PART_SUFFIX) } + MARKER_NAME
             val stuck = names.filter { File(dir, it).let { f -> f.exists() && !f.delete() } }
             if (stuck.isNotEmpty()) throw BridgeException(BridgeErrors.INTERNAL, "有 ${stuck.size} 个文件删除失败")
             dir.delete() // 目录里还有别的东西就保留，不递归
@@ -304,23 +305,40 @@ class ModelManager internal constructor(
         if (!tmp.renameTo(File(dir, MARKER_NAME))) throw ModelDownloadException(ModelErrorCode.INTERNAL, "无法写入校验标记")
     }
 
+    /** 数据包压缩包及其 .part 在磁盘上的字节数；普通模型为 0 */
+    private fun archiveBytesOnDisk(entry: ModelEntry): Long {
+        val a = entry.archive ?: return 0L
+        val dir = dir(entry)
+        return listOf(File(dir, a.name), File(dir, a.name + PART_SUFFIX)).sumOf { if (it.isFile) it.length() else 0L }
+    }
+
+    /**
+     * 数据包已落地字节：解压文件齐全（已装或待校验）算压缩包全长，否则取压缩包或其 .part 已有的字节。
+     * 压缩包字节、解压文件字节在占用里分别累计，这里只给下载进度用。
+     */
+    private fun packDownloadedBytes(archive: ModelFile, state: ModelState, archiveDisk: Long): Long =
+        if (state == ModelState.INSTALLED || state == ModelState.UNVERIFIED) archive.bytes else archiveDisk.coerceAtMost(archive.bytes)
+
     /** 综合任务、磁盘与最近错误，生成快照 */
     private fun snapshot(entry: ModelEntry): ModelSnapshot {
         val facts = facts(entry)
         val task = tasks[entry.id]
         val err = errors[entry.id]
-        val disk = ModelPolicy.diskBytes(facts)
+        val archiveDisk = archiveBytesOnDisk(entry)
+        val disk = ModelPolicy.diskBytes(facts) + archiveDisk
+        val total = entry.downloadBytes
         if (task != null) {
-            val done = task.progress.get().coerceAtMost(entry.totalBytes)
+            val done = task.progress.get().coerceAtMost(total)
             val elapsed = nowMs() - task.startedAt
             val speed = if (elapsed > 0 && done > task.startBytes) (done - task.startBytes) * MS_PER_SEC / elapsed else null
             return ModelSnapshot(
-                entry.id, entry.displayName, entry.version, ModelState.DOWNLOADING, entry.totalBytes, done, disk, task.phase, speed,
+                entry.id, entry.displayName, entry.version, ModelState.DOWNLOADING, total, done, disk, task.phase, speed,
             )
         }
         val state = ModelPolicy.diskState(entry, facts, readMarker(entry))
+        val downloaded = entry.archive?.let { packDownloadedBytes(it, state, archiveDisk) } ?: ModelPolicy.downloadedBytes(entry, facts)
         return ModelSnapshot(
-            entry.id, entry.displayName, entry.version, state, entry.totalBytes, ModelPolicy.downloadedBytes(entry, facts), disk,
+            entry.id, entry.displayName, entry.version, state, total, downloaded, disk,
             errorCode = err?.code?.wire, errorMessage = err?.message,
         )
     }

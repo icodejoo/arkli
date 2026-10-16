@@ -6,6 +6,7 @@ summary: 接手入口：做到哪、已拍板什么、验证到什么程度、�
 ---
 ## TL;DR
 - **M9 完成（2026-10-16）：ORT 与 sherpa-onnx 整体移除**，全部本地模型走 MNN（识物 `siglip2-mnn-w8`、翻译 `nllb600m-un6-mnn-w6`、语音 sherpa-mnn `asr-zipformer-zh-en-mnn-w8`、OCR `ppocrv6-small-mnn-fp16`、文本 Qwen）。debug APK 57,923,226 → 49,426,775 字节（-8,496,451），`libonnxruntime.so` 与 `libsherpa-onnx-jni.so` 已不在包里；旧模型目录登记进 `models.json` 的 `retired`。明细见 [onnx-to-mnn-migration.md](research/onnx-to-mnn-migration.md) 的“M9 落地情况”。**待办**：M9 后的 `assembleRelease` 体积没测；清单里 MNN 模型与运行库的 release 上传（见下面“待确认”）仍待用户。
+- **对联页重做 + 语料数据包（2026-10-16）**：对联页改为「随机 / 对下联 / 大模型」三模式；73.6 万副语料做成数据包（zip deflate -9，33,070,763 B）按需下载，原生解压并逐文件校验（清单新增 `kind: "pack"`），`native.corpus.couplet.*` 随机访问，前端固定步长置换做不重复随机。真机（STG-AL00 debug）：adb 放 zip 后 `ensure` 约 2 秒解压完成，随机抽取与画布渲染正常。详见 [对联语料库与对联页](design/couplet-corpus.md)。**未验证**：真实 release 下载、对下联与大模型模式的真机效果。
 - **协议 v2、文件三件套、联网最小切片、原生图片压缩**已落地并在真机验证；`arkli-ai`（OCR 管线）只做了宿主侧，没进 APK。
 - **2026-10-13 盲做冲刺（无真机）**：工具注册表由 25 增到 **90 个**（见 [落地跟踪表](design/rollout-tracker.md)）。新增原生能力：系统能力（剪贴板、分享、设置、Intent、震动、屏幕、设备信息、权限）、提醒与闹钟、系统 TTS、桌面快捷方式、应用管理、`native.net.*`（http/resolve/tcp/whois/speed，含 SSRF 防护）、原生全屏图片预览与自带多选图片页、返回键先关浮层。**这些全部只过了编译与单测，没上真机**，见跟踪表末尾的"待真机验证"清单。
 - **底部 tab 导航（2026-10-14）**：首页 / AI / 收藏 / 设置四个根 tab（`van-tabbar` route+replace），tab 之间淡入淡出，进 `/tool/:id` 仍推入、返回回到来的 tab，工具页无底栏；四页 keep-alive 并按路由名还原滚动；`ToolMeta.tags`（`'ai'`）驱动 AI 页，收藏存 localStorage（`stores/favorites.ts`），工具页导航栏右侧星标切换。首页原右上角设置入口已移除（设置现为 tab）。真机 safe-area 与底栏高度待在手机上看。
@@ -176,7 +177,7 @@ OCR 工具页（依赖 4）。二维码扫码原型已做，待真机验证。
 | `ppocr_keys.txt` | 74,012 | `d1979e9f794c464c0d2e0b70a7fe14dd978e9dc644c0e71f14158cdf8342af1b` |
 | `rec.mnn` | 8,423,236 | `9350d716fa78ae220736e3141ec89382367b3bf01d0592c379bec5db31437c18` |
 
-**`couplet-mnn-v1`**（对联，7 个文件，共 97,149,159 B；**许可证无法确认可再分发，风险自负**，`models.json` 的 `license` 字段已如实标注，NOTICE 随包；本机产物在 `E:\workspaces\arkli-models\couplet-gpt2-mnn\`）
+**`couplet-mnn-v1`**（**已上传并逐个核对 sha256 与清单一致**；对联，7 个文件，共 97,149,159 B；**许可证无法确认可再分发，风险自负**，`models.json` 的 `license` 字段已如实标注，NOTICE 随包；本机产物在 `E:\workspaces\arkli-models\couplet-gpt2-mnn\`）
 
 | 文件 | 字节 | sha256 |
 |---|---|---|
@@ -188,9 +189,18 @@ OCR 工具页（依赖 4）。二维码扫码原型已做，待真机验证。
 | `model.mnn.weight` | 96,733,158 | `93f3c05e50b9b8860cbf8c92c4b0b556578a04111e1a94bc6fba3b7e7cdddd71` |
 | `vocab.txt` | 109,516 | `3db3f345cf52a1102831aa1fe7ddeb031dd5f117412f91ad11645c4e71fc8f4b` |
 
+**`couplet-corpus-v1`**（对联语料库，数据包，1 个文件；**待用户上传**；本机产物 `E:\workspaces\arkli-models\couplet-corpus\couplet-corpus.zip`，zip 为 deflate，解压后 5 个文件共 64,961,472 B，清单里逐个登记了 sha256）
+
+| 文件 | 字节 | sha256 |
+|---|---|---|
+| `couplet-corpus.zip` | 33,070,763 | `f2b9ffdd9f5cc44592b70e98735af60be8feb88c5b9cb6fb09a9d83c47489e23` |
+
 > 待确认：`siglip2-mnn-v1`、`asr-mnn-v1` 目前不带 LICENSE/NOTICE（NLLB、OCR 带）。上游均为 Apache-2.0，第 4(a) 条要求再分发时随附许可证副本，建议补上后再上传（清单要同步加文件）。
 
 ## 待用户拍板 / 未知
+- **对联语料的分类与横批质量未过线**（`scripts/couplet/README.md` holdout：首选分类 82.2%<85%、任一合理 88.7%<90%、挽联召回 90.6%<95%、横批贴切 56.7%<80%）。后续方案三选一或组合，**待用户定**：（a）人工标注 2000~3000 条做有监督分类；（b）引入分词/成语词典（如 jieba + 成语库）做特征；（c）用大模型离线打标签并生成/挑选横批再蒸馏。页面现已上线随机模式并标注“横批与分类是推导值”。
+- **挽联判定门槛 4.5 还是 3.5**：4.5（当前）holdout 召回 29/32、误隐藏约 3.4%；3.5 召回 31/32、误隐藏约 8.9%。**待用户定**。
+- **对联语料库许可证**：语料来自 couplet 数据集，上游 MIT / AGPL 链条存疑；用户已决定风险自负，release `couplet-corpus-v1` 上传前请再确认，作者若不允许要删除 release。**待用户确认**。
 - **开源协议**还没选（仓库无 LICENSE）：GPL 类依赖（如 libimagequant）会牵连整个 App，选协议要早于引入这类依赖。
 - 模型与数据包托管位置（识物 `q4_half.onnx` 已于 2026-10-15 发布到 GitHub release `siglip2-q4half-v1`（公开仓库），真实下载链路已实测：302 直接落到 `release-assets.githubusercontent.com`，下载后 sha256 与清单一致；后续考虑补镜像，单连接在菲律宾偏慢）；Qwen3.5-0.8B 的 MNN 文本模型已于 2026-10-15 发布到 GitHub release `qwen35-mnn-v1`（公开仓库，6 个文件合计 484,349,699 字节，真实链路已实测，溯源见 [Qwen3.5 MNN 模型](research/qwen35-mnn-model.md)）；拼豆色号表数据来源；国内商店对按需下载 so 的规则（没查到原文）。
 - （**M9 已删：ORT 与 sherpa-onnx 不再随包，本条仅作历史**）AI 运行时（ORT + sherpa JNI，arm64 约 27MB 未压缩）是否随包：**ORT 已随包**（只带 `libonnxruntime.so` 22.25MB，不带 sherpa JNI；release APK 4,917,752 → 27,643,404 字节，gzip -9 3,309,480 → 11,605,440），是否改为按需下载 ORT 等复议；sherpa JNI 等接 sherpa 能力时再定（**2026-10-15 语音转文字已接入 sherpa JNI**：`fetchOrtRuntime` 同时从同一 AAR 取 `libsherpa-onnx-jni.so`（4.77MB，gzip -9 约 1.96MB）与 Kotlin API `classes.jar`（239KB，gzip -9 约 222KB），仅 arm64-v8a，与 Rust 共用同一份 `libonnxruntime.so`，已随包，待用户确认）。**新增构建步骤待确认**：Gradle 任务 `fetchMnnRuntime`（2026-10-15 新增，构建时从 release `mnn-478c10e-v1` 下载约 4.9MB 的两个 so 并校验 sha256，缓存在 `.gradle/arkli-mnn/`）；Gradle 任务 `fetchOrtRuntime` 构建时从 GitHub 下载 50MB 的 sherpa AAR 并校验 sha256，缓存在 `.gradle/arkli-ort/`。
@@ -202,7 +212,7 @@ OCR 工具页（依赖 4）。二维码扫码原型已做，待真机验证。
 - **NLLB MNN 版 release `nllb-mnn-v1` 待用户上传（M6c）**：12 个文件（清单、字节数、sha256 见 [onnx-to-mnn-migration.md](research/onnx-to-mnn-migration.md) 的 M6c 一节），`models.json` 的 `nllb600m-un6-mnn-w6` 已指向 `https://github.com/icodejoo/arkli/releases/download/nllb-mnn-v1/<文件名>`；上传前下载会失败，上传后按 302 与 sha256 复核。旧条目 `nllb600m-un6-ccm-int4` 已在 M9（2026-10-16）移出清单并登记进 `retired`。
 - **识物 MNN 版 release `siglip2-mnn-v1` 待用户上传**：1 个文件 `model.mnn`（94,775,452 B），`models.json` 的 `siglip2-mnn-w8` 已指向它；清单见上方“待上传 release 总清单”。
 - **语音 MNN 版待用户上传（M7）**：（a）`mnn-478c10e-v2` 要放三个 so（`libMNN.so`、`libarkli-mnn.so`、新增的 `libsherpa-mnn-jni.so` 2,690,520 B，sha 见 [onnx-to-mnn-migration.md](research/onnx-to-mnn-migration.md) 的 M7 一节）；（b）release `asr-mnn-v1` 的 4 个文件（`encoder.mnn`/`decoder.mnn`/`joiner.mnn`/`tokens.txt`，共 168,813,626 B）；`models.json` 已首次加入 `asr-zipformer-zh-en-mnn-w8`，上传前设备下载会失败，上传后按 302 与 sha256 复核。旧手动目录 `asr-zipformer-zh-en-int8` 已在 M9 登记进 `retired`。sherpa-mnn JNI 真机能否跑通是最高风险项，待真机清单在该节末尾。
-- **对联 MNN 版 release `couplet-mnn-v1` 待用户上传（阶段 2a）**：7 个文件、共 97,149,159 B，清单见上方“待上传 release 总清单”，`models.json` 已登记 `couplet-gpt2-mnn-w6`（license 如实写“无法确认可再分发，风险自负”）；上传前下载会失败，上传后逐个核对 sha256。引擎与协议已接入（`native.ai.couplet` / `local-couplet`），**页面下一阶段重做，真机速度与内存未测**。详见 [对联评估](research/couplet-gpt2-onnx.md) 第 9 节。
+- **对联 MNN 版 release `couplet-mnn-v1`：已上传并核对**（7 个文件、共 97,149,159 B，sha256 与清单一致；`models.json` 已登记 `couplet-gpt2-mnn-w6`，license 如实写“无法确认可再分发，风险自负”）。引擎与协议已接入（`native.ai.couplet` / `local-couplet`），页面已在 2026-10-16 重做（见 [对联语料库与对联页](design/couplet-corpus.md)），对下联与大模型模式的真机速度、质量未测。详见 [对联评估](research/couplet-gpt2-onnx.md) 第 9 节。
 - **文字识别升级 PP-OCRv6 small，release `ocr-mnn-v2` 待用户上传**：6 个文件 `det.mnn`（4,967,972 B）、`rec.mnn`（10,648,948 B）、`cls.mnn`（516,824 B，与 v5 包同一个文件）、`ppocr_keys.txt`（74,947 B）、`NOTICE.txt`（1,693 B）、`LICENSE-Apache-2.0.txt`（11,376 B），sha256 见 `models.json` 的 `ppocrv6-small-mnn-fp16` 与 [onnx-to-mnn-migration.md](research/onnx-to-mnn-migration.md) 的“M8 升级 PP-OCRv6 small”一节；本机产物在 `E:\workspacesrkli-models\ppocrv6-small-mnn-fp16\`（`scripts/device-push-models.sh` 可直接推）。Kotlin 的 `OcrService.MODEL_ID` / `OCR_MODEL_DIR` 已指向它；旧 `ppocrv5-mnn-fp16` 已在 M9 移出清单并登记进 `retired`。
 - **（旧）文字识别 MNN 版 release `ocr-mnn-v1` 待用户上传（M8）**：6 个文件 `det.mnn`、`rec.mnn`、`cls.mnn`、`ppocr_keys.txt`、`NOTICE.txt`、`LICENSE-Apache-2.0.txt`（字节数、sha256 见 [onnx-to-mnn-migration.md](research/onnx-to-mnn-migration.md) 的 M8 一节，`models.json` 已登记 `ppocrv5-mnn-fp16`），上传前下载会失败；另请确认 ModelScope 模型页的许可证标注（上游 PaddleOCR / RapidOCR 仓库均为 Apache-2.0）。真机验收（1080×2400 ≤ 2.2 s、峰值 RSS ≤ 210MB）待做。
 - **（已随 M9 退役，无需再托管）翻译模型托管待定（旧 ONNX 版）**：`nllb600m-un6-ccm-int4` 解压后的 6 个单文件还没上传到 release，`models.json` 里的 URL 是占位 `https://github.com/icodejoo/Cisox/releases/download/models/<文件名>`，上传后要核对 URL、字节数与 sha256（`encoder.onnx_data` 158,297,088 字节、`decoder.onnx_data` 229,598,080 字节，单文件需小于 GitHub release 2GB 上限）。

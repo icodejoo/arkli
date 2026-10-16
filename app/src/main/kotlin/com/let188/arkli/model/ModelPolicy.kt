@@ -92,6 +92,9 @@ enum class ModelErrorCode(val wire: String) {
     /** 下载地址（含重定向）被白名单拒绝 */
     SOURCE_REJECTED("SOURCE_REJECTED"),
 
+    /** 数据包解压失败（条目缺失、多余、长度不符、压缩包损坏） */
+    UNPACK_FAILED("UNPACK_FAILED"),
+
     /** 本地 I/O 等内部错误 */
     INTERNAL("INTERNAL"),
 }
@@ -203,6 +206,9 @@ object ModelPolicy {
 
     /** 校验阶段名 */
     const val PHASE_VERIFY = "verify"
+
+    /** 数据包解压阶段名 */
+    const val PHASE_UNPACK = "unpack"
 
     /**
      * 解析 `{ id }` 参数，id 必须在清单里。
@@ -429,7 +435,8 @@ object ModelPolicy {
     fun sourcesJson(entry: ModelEntry): JSONObject {
         val pages = LinkedHashSet<String>()
         val files = JSONArray()
-        entry.files.forEach { f ->
+        // 数据包用户要下载的是压缩包；解压后的文件没有下载地址
+        (entry.archive?.let { listOf(it) } ?: entry.files).forEach { f ->
             val urls = JSONArray()
             f.urls.filter { NetPolicy.isAllowedDownload(it) }.map { NetPolicy.redact(it) }.forEach {
                 urls.put(it)

@@ -2,6 +2,7 @@
 # 把 PC 上的本地模型库复制进真机 App 私有目录并触发校验（设备无网、每次重装后都要跑）。
 # 用法：scripts/device-push-models.sh [模型库目录，默认 E:/workspaces/arkli-models] [模型 id ...]
 # 依赖：debug 包（run-as 与调试广播）；不带 id 则推送库内全部模型。
+# 数据包（目录里只有 .zip，如 couplet-corpus）推上去后触发 native.model.ensure，由 App 解压并校验，模拟“已下载好压缩包”。
 set -euo pipefail
 export MSYS_NO_PATHCONV=1
 LIB="${1:-E:/workspaces/arkli-models}"; shift || true
@@ -22,6 +23,9 @@ for id in "${IDS[@]}"; do
     adb push "$(cygpath -m "$f")" "/data/local/tmp/mm/$id/$n" </dev/null >/dev/null
     adb shell "run-as $PKG cp /data/local/tmp/mm/$id/$n files/models/$id/$n" </dev/null
   done
-  adb shell am broadcast -p $PKG -a $ACTION --es cmd rpc --es method native.model.verify --es params "{\"id\":\"$id\"}" </dev/null >/dev/null
-  echo "已推送并触发校验：$id"
+  # 目录里放的是压缩包（数据包，如对联语料库）就触发 ensure：原生校验 zip、解压并逐文件核对 sha256；否则只做 verify
+  METHOD=native.model.verify
+  ls "$LIBU/$id"/*.zip >/dev/null 2>&1 && METHOD=native.model.ensure
+  adb shell am broadcast -p $PKG -a $ACTION --es cmd rpc --es method $METHOD --es params "{\"id\":\"$id\"}" </dev/null >/dev/null
+  echo "已推送并触发 ${METHOD##*.}：$id"
 done

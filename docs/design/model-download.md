@@ -42,6 +42,16 @@ summary: native.model.* 的清单格式、下载器安全设计（白名单、�
 - `version` 变了，旧的校验标记失效，状态回到 `unverified`。
 - 与草稿的差异：草稿设想的 Ed25519 签名、`minAppVersion`、`kind`、`filesDir/packs/<id>/<version>/` 这次**没做**。清单随 APK 发布，信任锚就是 APK 签名本身；以后要做可更新的远程清单时再加签名。
 
+## 数据包（`kind: "pack"`，2026-10-16）
+
+下载一个压缩包、由原生解压的条目（首个用例：`couplet-corpus`，见 [对联语料库](couplet-corpus.md)）。清单：`"kind": "pack"` + `archive`（`name` 必须以 `.zip` 结尾，带 `bytes`/`sha256`/`urls`）+ `files`（**解压后**的文件，带 `bytes`/`sha256`，**不得带 `urls`**）；`totalBytes` 仍等于解压文件之和。
+
+- 下载：沿用逐文件的续传、多源、逐跳重定向、sha256 校验把 zip 落到模型目录；已有的 zip（下载完或 adb 放入）校验通过就直接用。
+- 解压（`PackExtractor`）：只解清单里列出的文件，压缩包里有清单外条目、目录、重复条目、声明长度不符、写超均报 `UNPACK_FAILED`；每个文件边写边算 sha256，不符报 `HASH_MISMATCH` 并删 `.part`，通过才原子改名；成功后删 zip。阶段名 `unpack`。
+- 空间：压缩包剩余字节 ×1.2 加上待解出文件字节。
+- 状态：`totalBytes`/`downloadedBytes` 以压缩包字节算（用户关心的下载量），`diskBytes` 含解压文件与压缩包；`installed` 由解压文件的校验标记判定。`remove` 同时清掉 zip 与 `.part`；`native.model.sources` 的 `files` 只列压缩包。
+- adb 模拟“已下载”：`scripts/device-push-models.sh` 对只含 `.zip` 的目录推送后触发 `native.model.ensure`。
+
 ## 退役模型回收（`retired`）
 
 清单顶层可选字段 `retired: [{ "id": "...", "dir": "models/<单段名>" }]`，表示已退役、设备上应当回收的旧模型目录（换格式或换模型后，用户机上遗留的旧文件靠它清掉）。

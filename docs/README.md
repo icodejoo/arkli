@@ -23,6 +23,7 @@
 
 - [工具落地总览与待决策](design/tools-overview.md) — 116 项汇总、全部新增依赖、设计间冲突与待拍板清单。draft。
 - [公共基础设施草案](design/platform-infrastructure.md) — bridge v2、统一方法表、安全、权限、模型与数据包、实施顺序。draft。
+- [对联语料库与对联页](design/couplet-corpus.md) — 73.6 万副语料的数据包格式、原生随机访问、前端不重复随机算法、对联页三模式。active。
 - [本地模型下载管理](design/model-download.md) — native.model.* 的清单格式、退役模型回收（retired）、下载器安全设计、状态机、真机验证与后续优化。active。
 - [统一 AI 协议](design/ai-protocol.md) — AiRouter 选提供者、统一入口 native.ai.invoke 的分派（旧方法为别名）、能力=端口不变量、报价 offers（任务+入口+约束）与按约束校验输入、生命周期从提供者派生、文本生成预设与按次采样（第 6 步）、前端 AI 目录与 aiInvoke、后续步骤。OCR 作为第一个按新协议接入的任务（M8）与“新增一个 AI 任务的 checklist”。active。
 - [模型选择器](design/model-picker.md) — AI 工具的模型选择：工具声明 tasks、目录自动算可选项、四种状态、选择存提供者 id 与旧值迁移。文字识别页只读目录、缺模型提示条。active。

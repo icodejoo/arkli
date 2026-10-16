@@ -77,6 +77,7 @@ ToolMeta.models?: ToolModelOption[]  // 过渡：{ modelId, title, desc }，L1 �
 | `waste-sort` | `classifyImage` | `siglip2-mnn-w8`（并入 `local-clip`；2026-10-15 起由 `siglip2-q4_half` 换成 MNN 版） |
 | `translate` | `translate@native.ai.translate` | — |
 | `ocr`、`table-extract` | `ocr@native.ai.ocr`（M8；图片转表格用同一个文字识别任务，并带 `ai` 标签以出现选择器） | — |
+| `couplet` | `couplet@native.ai.couplet`、`prompt@native.ai.run` | 对联页：对下联用 local-couplet，大模型用 local-qwen；页面按提供者 id 读就绪状态，选择值不起作用；语料库（数据包）不在选择器里 |
 | `image-upscale`、`object-count`、`face-fusion`、`colorize` | — | 各自的占位 id（清单里没有，显示「未接入」） |
 
 没有工具声明 `summarize` / `prompt` 等文本任务（`summarize` 工具是纯前端抽取式摘要，不走 AI），所以 Qwen 目前只在翻译页出现；声明了文本任务的工具会自动出现 Qwen（L2）、可用的交接（L3）与 L4 占位，有单测覆盖。
@@ -125,3 +126,15 @@ ToolMeta.models?: ToolModelOption[]  // 过渡：{ modelId, title, desc }，L1 �
 - 展示：(a) 译文叠在图上，OCR 框是 OCR 基准图（`OcrResult.width/height`，原图过大时是降采样后的尺寸）的像素坐标，按「显示宽 / 基准宽」缩放，半透明深底白字，字号随框高与文字量自适应（`photoLogic.ts`）；多图用 `van-swipe` 横滑。(b)「查看文本」弹窗按图分组列出原文与译文，可复制单张、全部、仅译文。
 - 纯逻辑与单测：`photoLogic.ts`（框换算、叠层样式、聚合文本、进度状态）、`photoRun.ts`（流程）、对应 `*.test.ts`。
 - 限制：一次最多 9 张、每张最多 60 个文字块；叠层只用外接矩形，倾斜文字不旋转；竖排或密集小字的字号可能偏小；翻译按文字块独立进行，没有上下文。
+
+## 多类模型同屏选（sections）
+
+一个页面同时要选多类模型时（翻译页进入图片模式：翻译模型 + 文字识别模型），给 `<model-picker>` 传 `sections` 代替 `tool-id`：
+
+```vue
+<model-picker :sections="[{ toolId: 'translate', title: '翻译模型' }, { toolId: 'ocr', title: '文字识别模型' }]" />
+```
+
+- 每组是一个 `ModelPickerSection`：各用自己工具的目录与记忆的选择（`ocr` 的选择与文字识别页共用）。
+- 多组时选中不关弹层，方便连选；弹出下载提示仍会关。触发器简称取第一组。
+- 翻译页只在图片模式才加 OCR 组。底部动作栏见 `shared/BottomActions.vue`（`items` + `item-<key>` 插槽），翻译与垃圾分类共用。

@@ -33,7 +33,7 @@ export type ModelStateName = 'absent' | 'downloading' | 'installed' | 'unverifie
 
 /** 最近一次下载失败的原因 */
 export interface ModelError {
-  /** 错误码：NO_SPACE / NETWORK / HASH_MISMATCH / SIZE_MISMATCH / SOURCE_REJECTED / INTERNAL（未知值透传） */
+  /** 错误码：NO_SPACE / NETWORK / HASH_MISMATCH / SIZE_MISMATCH / SOURCE_REJECTED / UNPACK_FAILED（数据包解压失败）/ INTERNAL（未知值透传） */
   code: string
   /** 给人看的简述 */
   message: string
@@ -55,8 +55,8 @@ export interface ModelStatus {
   downloadedBytes: number
   /** 磁盘占用字节（含未完成的 .part） */
   diskBytes: number
-  /** 下载中的阶段：download 下载、verify 校验 */
-  phase?: 'download' | 'verify'
+  /** 下载中的阶段：download 下载、verify 校验、unpack 解压（数据包） */
+  phase?: 'download' | 'verify' | 'unpack'
   /** 下载中的平均速度，字节/秒 */
   speedBps?: number
   /** 最近一次下载失败的原因；开始新下载或删除后清除 */

@@ -1,50 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { COUPLETS, THEMES, type Couplet } from './data'
-import {
-  BANNER_LEN,
-  BG_COLOR,
-  customWarnings,
-  drawCouplet,
-  filterByLength,
-  findDuplicates,
-  GOLD_COLOR,
-  LENGTH_OPTIONS,
-  LEVEL_ENDINGS,
-  layoutCouplet,
-  OBLIQUE_ENDINGS,
-  randomCouplet,
-  THEME_IDS,
-  themeCouplets,
-  toneOf,
-  validateCouplet,
-  type CoupletCtx,
-} from './logic'
-
-/** 全库平铺 */
-const ALL = THEME_IDS.flatMap((t) => COUPLETS[t])
-
-describe('句库', () => {
-  it('六个主题齐全，每个至少 12 副', () => {
-    expect(THEMES).toHaveLength(6)
-    for (const t of THEME_IDS) expect(themeCouplets(t).length, t).toBeGreaterThanOrEqual(12)
-  })
-  it('每副都通过校验（等长、横批 4 字、上仄下平收尾、同位不同字）', () => {
-    for (const p of ALL) expect(validateCouplet(p), p.up).toEqual([])
-  })
-  it('全库上下联无重复', () => {
-    expect(findDuplicates(ALL)).toEqual([])
-  })
-  it('字数只有 4 / 5 / 7，且各主题都有七言', () => {
-    for (const p of ALL) expect(LENGTH_OPTIONS).toContain([...p.up].length)
-    for (const t of THEME_IDS) expect(filterByLength(COUPLETS[t], 7).length, t).toBeGreaterThan(0)
-  })
-  it('平仄字表不互相矛盾', () => {
-    for (const ch of OBLIQUE_ENDINGS) expect(LEVEL_ENDINGS.indexOf(ch), ch).toBe(-1)
-  })
-  it('上下联不含标点和空白', () => {
-    for (const p of ALL) expect(/[\s，。,.]/.test(p.up + p.down + p.banner)).toBe(false)
-  })
-})
+import { BANNER_LEN, BG_COLOR, customWarnings, drawCouplet, GOLD_COLOR, layoutCouplet, type CoupletCtx } from './logic'
+import { LEVEL_ENDINGS, OBLIQUE_ENDINGS, toneOf } from './tone'
 
 describe('toneOf', () => {
   it('认得登记过的字', () => {
@@ -57,57 +13,12 @@ describe('toneOf', () => {
   })
 })
 
-describe('validateCouplet', () => {
-  it('通过的返回空数组', () => {
-    expect(validateCouplet({ up: '风调雨顺', down: '国泰民安', banner: '五谷丰登' })).toEqual([])
-  })
-  it('长度不等', () => {
-    expect(validateCouplet({ up: '风调雨顺', down: '国泰民', banner: '五谷丰登' })).toContain('上下联字数不等')
-  })
-  it('横批不是四字', () => {
-    expect(validateCouplet({ up: '风调雨顺', down: '国泰民安', banner: '五谷' })[0]).toContain('横批')
-  })
-  it('平仄反了', () => {
-    const r = validateCouplet({ up: '国泰民安', down: '风调雨顺', banner: '五谷丰登' })
-    expect(r).toContain('上联未以仄声收尾')
-    expect(r).toContain('下联未以平声收尾')
-  })
-  it('收尾字没登记会提示', () => {
-    expect(validateCouplet({ up: '风调雨龘', down: '国泰民安', banner: '五谷丰登' })).toContain('上联收尾字未登记平仄')
-  })
-  it('同位置同字', () => {
-    expect(validateCouplet({ up: '风调雨顺', down: '风泰民安', banner: '五谷丰登' })).toContain('第 1 字上下联相同')
+describe('平仄字表', () => {
+  it('平仄字表不互相矛盾', () => {
+    expect([...LEVEL_ENDINGS].filter((c) => OBLIQUE_ENDINGS.includes(c))).toEqual([])
   })
   it('横批常量为 4', () => {
     expect(BANNER_LEN).toBe(4)
-  })
-})
-
-describe('findDuplicates', () => {
-  it('找出重复句', () => {
-    const a: Couplet = { up: '甲', down: '乙', banner: '丙丁戊己' }
-    const b: Couplet = { up: '甲', down: '庚', banner: '丙丁戊己' }
-    expect(findDuplicates([a, b])).toEqual(['甲'])
-    expect(findDuplicates([a])).toEqual([])
-  })
-})
-
-describe('filterByLength / randomCouplet', () => {
-  const list = COUPLETS.spring
-  it('按字数筛选', () => {
-    expect(filterByLength(list, 5).every((p) => [...p.up].length === 5)).toBe(true)
-    expect(filterByLength(list, 0)).toHaveLength(list.length)
-    expect(filterByLength(list, 9)).toEqual([])
-  })
-  it('随机源可注入', () => {
-    expect(randomCouplet(list, null, () => 0)).toBe(list[0])
-  })
-  it('换一副不会拿到同一副', () => {
-    for (let i = 0; i < 30; i++) expect(randomCouplet(list, list[0])?.up).not.toBe(list[0].up)
-  })
-  it('只有一副时没得换，空列表返回 null', () => {
-    expect(randomCouplet([list[0]], list[0])).toBe(list[0])
-    expect(randomCouplet([])).toBeNull()
   })
 })
 

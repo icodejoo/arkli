@@ -2,6 +2,7 @@ package com.let188.arkli.ai
 
 import com.let188.arkli.bridge.ArkliBridge
 import com.let188.arkli.bridge.BridgeHandler
+import com.let188.arkli.corpus.CorpusModule
 import com.let188.arkli.files.FileEnv
 import com.let188.arkli.files.requireMainFrame
 import com.let188.arkli.model.ModelModule
@@ -111,6 +112,7 @@ object AiModule {
      */
     fun install(bridge: ArkliBridge, env: FileEnv) {
         val models = ModelModule.install(bridge, env.appContext)
+        CorpusModule.install(bridge, env.appContext.filesDir, models)
         val all = providers(
             AndroidHandoffPlatform(env.appContext, env.host),
             ClipRuntime.get(env.appContext),

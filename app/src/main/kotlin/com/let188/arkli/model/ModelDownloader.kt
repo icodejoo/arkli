@@ -105,6 +105,11 @@ internal class ModelDownloader(
         onProgress: (Long, String) -> Unit,
     ) {
         if (!dir.isDirectory && !dir.mkdirs()) throw ModelDownloadException(ModelErrorCode.INTERNAL, "无法创建模型目录")
+        val archive = entry.archive
+        if (archive != null) {
+            downloadPack(entry, dir, archive, urlsFor, onProgress)
+            return
+        }
         checkSpace(entry, dir)
         var base = 0L
         for (file in entry.files) {
@@ -123,6 +128,49 @@ internal class ModelDownloader(
         }
     }
 
+    /**
+     * 数据包：先确认解压后的文件，缺的才需要压缩包；压缩包已在目录里（下载完或 adb 放入）就校验后直接用，
+     * 否则下载（沿用续传、多源、逐跳校验）；校验通过后解压并逐文件核对摘要，最后删掉压缩包。
+     */
+    private suspend fun downloadPack(entry: ModelEntry, dir: File, archive: ModelFile, urlsFor: (ModelFile) -> List<String>, onProgress: (Long, String) -> Unit) {
+        val needed = mutableListOf<ModelFile>()
+        for (f in entry.files) {
+            val target = File(dir, f.name)
+            if (target.isFile && target.length() == f.bytes) {
+                onProgress(archive.bytes, ModelPolicy.PHASE_VERIFY)
+                if (hashOf(target) == f.sha256) continue
+            }
+            if (target.exists()) target.delete()
+            needed += f
+        }
+        val zip = File(dir, archive.name)
+        val zipPart = File(dir, archive.name + PART_SUFFIX)
+        if (needed.isEmpty()) {
+            zip.delete()
+            zipPart.delete()
+            onProgress(archive.bytes, ModelPolicy.PHASE_DOWNLOAD)
+            return
+        }
+        var haveZip = false
+        if (zip.isFile && zip.length() == archive.bytes) {
+            onProgress(archive.bytes, ModelPolicy.PHASE_VERIFY)
+            haveZip = hashOf(zip) == archive.sha256
+        }
+        if (!haveZip) {
+            zip.delete()
+            val remaining = archive.bytes - zipPart.length().coerceIn(0, archive.bytes)
+            requireSpace(dir, ModelPolicy.requiredFreeBytes(remaining) + needed.sumOf { it.bytes })
+            fetchFile(archive, dir, urlsFor(archive), 0, onProgress)
+        } else {
+            requireSpace(dir, needed.sumOf { it.bytes })
+        }
+        onProgress(archive.bytes, ModelPolicy.PHASE_UNPACK)
+        val job = currentCoroutineContext()[Job]
+        val all = entry.files.map { it.name }.toSet()
+        withContext(Dispatchers.IO) { PackExtractor.extract(zip, dir, needed, all) { job?.isActive != false } }
+        zip.delete()
+    }
+
     /** 剩余空间不足则抛 NO_SPACE */
     private fun checkSpace(entry: ModelEntry, dir: File) {
         val remaining = entry.files.sumOf { f ->
@@ -130,7 +178,12 @@ internal class ModelDownloader(
             if (target.isFile && target.length() == f.bytes) 0L else f.bytes - File(dir, f.name + PART_SUFFIX).length().coerceIn(0, f.bytes)
         }
         if (remaining <= 0) return
-        val need = ModelPolicy.requiredFreeBytes(remaining)
+        requireSpace(dir, ModelPolicy.requiredFreeBytes(remaining))
+    }
+
+    /** 目录所在分区可用空间小于 [need] 抛 NO_SPACE */
+    private fun requireSpace(dir: File, need: Long) {
+        if (need <= 0) return
         val free = freeSpace(dir)
         if (free < need) throw ModelDownloadException(ModelErrorCode.NO_SPACE, "剩余空间不足：需要 $need 字节，只有 $free 字节")
     }

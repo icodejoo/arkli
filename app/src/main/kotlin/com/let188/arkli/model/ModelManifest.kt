@@ -29,6 +29,15 @@ internal val SEGMENT_REGEX = Regex("^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$")
 /** sha256 十六进制，小写 64 位 */
 private val SHA256_REGEX = Regex("^[0-9a-f]{64}$")
 
+/** 清单 kind：普通模型（逐文件下载） */
+internal const val KIND_MODEL = "model"
+
+/** 清单 kind：数据包（下载一个 zip，解压后逐文件校验） */
+internal const val KIND_PACK = "pack"
+
+/** 数据包压缩包的后缀 */
+internal const val ARCHIVE_SUFFIX = ".zip"
+
 /** 下载中的临时文件后缀，清单里的文件名不得以它结尾，避免与 .part 撞名 */
 internal const val PART_SUFFIX = ".part"
 
@@ -52,7 +61,8 @@ data class ModelFile(val name: String, val bytes: Long, val sha256: String, val 
  * @property dir 目标目录，相对 filesDir，如 `models/siglip2-mnn-w8`
  * @property totalBytes 全部文件字节数之和
  * @property license 许可证标识，可空
- * @property files 文件列表
+ * @property files 文件列表；数据包（[archive] 非空）里是**解压后**的文件，不带下载源，由解压校验
+ * @property archive 数据包的压缩包（zip）：下载的是它，解压出 [files]；普通模型为 null
  */
 data class ModelEntry(
     val id: String,
@@ -62,7 +72,14 @@ data class ModelEntry(
     val totalBytes: Long,
     val license: String?,
     val files: List<ModelFile>,
-)
+    val archive: ModelFile? = null,
+) {
+    /** 是否数据包（下载压缩包再解压） */
+    val isPack: Boolean get() = archive != null
+
+    /** 需要下载的字节数：数据包是压缩包大小，普通模型是全部文件之和 */
+    val downloadBytes: Long get() = archive?.bytes ?: totalBytes
+}
 
 /**
  * 已退役、设备上应当回收的旧模型。
@@ -146,17 +163,30 @@ object ModelManifestParser {
         require(version.isNotEmpty() && version.length <= 32) { "$id 缺 version" }
         val displayName = o.optString("displayName")
         require(displayName.isNotEmpty()) { "$id 缺 displayName" }
+        val kind = o.optString("kind", KIND_MODEL)
+        require(kind == KIND_MODEL || kind == KIND_PACK) { "$id 的 kind 不认识：$kind" }
+        val archive = if (kind == KIND_PACK) {
+            file(id, o.optJSONObject("archive") ?: throw IllegalArgumentException("$id 是数据包却缺 archive")).also {
+                require(it.name.endsWith(ARCHIVE_SUFFIX)) { "$id 的压缩包必须是 $ARCHIVE_SUFFIX" }
+            }
+        } else {
+            require(!o.has("archive")) { "$id 不是数据包，不应有 archive" }
+            null
+        }
         val arr = o.optJSONArray("files") ?: throw IllegalArgumentException("$id 缺 files")
         require(arr.length() in 1..MAX_FILES) { "$id 的文件数不合法" }
-        val files = (0 until arr.length()).map { file(id, arr.optJSONObject(it) ?: throw IllegalArgumentException("$id.files[$it] 不是对象")) }
+        val files = (0 until arr.length()).map {
+            file(id, arr.optJSONObject(it) ?: throw IllegalArgumentException("$id.files[$it] 不是对象"), needUrls = archive == null)
+        }
         require(files.map { it.name }.toSet().size == files.size) { "$id 的文件名重复" }
+        require(archive == null || archive.name !in files.map { it.name }) { "$id 的压缩包与解压文件重名" }
         val total = o.optLong("totalBytes", -1)
         require(total == files.sumOf { it.bytes }) { "$id 的 totalBytes 与文件之和不一致" }
-        return ModelEntry(id, displayName, version, dir, total, o.optString("license").ifEmpty { null }, files)
+        return ModelEntry(id, displayName, version, dir, total, o.optString("license").ifEmpty { null }, files, archive)
     }
 
-    /** 解析一个文件 */
-    private fun file(modelId: String, o: JSONObject): ModelFile {
+    /** 解析一个文件；[needUrls] 为 false 时（数据包解压后的文件）不得带下载源 */
+    private fun file(modelId: String, o: JSONObject, needUrls: Boolean = true): ModelFile {
         val name = o.optString("name")
         require(SEGMENT_REGEX.matches(name) && !name.endsWith(PART_SUFFIX)) { "$modelId 的文件名非法：$name" }
         val bytes = o.optLong("bytes", -1)
@@ -164,7 +194,8 @@ object ModelManifestParser {
         val sha = o.optString("sha256")
         require(SHA256_REGEX.matches(sha)) { "$modelId/$name 的 sha256 不是 64 位小写十六进制" }
         val urls = strings(o.optJSONArray("urls"))
-        require(urls.size in 1..MAX_URLS) { "$modelId/$name 的 urls 数量不合法" }
+        if (needUrls) require(urls.size in 1..MAX_URLS) { "$modelId/$name 的 urls 数量不合法" }
+        else require(urls.isEmpty()) { "$modelId/$name 是解压文件，不应带 urls" }
         urls.forEach { require(NetPolicy.isAllowedDownload(it)) { "$modelId/$name 的下载源不在白名单：${NetPolicy.redact(it)}" } }
         return ModelFile(name, bytes, sha, o.optString("role").ifEmpty { null }, urls)
     }

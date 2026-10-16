@@ -469,6 +469,8 @@ await call('native.file.save', { items: [{ path, name: 'out.bin' }] })
 | `native.model.cancel` | `{ id }` | 模型状态（幂等）。保留 `.part`，下次 `ensure` 续传 | `BAD_PARAMS` |
 | `native.model.remove` | `{ id }` | 模型状态（`absent`、占用 0）。先取消下载，再释放已加载的推理会话（识物是 `clip_unload`，排在重任务闸门后），最后删清单列出的文件、`.part` 与校验标记，不递归 | `BAD_PARAMS`；`INTERNAL`（有文件删不掉） |
 | `native.model.sources` | `{ id }` | `{ id, dir, files: [{ name, bytes, sha256, urls: string[] }], releasePages: string[] }`。**只读**，不改变下载行为；`urls` 只取随包清单，经 `NetPolicy` 白名单过滤并去掉查询串与片段（不回显带 token 的地址，debug 的 URL 覆盖也不回显）；`dir` 是相对应用 files 目录的模型目录；`releasePages` 由 github release 下载地址推出的 tag 页，去重 | `BAD_PARAMS` |
+| `native.corpus.couplet.info` | `{}` | `{ ready, count?, pools?: [{ pool, name, count }] }`；语料数据包 `couplet-corpus` 未安装时 `{ ready: false }` | 仅主 frame 限制 |
+| `native.corpus.couplet.get` | `{ pool, index }`（非负整数） | `{ id, up, down, banner, cats: string[], primary }` | `NOT_READY`（语料未装）、`BAD_PARAMS`（缺参或越界）、`INTERNAL`（包损坏）；详见 [对联语料库](couplet-corpus.md) |
 | 事件 `model.changed` | 原生推送 | 与 `native.model.status` 同形的模型状态；下载进度约 300 毫秒一条，开始、完成、失败、取消、删除、校验即时推送。管理器进程单例、桥每会话一个，后建的会话接管推送 | — |
 | `native.model.verify` | `{ id }` | 模型状态。重算 sha256（真机 STG-AL00 上 54MB 整次调用约 1.5 秒，含 0.5 秒的轮询粒度），通过则写校验标记变 `installed`；**不通过则删除该文件**并记 `HASH_MISMATCH`；文件不齐全则不动 | `BAD_PARAMS`；`NOT_READY`（正在下载） |
 

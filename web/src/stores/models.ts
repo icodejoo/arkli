@@ -17,10 +17,14 @@ const PURPOSE_CLASSIFY = '识别垃圾品类'
 /** 翻译模型的用途说明 */
 const PURPOSE_TRANSLATE = '多语翻译'
 
+/** 对联语料库的用途说明 */
+const PURPOSE_COUPLET_CORPUS = '对联随机语料（数据包）'
+
 /** 模型 id 到用途说明的映射（原生清单不带用途，这里补） */
 const MODEL_PURPOSES: Record<string, string> = {
   'siglip2-mnn-w8': PURPOSE_CLASSIFY,
   'nllb600m-un6-mnn-w6': PURPOSE_TRANSLATE,
+  'couplet-corpus': PURPOSE_COUPLET_CORPUS,
 }
 
 /** 没登记用途的模型的兜底文案 */
