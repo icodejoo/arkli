@@ -10,6 +10,10 @@ PKG=${PKG:-com.let188.arkli.debug}
 # 调试广播的 action 是固定字符串，不随包名变
 ACTION=com.let188.arkli.debug.CMD
 LIBU="$(cygpath -u "$LIB")"
+# 校验用调试广播，需要目标包在运行；没运行就先拉起（带 LAUNCHER 分类，别用 am start -n）
+if [ -z "$(adb shell pidof "$PKG" </dev/null | tr -d '')" ]; then
+  adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 </dev/null >/dev/null 2>&1; sleep 6
+fi
 IDS=("$@"); [ ${#IDS[@]} -eq 0 ] && IDS=($(ls "$LIBU" | grep -v "^_"))  # 跳过 _src 等暂存目录
 for id in "${IDS[@]}"; do
   adb shell "mkdir -p /data/local/tmp/mm/$id; run-as $PKG mkdir -p files/models/$id" </dev/null
