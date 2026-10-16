@@ -6,12 +6,12 @@
 # 产物的大小与 sha256 会打印出来，请同步到 app/build.gradle.kts 与 docs/research/qwen35-mnn-model.md。
 set -euo pipefail
 
-# 钉死的 MNN 提交（2026-10-15 的 master 头）。3.6.1 加载 Qwen3.5 权重会崩溃，所以不能用 release 版本，也不能用浮动的 master
-MNN_COMMIT="478c10e8d2351c7a4ea6f6243b97841a1eb39190"
 NDK_VERSION="28.2.13676358"
 ANDROID_PLATFORM="android-26"
 
 here="$(cd "$(dirname "$0")" && pwd)"
+# 钉死的 MNN 提交与源码包校验、下载解压逻辑，和 build-sherpa-mnn.sh 共用
+source "$here/mnn-source.sh"
 out="${1:-$here/out}"
 work="$here/.work"
 sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
@@ -25,16 +25,7 @@ strip_tool="$(ls "$ndk"/toolchains/llvm/prebuilt/*/bin/llvm-strip$exe | head -n 
 
 mkdir -p "$work" "$out"
 src="$work/MNN-$MNN_COMMIT"
-if [ ! -d "$src" ]; then
-    tarball="$work/mnn-$MNN_COMMIT.tar.gz"
-    url="https://codeload.github.com/alibaba/MNN/tar.gz/$MNN_COMMIT"
-    if command -v aria2c >/dev/null; then
-        aria2c -q -x16 -s16 --continue=true -d "$work" -o "$(basename "$tarball")" "$url"
-    else
-        curl -fL -o "$tarball" "$url"
-    fi
-    mkdir -p "$src" && tar xzf "$tarball" -C "$src" --strip-components=1
-fi
+ensure_mnn_source "$work"
 
 toolchain="$ndk/build/cmake/android.toolchain.cmake"
 

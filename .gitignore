@@ -31,3 +31,6 @@ app/src/main/kotlin/uniffi/
 # 本地文本模型 so 的构建中间产物
 native/mnn/.work/
 native/mnn/out/
+
+# scripts/mnn 的 Python 字节码缓存
+__pycache__/

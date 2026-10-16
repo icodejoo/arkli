@@ -1,0 +1,121 @@
+{
+  "_说明": "每个模型的转换配方，由 convert_all.py 读取。路径前缀：dl: 下载目录；split: NLLB 拆图目录；asr: 语音 fp32 模型目录；data: scripts/mnn/data。nllb 的 tokenizer 是 vocab_build.py 产出的 v2 词表；notice / model_json 由 convert_all.py 生成进产物目录。variants.<名>.quant 是 MNNConvert 的量化参数（graph 级可在 quant_by_graph 里覆盖）；所有变体共用 graphs 的输入输出名。",
+  "models": {
+    "siglip2": {
+      "group": "siglip2",
+      "display_name": "本地识物模型（SigLIP2）",
+      "license": "apache-2.0",
+      "release_tag": "siglip2-mnn-v1",
+      "default": "w8",
+      "graphs": [
+        {"name": "model", "input": "dl:siglip2/vision_model.onnx", "output": "model.mnn"}
+      ],
+      "copy": [],
+      "variants": {
+        "w8": {"id": "siglip2-mnn-w8", "quant": ["--weightQuantBits", "8"]},
+        "w6hqq": {"id": "siglip2-mnn-w6hqq", "quant": ["--weightQuantBits", "6", "--hqq"]},
+        "fp32": {"id": "siglip2-mnn-fp32", "quant": []}
+      }
+    },
+    "nllb": {
+      "group": "nllb",
+      "display_name": "本地翻译模型（NLLB-200 600M，6 语）",
+      "license": "cc-by-nc-4.0",
+      "release_tag": "nllb-mnn-v1",
+      "prepare": "nllb",
+      "tokenizer": "dl:nllb-tok-v2/tokenizer.json",
+      "default": "w6hqq",
+      "graphs": [
+        {"name": "encoder", "input": "split:encoder.onnx", "output": "encoder.mnn"},
+        {"name": "cross_kv", "input": "split:cross_kv.onnx", "output": "cross_kv.mnn"},
+        {"name": "decoder_step", "input": "split:decoder_step.onnx", "output": "decoder_step.mnn"}
+      ],
+      "common_args": ["--saveExternalData"],
+      "copy": ["split:embed.i8", "split:embed.scale", "dl:nllb-tok-v2/tokenizer.json", "data:nllb/LICENSE-CC-BY-NC-4.0.txt"],
+      "notice": "data:nllb/NOTICE.txt",
+      "model_json": {
+        "schema_version": 1,
+        "family": "m2m100",
+        "format": "mnn-split",
+        "files": {
+          "encoder": "encoder.mnn", "encoder_data": "encoder.mnn.weight",
+          "cross_kv": "cross_kv.mnn", "cross_kv_data": "cross_kv.mnn.weight",
+          "decoder": "decoder_step.mnn", "decoder_data": "decoder_step.mnn.weight",
+          "embed": "embed.i8", "embed_scale": "embed.scale",
+          "tokenizer": "tokenizer.json"
+        },
+        "languages": ["zh-CN", "en", "fr", "es", "ru", "ar"],
+        "lang_tokens": {"zh-CN": "zho_Hans", "en": "eng_Latn", "fr": "fra_Latn", "es": "spa_Latn", "ru": "rus_Cyrl", "ar": "arb_Arab"},
+        "max_input_tokens": 512,
+        "generation": {
+          "decoder_start_token_id": 2, "eos_token_id": 2, "pad_token_id": 1, "bad_token_ids": [],
+          "max_new_tokens": 256, "num_beams": 1, "length_penalty": 2.0, "min_length_ratio": 0.7, "no_repeat_ngram_size": 0
+        },
+        "execution": {"intra_threads": 0, "cpu_arena": true, "mem_pattern": true, "opt_level": 3, "prepacking": true}
+      },
+      "variants": {
+        "w6hqq": {"id": "nllb600m-un6-mnn-w6", "quant": ["--weightQuantBits", "6", "--hqq"],
+                  "quant_label": "mnn-w6-hqq", "quant_desc": "MNN 6-bit weight quantization (HQQ, per-channel; the int8 embedding table is separate)",
+                  "display_name": "NLLB-200 distilled 600M (UN six languages, MNN 6-bit)"},
+        "w8": {"id": "nllb600m-un6-mnn-w8", "quant": ["--weightQuantBits", "8"],
+               "quant_label": "mnn-w8", "quant_desc": "MNN 8-bit weight quantization (per-channel; the int8 embedding table is separate)",
+               "display_name": "NLLB-200 distilled 600M (UN six languages, MNN 8-bit)"}
+      }
+    },
+    "asr": {
+      "group": "asr",
+      "display_name": "本地语音输入模型（zipformer 中英）",
+      "license": "apache-2.0",
+      "release_tag": "asr-mnn-v1",
+      "default": "w8",
+      "graphs": [
+        {"name": "encoder", "input": "asr:encoder.onnx", "output": "encoder.mnn"},
+        {"name": "decoder", "input": "asr:decoder.onnx", "output": "decoder.mnn"},
+        {"name": "joiner", "input": "asr:joiner.onnx", "output": "joiner.mnn"}
+      ],
+      "copy": ["asr:tokens.txt"],
+      "variants": {
+        "w8": {"id": "asr-zipformer-zh-en-mnn-w8", "quant": ["--weightQuantBits", "8"]},
+        "w4b32hqq": {"id": "asr-zipformer-zh-en-mnn-w4", "quant": ["--weightQuantBits", "4", "--weightQuantBlock", "32", "--hqq"]},
+        "fp32": {"id": "asr-zipformer-zh-en-mnn-fp32", "quant": []}
+      }
+    },
+    "ocr": {
+      "group": "ocr",
+      "display_name": "本地文字识别模型（PP-OCRv5）",
+      "license": "apache-2.0",
+      "release_tag": "ocr-mnn-v1",
+      "default": "fp16",
+      "graphs": [
+        {"name": "det", "input": "dl:ocr/ch_PP-OCRv5_det_mobile.onnx", "output": "det.mnn"},
+        {"name": "rec", "input": "dl:ocr/ch_PP-OCRv5_rec_mobile.onnx", "output": "rec.mnn"},
+        {"name": "cls", "input": "dl:ocr/ch_PP-LCNet_x0_25_textline_ori_cls_mobile.onnx", "output": "cls.mnn"}
+      ],
+      "copy": ["data:ocr/LICENSE-Apache-2.0.txt", "data:ocr/NOTICE.txt"],
+      "ocr_dict": "dl:ocr/ch_PP-OCRv5_rec_mobile.onnx",
+      "variants": {
+        "fp16": {"id": "ppocrv5-mnn-fp16", "quant": ["--fp16"]},
+        "fp32": {"id": "ppocrv5-mnn-fp32", "quant": []},
+        "w8": {"id": "ppocrv5-mnn-w8", "quant": ["--weightQuantBits", "8"]}
+      }
+    },
+    "ocr6": {
+      "group": "ocr6",
+      "display_name": "本地文字识别模型（PP-OCRv6 small）",
+      "license": "apache-2.0",
+      "release_tag": "ocr-mnn-v2",
+      "default": "fp16",
+      "graphs": [
+        {"name": "det", "input": "dl:ocr6/det/inference.onnx", "output": "det.mnn"},
+        {"name": "rec", "input": "dl:ocr6/rec/inference.onnx", "output": "rec.mnn"},
+        {"name": "cls", "input": "dl:ocr/ch_PP-LCNet_x0_25_textline_ori_cls_mobile.onnx", "output": "cls.mnn"}
+      ],
+      "copy": ["data:ocr6/LICENSE-Apache-2.0.txt", "data:ocr6/NOTICE.txt"],
+      "ocr_dict_yaml": "dl:ocr6/rec/inference.yml",
+      "variants": {
+        "fp16": {"id": "ppocrv6-small-mnn-fp16", "quant": ["--fp16"]},
+        "fp32": {"id": "ppocrv6-small-mnn-fp32", "quant": []}
+      }
+    }
+  }
+}

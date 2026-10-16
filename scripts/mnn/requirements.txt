@@ -1,0 +1,11 @@
+# scripts/mnn 的开发机依赖（只在转换/评测时用，不进 APK）。
+# 用法：python -m venv <dir> && <dir>/Scripts/pip install -r requirements.txt，之后一律 python -I 运行脚本。
+# 注意：不要调用 pip 版 MNN 带的 `mnnconvert` 命令（会上报机器 ID 到阿里云并自动装 aliyun-log-python-sdk），
+# mnnconv.py 只走 _tools 底层函数，或用 ARKLI_MNNCONVERT 指向固定提交编出的 MNNConvert.exe。
+MNN==3.6.1
+onnx==1.23.2
+onnxruntime==1.31.0
+numpy==2.5.4
+tokenizers==0.23.3
+pillow==12.3.0
+psutil==7.2.2

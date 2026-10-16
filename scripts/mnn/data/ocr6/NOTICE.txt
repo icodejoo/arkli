@@ -1,0 +1,25 @@
+NOTICE
+
+This package contains optical character recognition (OCR) models converted from PP-OCRv6 small: text detection (det),
+text line orientation classification (cls) and text recognition (rec), plus the recognition character dictionary.
+
+Original work
+- Models: PP-OCRv6_small_det and PP-OCRv6_small_rec (ONNX exports), and the PP-LCNet_x0_25 text line orientation classifier
+  (cls.mnn, carried over unchanged from the PP-OCRv5 package ppocrv5-mnn-fp16; PP-OCRv6 has no separate classifier release)
+- Creators: PaddlePaddle / PaddleOCR team (Baidu)
+- Source of the ONNX files: Hugging Face PaddlePaddle/PP-OCRv6_small_det_onnx and PaddlePaddle/PP-OCRv6_small_rec_onnx
+  (inference.onnx), https://huggingface.co/PaddlePaddle
+- Upstream project: https://github.com/PaddlePaddle/PaddleOCR
+- License: Apache License 2.0 (see LICENSE-Apache-2.0.txt). Both Hugging Face model cards declare license: apache-2.0.
+
+Modifications made in this package
+- Converted from the original fp32 ONNX files to MNN with weights stored as fp16 (det.mnn, rec.mnn).
+  Activations are computed in fp32 at run time. No retraining or fine-tuning was done.
+- ppocr_keys.txt is the recognition dictionary, taken verbatim from PostProcess.character_dict in the rec inference.yml
+  (one character per line, 18,708 entries). The recognizer output has 18,710 classes: blank + dictionary + space.
+Outputs of the converted weights can differ slightly from those of the original models.
+
+Disclaimers
+- This package is not affiliated with, endorsed by, or sponsored by Baidu or PaddlePaddle.
+- The models are provided "as is", without warranty of any kind. Recognition results may be wrong.
+- This notice is not legal advice.

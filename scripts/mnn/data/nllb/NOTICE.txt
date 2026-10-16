@@ -1,0 +1,30 @@
+NOTICE
+
+This package contains a machine translation model derived from NLLB-200-distilled-600M, covering the six UN languages (zh, en, fr, es, ru, ar).
+
+Original work
+- Model: NLLB-200-distilled-600M (No Language Left Behind)
+- Creators: Meta FAIR, NLLB Team
+- Source: https://huggingface.co/facebook/nllb-200-distilled-600M
+- Paper: https://arxiv.org/abs/2207.04672
+- License: Creative Commons Attribution-NonCommercial 4.0 International, CC BY-NC 4.0 (see LICENSE-CC-BY-NC-4.0.txt).
+  The weights are for NON-COMMERCIAL use only; as stated on the original model card, the model is intended for
+  research and is not intended for production deployment. This package keeps the same license and the same restrictions.
+
+Modifications made in this package
+- Re-exported from the original fp32 weights (not from any previously quantized package).
+- Pruned the vocabulary to the six languages: {vocab_size} entries (the NLLB entries used by zh/en/fr/es/ru/ar text, all
+  single characters of those scripts, the merge intermediates the BPE tokenizer needs, plus a few supplemented entries)
+  and remapped token ids; the tokenizer was rebuilt as tokenizer.json, with a punctuation normalization step added
+  (curly quotes, guillemets, dashes and CJK brackets are mapped to plain ASCII punctuation, similar to Moses punctuation normalization).
+- Split the graphs: encoder, cross-attention key/value projection, and decoder step; the token embedding table was moved
+  out of the graphs and stored as int8 with a per-row scale (embed.i8 / embed.scale).
+- Quantization: {quant_desc}.
+- Stored the weights as external data files so that runtimes can memory-map them.
+- Added model.json (runtime manifest) and file checksums. No retraining or fine-tuning was done.
+Outputs of the modified weights can differ from those of the original model.
+
+Disclaimers
+- This package is not affiliated with, endorsed by, or sponsored by Meta or the NLLB Team.
+- The model is provided "as is", without warranty of any kind. Translations may be wrong or biased.
+- This notice is not legal advice.

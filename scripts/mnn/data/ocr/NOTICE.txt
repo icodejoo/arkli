@@ -1,0 +1,23 @@
+NOTICE
+
+This package contains optical character recognition (OCR) models converted from PP-OCRv5 (mobile): text detection (det),
+text line orientation classification (cls) and text recognition (rec), plus the recognition character dictionary.
+
+Original work
+- Models: PP-OCRv5 mobile (ch_PP-OCRv5_det_mobile, ch_PP-OCRv5_rec_mobile) and PP-LCNet_x0_25 text line orientation classifier
+- Creators: PaddlePaddle / PaddleOCR team (Baidu)
+- Source of the ONNX files: RapidOCR, https://modelscope.cn/models/RapidAI/RapidOCR (RapidAI/RapidOCR)
+- Upstream projects: https://github.com/PaddlePaddle/PaddleOCR and https://github.com/RapidAI/RapidOCR
+- License: Apache License 2.0 (see LICENSE-Apache-2.0.txt). Both upstream repositories are licensed Apache-2.0.
+
+Modifications made in this package
+- Converted from the original fp32 ONNX files to MNN with weights stored as fp16 (det.mnn, rec.mnn, cls.mnn).
+  Activations are computed in fp32 at run time. No retraining or fine-tuning was done.
+- ppocr_keys.txt is the recognition dictionary, taken verbatim from the "character" metadata field of the rec ONNX file
+  (one character per line, 18,383 entries). The recognizer output has 18,385 classes: blank + dictionary + space.
+Outputs of the converted weights can differ slightly from those of the original models.
+
+Disclaimers
+- This package is not affiliated with, endorsed by, or sponsored by Baidu, PaddlePaddle or RapidAI.
+- The models are provided "as is", without warranty of any kind. Recognition results may be wrong.
+- This notice is not legal advice.
