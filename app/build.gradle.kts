@@ -23,13 +23,29 @@ android {
         ndk { abiFilters += "arm64-v8a" }
     }
 
+    // 三种构建各用不同的 applicationId 与应用名，可同机并存、互不覆盖（数据目录、模型也各自独立）：
+    //   debug   com.let188.arkli.debug    「Arkli Debug」  调试包，带调试广播与探针
+    //   profile com.let188.arkli.profile  「Arkli Profile」 release 同款混淆，可被 profiler 抓取，用于性能与体积评估
+    //   release com.let188.arkli          「Arkli」         正式包
+    // 应用名放在各自源集的 strings.xml（src/debug、src/profile，release 用 main 的）。
     buildTypes {
+        debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // 仅为本机装机验证：用 debug keystore（AGP 自动生成于 ~/.android，不在仓库内）签名
             signingConfig = signingConfigs.getByName("debug")
+        }
+        // profile：沿用 release 的混淆与签名，不可调试，清单里声明 profileable 以便 profiler 与 simpleperf 抓取
+        create("profile") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".profile"
+            versionNameSuffix = "-profile"
+            matchingFallbacks += "release"
         }
     }
 
@@ -58,6 +74,8 @@ android {
             )
         }
         jniLibs {
+            // 压缩 APK 里的 .so：安装包更小（下载更省流量），代价是安装时把 .so 解压到 nativeLibraryDir、占更多存储
+            useLegacyPackaging = true
             // 即便依赖带了别的 ABI 也不打包
             excludes += setOf("**/armeabi-v7a/**", "**/x86/**", "**/x86_64/**", "**/mips/**", "**/mips64/**", "**/armeabi/**")
         }

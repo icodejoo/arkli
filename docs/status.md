@@ -240,3 +240,15 @@ OCR 工具页（依赖 4）。二维码扫码原型已做，待真机验证。
 - ARKLI 商标检索（USPTO / WIPO / 中国商标网，第 9、42、35 类）。
 - 注册 arkli.app / arkli.dev，GitHub 组织或账号变体；国内安卓应用市场同名检索。
 - 隐私政策：联网工具会向 IPinfo、RDAP/WHOIS 注册局、汇率接口、**维基媒体（历史上的今天，会发月日与 IP）**发送什么数据；噪音测量要 `RECORD_AUDIO`。
+
+## 构建变体（2026-10-16）
+
+三种构建用不同的 applicationId 与应用名，可同机并存、互不覆盖；数据目录和已下载的模型也各自独立（换变体要重新下载或重推模型）。
+
+| 变体 | applicationId | 应用名 | 说明 |
+|---|---|---|---|
+| debug | `com.let188.arkli.debug` | Arkli Debug | 可调试，带调试广播与探针；`run-as`、CDP 调试、`scripts/device-push-models.sh` 都针对它 |
+| profile | `com.let188.arkli.profile` | Arkli Profile | release 同款混淆与签名，不可调试，清单声明 `profileable`，用于性能与体积评估 |
+| release | `com.let188.arkli` | Arkli | 正式包；目前用 debug keystore 签名，仅供本机验证 |
+
+构建命令：`./gradlew :app:assembleDebug|assembleProfile|assembleRelease --offline`。`namespace` 仍是 `com.let188.arkli`（代码与资源包名不变）；FileProvider 等 authority 已用 `${applicationId}` 拼接，所以不会冲突。
