@@ -1,5 +1,6 @@
 package com.let188.arkli.speech
 
+import com.let188.arkli.ai.AiRecycle
 import com.let188.arkli.bridge.ArkliBridge
 import com.let188.arkli.files.FileEnv
 
@@ -19,6 +20,9 @@ object SpeechModule {
     /** 方法名：停止听写 */
     const val METHOD_STOP = "native.speech.stop"
 
+    /** 登记进 AI 回收时的名字（回收日志里显示） */
+    const val RECYCLE_ID = "speech"
+
     /**
      * 注册语音转文字方法。
      *
@@ -31,6 +35,8 @@ object SpeechModule {
         bridge.register(METHOD_STATUS, SpeechStatusHandler(service))
         bridge.register(METHOD_START, SpeechStartHandler(env.appContext, env.host, service, session))
         bridge.register(METHOD_STOP, SpeechStopHandler(session))
+        // 返回键退出、系统内存告急时与其他 AI 会话一起卸载（空闲 60 秒的自动释放仍然保留）
+        AiRecycle.attachExtra(RECYCLE_ID) { service.unload() }
         bridge.onClose { session.cancelNow() }
     }
 }

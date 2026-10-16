@@ -157,13 +157,23 @@ class SpeechService(context: Context) {
         }
     }
 
-    /** 立即释放识别器（有会话在用时不释放） */
-    fun unload() {
+    /**
+     * 立即释放识别器（有会话在用时不释放）。排在 [AiHeavyGate] 之后：释放 MNN 资源时不能和其他 MNN 推理并发，
+     * 否则和解码一样会崩。
+     *
+     * @return 确实释放了识别器返回 true；没加载或有会话在用返回 false
+     */
+    suspend fun unload(): Boolean = AiHeavyGate.run {
         synchronized(this) {
-            if (active > 0) return
+            if (active > 0) return@run false
             idleJob?.cancel()
-            recognizer?.let { runCatching { it.release() } }
+            val rec = recognizer ?: return@run false
+            runCatching { rec.release() }
             recognizer = null
+            Log.i(TAG, "识别器已释放")
+            // 识别器是整块 malloc 的，释放后分配器会留着不还；归还空闲堆页，进程占用才真正回落
+            runCatching { uniffi.arkli_ffi.purgeNativeHeap() }
+            true
         }
     }
 

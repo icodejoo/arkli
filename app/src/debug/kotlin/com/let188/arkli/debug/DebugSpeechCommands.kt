@@ -43,9 +43,9 @@ object DebugSpeechCommands {
     fun handle(cmd: String, ctx: Context) {
         val service = SpeechRuntime.get(ctx)
         when (cmd) {
-            "asrunload" -> {
-                service.unload()
-                Log.i(TAG, "DBGASR unloaded ${mem()}")
+            "asrunload" -> scope.launch {
+                val done = service.unload()
+                Log.i(TAG, "DBGASR unloaded=$done ${mem()}")
             }
             "asrwav" -> scope.launch {
                 runCatching { run(ctx) }.onFailure { Log.e(TAG, "DBGASR FAIL ${it.javaClass.simpleName}: ${it.message}", it) }

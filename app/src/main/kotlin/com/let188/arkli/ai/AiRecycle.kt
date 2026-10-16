@@ -32,6 +32,28 @@ object AiRecycle {
     @Volatile
     private var sessions: List<Pair<String, AiSessionControl>> = emptyList()
 
+    /** 非 [AiProvider] 的额外可回收项（如语音识别器）：id 到卸载函数，卸载函数返回是否真的卸掉了 */
+    private val extras = java.util.concurrent.ConcurrentHashMap<String, suspend () -> Boolean>()
+
+    /**
+     * 登记一个不属于提供者的可回收项；同 id 重复登记以最后一次为准。
+     *
+     * @param id 回收日志里显示的名字
+     * @param unload 卸载函数，真的卸掉了返回 true
+     */
+    fun attachExtra(id: String, unload: suspend () -> Boolean) {
+        extras[id] = unload
+    }
+
+    /**
+     * 取消登记一个额外可回收项（单测清理用；没登记过则什么都不做）。
+     *
+     * @param id [attachExtra] 用过的名字
+     */
+    fun detachExtra(id: String) {
+        extras.remove(id)
+    }
+
     /**
      * 登记当前的提供者；重复调用以最后一次为准。
      *
@@ -46,7 +68,11 @@ object AiRecycle {
      *
      * @return 实际卸掉的提供者 id
      */
-    suspend fun releaseNow(): List<String> = AiLifecyclePolicy.unloadAll(sessions)
+    suspend fun releaseNow(): List<String> {
+        val done = AiLifecyclePolicy.unloadAll(sessions).toMutableList()
+        for ((id, unload) in extras) if (runCatching { unload() }.getOrDefault(false)) done.add(id)
+        return done
+    }
 
     /**
      * 异步卸载全部已加载的 AI 会话，立刻返回。
@@ -54,7 +80,7 @@ object AiRecycle {
      * @param reason 触发原因，只写日志
      */
     fun releaseAll(reason: String) {
-        if (sessions.isEmpty()) return
+        if (sessions.isEmpty() && extras.isEmpty()) return
         scope.launch {
             val done = releaseNow()
             Log.i(AI_LOG_TAG, "回收 AI 会话（$reason）：已卸载 $done")

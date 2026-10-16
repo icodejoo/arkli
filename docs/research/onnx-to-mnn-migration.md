@@ -663,3 +663,22 @@ APK 只减 8.5MB 而 so 减了 27MB，是因为 APK 内对 so 做了 deflate 压
 **验证**：`cargo test --workspace` 全绿（arkli-ai 190 + 21 文档测试，arkli-ffi 17，arkli-core 1 + 1；忽略的是需要真库的用例）；`./gradlew :app:testDebugUnitTest --offline` 726 个用例 0 失败（1 个跳过）；`pnpm vitest run` 157 个文件 2183 个用例通过；`pnpm vue-tsc --noEmit` 无错误；`:app:assembleDebug --offline` 成功；`unzip -l` 确认 APK 里没有 `libonnxruntime*.so`、`libsherpa-onnx*.so`。没有上真机。
 
 **残留（合理）**：`scripts/mnn/*.py` 与 `requirements.txt` 的 `onnxruntime`（桌面转换与对拍用，不进 App）、`fetch.py` 里 sherpa-onnx 的 ASR 模型 release 地址（转换的上游来源）、`com.k2fsa.sherpa.mnn.OnlineRecognizer.kt` 注释里提到 sherpa-onnx 的来源说明、`core/crates/arkli-ai/tests/fixtures/translate/nllb_parity.json`（原 ORT 对拍夹具，现在没有测试引用，留作参考数据）。
+
+## 回收实测与修复（2026-10-16，STG-AL00，M9 之后）
+
+回收触发条件：返回键退到底、Activity 结束、`onTrimMemory` ≥ RUNNING_CRITICAL(15)；语音另有闲置 60 秒自动释放。Home 键切后台不卸载。
+
+| 场景 | PSS | 说明 |
+|---|---|---|
+| 新进程基线 | 123~134MB | |
+| 翻译+识物+OCR+Qwen 同时常驻 | 约 1.52GB | 增量约 1.4GB，没有互斥卸载，靠上面的触发条件回收 |
+| 再加语音 | 约 1.70GB | |
+| trim CRITICAL 后（修复前） | 113MB | 但语音没被卸载，只能等 60 秒闲置计时 |
+| 语音释放后（修复前） | 385→375MB | **bug**：识别器整块 malloc，释放后留在分配器里不还系统（Native Heap 已分配 46MB、空闲 233MB） |
+
+发现并修复三处：
+1. 语音释放没进 `AiHeavyGate`，和其他 MNN 推理并发会崩：`SpeechService.unload()` 改为 suspend 并排在闸门后。
+2. 语音没接入统一回收：`AiRecycle.attachExtra("speech")`，返回键退出与内存告急时一起卸载。
+3. 语音释放后不还堆：新增 UniFFI 导出 `purge_native_heap()`（`mem.rs`，`mallopt(M_PURGE)`），释放后调用。
+
+修复后：语音释放 386→145MB，闲置自动释放后 149MB；五个模型全部加载 1.70GB，trim CRITICAL 后 135MB，回收日志 `已卸载 [local-clip, local-ocr, local-nllb, local-qwen, speech]`。

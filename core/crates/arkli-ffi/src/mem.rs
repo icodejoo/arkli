@@ -29,9 +29,27 @@ pub fn purge_heap() -> bool {
     }
 }
 
+/// 给 Kotlin 用：请求分配器归还空闲堆页。
+///
+/// 用于不经过本库的原生模型（如 sherpa-mnn 语音识别器）释放之后：它们整块 malloc 的内存释放后会留在分配器里、
+/// 不还给系统，进程占用降不下来。
+///
+/// 返回：确实向分配器发出请求返回 `true`（安卓且调用成功），其余情况 `false`。
+///
+/// 示例（Kotlin）：`uniffi.arkli_ffi.purgeNativeHeap()`
+#[uniffi::export]
+pub fn purge_native_heap() -> bool {
+    purge_heap()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn 导出函数与内部实现一致() {
+        assert_eq!(purge_native_heap(), purge_heap());
+    }
 
     #[test]
     fn 宿主机上归还堆是空操作() {
