@@ -12,10 +12,8 @@ export const MSG_UNRECOGNIZED = '部分字符无法识别'
 export const MSG_BAD_PARAMS = '文字太长或语言不支持'
 /** 页面提示文案：其它失败 */
 export const MSG_FAILED = '翻译没成功，稍后再试'
-/** 横幅提示：L1 模型未安装 */
-export const MSG_MODEL_NOTICE = '无可用模型，去查看'
-/** 被用户取消的原生错误码 */
-export const CODE_CANCELLED = 'CANCELLED'
+/** 页面提示文案：找不到所选模型对应的翻译提供者（原生太旧或不在 App 里） */
+export const MSG_NO_PROVIDER = '当前模型暂不能翻译'
 
 /** 默认语言组合 */
 export function defaultPair(): LangPair {
@@ -62,7 +60,7 @@ export function writePair(pair: LangPair): void {
 }
 
 /**
- * 把翻译失败归类成给用户看的话。
+ * 把翻译失败归类成给用户看的话；参数不合法时优先显示原生给的中文原因（如超过字数上限）。
  *
  * @param e 捕获到的错误（带原生 `code`）
  * @returns 人话提示
@@ -71,23 +69,30 @@ export function writePair(pair: LangPair): void {
 export function translateErrorMessage(e: unknown): string {
   const code = (e as { code?: string } | null)?.code
   if (code === 'NOT_READY') return MSG_NOT_READY
-  if (code === 'BAD_PARAMS') return MSG_BAD_PARAMS
+  if (code === 'BAD_PARAMS') return readableMessage(e) ?? MSG_BAD_PARAMS
   return MSG_FAILED
 }
 
-/**
- * 是不是用户主动取消。
- *
- * @param e 捕获到的错误
- * @returns 是 CANCELLED 或 AbortError 为 true
- */
-export function isCancelled(e: unknown): boolean {
-  const x = e as { code?: string; name?: string } | null
-  return x?.code === CODE_CANCELLED || x?.name === 'AbortError'
+/** 含中文字符（原生给的人话提示都是中文，技术性英文消息不展示） */
+const HAS_CJK = /[一-鿿]/
+
+/** 取错误里原生给的中文提示（如“该模型最多翻译 300 字，请改用本地翻译模型”）；没有或不是中文为 undefined */
+function readableMessage(e: unknown): string | undefined {
+  const msg = (e as { message?: string } | null)?.message
+  return msg && HAS_CJK.test(msg) ? msg : undefined
 }
 
-/** 预热/卸载的提供者 id（原生本地 NLLB） */
-export const NLLB_PROVIDER = 'local-nllb'
+/**
+ * 这一轮翻译是不是仍是最新一轮：异步等待之后写结果前必须检查，免得被取消或被新请求取代的旧结果覆盖新状态。
+ *
+ * @param mine 本轮开始时领到的序号
+ * @param latest 当前最新序号
+ * @returns 仍是最新为 true
+ * @example if (!isLatestRun(my, seq)) return
+ */
+export function isLatestRun(mine: number, latest: number): boolean {
+  return mine === latest
+}
 
 /**
  * 结果下方的红色提示文案。

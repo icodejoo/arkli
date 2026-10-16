@@ -3,7 +3,7 @@ import type { ImageClassifyItem, ImageClassifyResult } from '@/native/ai'
 import type { ModelStateName } from '@/native/model'
 
 /** 识别用的模型 id（对应原生清单） */
-export const MODEL_ID = 'siglip2-q4_half'
+export const MODEL_ID = 'siglip2-mnn-w8'
 /** 每次请求的候选条数 */
 export const TOP_K = 3
 /** 连续识别超过这个次数提示歇一会儿 */

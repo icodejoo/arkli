@@ -17,6 +17,8 @@
   --c-text: #1b1d22;
   --c-text-muted: #6b7280;
   --c-primary: #3b6cf6;
+  /* 底栏 AI 图标的醒目强调色（与主蓝区分，深色模式提亮） */
+  --c-ai-accent: #ff6a00;
   --c-on-primary: #ffffff;
   --c-ok: #15803d;
   --c-error: #dc2626;
@@ -71,6 +73,7 @@
   --c-text: #e8eaee;
   --c-text-muted: #9aa1ae;
   --c-primary: #7b9cff;
+  --c-ai-accent: #ff9a3d;
   --c-on-primary: #10131a;
   --c-ok: #4ade80;
   --c-error: #f87171;

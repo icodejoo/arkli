@@ -4,12 +4,14 @@ type Mod = typeof import('./aiImage')
 type AiMod = typeof import('@/native/ai')
 let aiErrorText: Mod['aiErrorText']
 let resolveImagePath: Mod['resolveImagePath']
+let handleNotReady: Mod['handleNotReady']
+let MSG_TEMP_UNAVAILABLE: Mod['MSG_TEMP_UNAVAILABLE']
 let AiNotReadyError: AiMod['AiNotReadyError']
 
 // bridge 在导入时就读 window，node 环境先垫一个空对象
 beforeAll(async () => {
   vi.stubGlobal('window', {})
-  ;({ aiErrorText, resolveImagePath } = await import('./aiImage'))
+  ;({ aiErrorText, resolveImagePath, handleNotReady, MSG_TEMP_UNAVAILABLE } = await import('./aiImage'))
   ;({ AiNotReadyError } = await import('@/native/ai'))
 })
 
@@ -33,5 +35,21 @@ describe('aiErrorText', () => {
     expect(aiErrorText(new AiNotReadyError('ocr'))).toBe('模型未就绪')
     expect(aiErrorText(new Error('炸了'))).toBe('处理失败：炸了')
     expect(aiErrorText(null)).toBe('处理失败')
+  })
+})
+
+describe('handleNotReady', () => {
+  it('探测后仍显示就绪：重新探测并弹通用提示，不含下载字样', async () => {
+    const refresh = vi.fn(async () => {})
+    const toast = vi.fn()
+    await handleNotReady(refresh, () => true, toast)
+    expect(refresh).toHaveBeenCalledTimes(1)
+    expect(toast).toHaveBeenCalledWith(MSG_TEMP_UNAVAILABLE)
+    expect(MSG_TEMP_UNAVAILABLE).not.toMatch(/下载|校验/)
+  })
+  it('探测后已不就绪：提示条会出现，不再弹提示', async () => {
+    const toast = vi.fn()
+    await handleNotReady(async () => {}, () => false, toast)
+    expect(toast).not.toHaveBeenCalled()
   })
 })

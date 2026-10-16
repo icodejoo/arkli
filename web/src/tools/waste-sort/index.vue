@@ -3,7 +3,7 @@
 import { computed, defineAsyncComponent, ref } from "vue";
 import { useRoute } from "vue-router";
 import ModelPicker from "@/shared/ModelPicker.vue";
-import { MODE_CAMERA, MODE_QUERY, findTool } from "@/tools/registry";
+import { MODE_CAMERA, MODE_QUERY, findTool, hasAiChoices } from "@/tools/registry";
 import { CATS, WASTE_ITEMS } from "./data";
 import { countByCat, getCat, search } from "./logic";
 
@@ -13,8 +13,8 @@ const Classify = defineAsyncComponent(
 );
 /** 本工具 id */
 const TOOL_ID = "waste-sort";
-/** 识别模式下可选的模型 */
-const models = findTool(TOOL_ID)?.models ?? [];
+/** 识别模式下是否有模型可选（由 registry 声明的 tasks 决定） */
+const hasPicker = hasAiChoices(findTool(TOOL_ID));
 /** 当前路由 */
 const route = useRoute();
 /** 识别子页实例，底部动作栏用它触发拍照/相册 */
@@ -116,7 +116,7 @@ const counts = computed(() => countByCat());
             placeholder
             :safe-area-inset-bottom="false"
         >
-            <model-picker v-if="models.length" :tool-id="TOOL_ID" :models="models" />
+            <model-picker v-if="hasPicker" :tool-id="TOOL_ID" />
 
             <van-action-bar-icon
                 plain

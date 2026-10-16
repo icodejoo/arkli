@@ -1,4 +1,6 @@
 import type { Component } from 'vue'
+import type { AiEntry, AiLayer, AiTask } from '@/native/ai'
+import { AI_METHODS } from '@/native/aiMethods'
 
 /** 工具元信息 */
 export interface ToolMeta {
@@ -14,8 +16,16 @@ export interface ToolMeta {
    */
   tags?: string[]
   /**
-   * AI 工具可选的模型（只需声明 L1/L3；L2、L4 占位由选择器统一补）。
-   * @example models: [{ layer: 'L1', modelId: 'siglip2-q4_half', title: '识物 SigLIP2', desc: '识别垃圾品类' }]
+   * AI 工具需要的任务。模型选择器的可选项由 AI 目录按这里自动算出：只有报价里含这些任务的提供者才会出现，
+   * 层（L1~L4）、标题、约束都来自原生 `native.ai.providers`，这里不再逐个列模型。
+   * @example tasks: ['classifyImage']
+   * @example tasks: [{ task: 'translate', entry: 'native.ai.translate' }] // 只要带语言对的翻译，不要交接
+   */
+  tasks?: ToolAiTask[]
+  /**
+   * 过渡：工具用到的 L1 清单模型（`assets/ai/models.json` 的 id）。原生已有提供者的（如识物），目录按 `modelId`
+   * 把它并到那个提供者上、沿用这里的文案；原生还没有提供者的（OCR、超分等），目录直接按清单状态出一项。
+   * @example models: [{ modelId: 'siglip2-mnn-w8', title: '识物 SigLIP2（MNN）', desc: '识别垃圾品类' }]
    */
   models?: ToolModelOption[]
   /** 为 true 时标题栏显示摄像头按钮，可在普通模式与拍照识别模式间切换；模型选择器仅在识别模式出现 */
@@ -26,23 +36,20 @@ export interface ToolMeta {
   load: () => Promise<{ default: Component }>
 }
 
-/** 模型层级：L1 本地小模型 / L2 本地大模型 / L3 本机 AI / L4 远端 API */
-export type ModelLayer = 'L1' | 'L2' | 'L3' | 'L4'
+/** 模型层级：L1 本地小模型 / L2 本地大模型 / L3 本机 AI / L4 远端 API（与原生 `layer` 一致） */
+export type ModelLayer = AiLayer
 
-/** 工具可选的一个模型（选择器的一行） */
+/** 工具需要的一项 AI 任务：只写任务名表示任何入口都行；写对象可限定入口 */
+export type ToolAiTask = AiTask | { task: AiTask; entry: AiEntry }
+
+/** 过渡：工具声明的一个 L1 清单模型（选择器一行的文案来源） */
 export interface ToolModelOption {
-  /** 所属层级 */
-  layer: ModelLayer
-  /** L1/L2 为清单里的模型 id；L3 为 AI 提供者 id；同时是选择结果的持久化值 */
+  /** 清单里的模型 id */
   modelId: string
   /** 模型名（不含层名），如「识物 SigLIP2」 */
   title: string
   /** 一句话说明模型作用，如「识别垃圾品类」 */
   desc: string
-  /** 该模型支持的语言码；省略或 'all' 表示不限语言（如在线大模型） */
-  languages?: readonly string[] | 'all'
-  /** 是否支持源语言自动检测（auto）；省略为不支持 */
-  sourceAuto?: boolean
 }
 
 /** 路由 query 里表示模式的键 */
@@ -121,7 +128,7 @@ export const tools: ToolMeta[] = [
   { id: 'sketchpad', name: '画板', description: '手指涂画，撤销重做，保存成图片', load: () => import('./sketchpad/index.vue') },
   { id: 'ledger', name: '记账', description: '记收支，按月看分类占比，可导出备份', load: () => import('./ledger/index.vue') },
   { id: 'express-track', name: '快递识别', description: '识别单号属于哪家快递，跳官网查询', load: () => import('./express-track/index.vue') },
-  { id: 'waste-sort', name: '垃圾分类', description: '查物品该扔哪个桶，或拍照识别（标题栏摄像头切换）', tags: [TAG_AI], camera: true, models: [{ layer: 'L1', modelId: 'siglip2-q4_half', title: '识物 SigLIP2', desc: '识别垃圾品类' }], load: () => import('./waste-sort/index.vue') },
+  { id: 'waste-sort', name: '垃圾分类', description: '查物品该扔哪个桶，或拍照识别（标题栏摄像头切换）', tags: [TAG_AI], camera: true, tasks: ['classifyImage'], models: [{ modelId: 'siglip2-mnn-w8', title: '识物 SigLIP2（MNN）', desc: '识别垃圾品类' }], load: () => import('./waste-sort/index.vue') },
   { id: 'wifi-qr', name: 'WiFi 二维码', description: '输入 WiFi 信息生成可扫码连接的二维码', load: () => import('./wifi-qr/index.vue') },
   { id: 'sys-helper', name: '系统调试助手', description: '按参数生成 ADB 命令，可一键复制', load: () => import('./sys-helper/index.vue') },
   { id: 'personality-test', name: '人格倾向测试', description: '28 道原创题，测出十六型人格倾向', load: () => import('./personality-test/index.vue') },
@@ -134,9 +141,8 @@ export const tools: ToolMeta[] = [
     description: '本地模型离线翻译，中英法西俄阿互译',
     tags: [TAG_AI],
     pickerInPage: true,
-    models: [
-      { layer: 'L1', modelId: 'nllb600m-un6-ccm-int4', title: 'NLLB 翻译', desc: '中英法西俄阿互译', languages: ['zh-CN', 'en', 'fr', 'es', 'ru', 'ar'], sourceAuto: true },
-    ],
+    // 页面调 native.ai.translate（要语言对），所以只要走该入口的翻译；交接类的 translate 经 run，不在此列
+    tasks: [{ task: 'translate', entry: AI_METHODS.translate }],
     load: () => import('./translate/index.vue'),
   },
   { id: 'linux-manual', name: 'Linux 指令手册', description: '约 137 条常用命令中文速查，可搜索，示例一键复制', load: () => import('./linux-manual/index.vue') },
@@ -147,13 +153,13 @@ export const tools: ToolMeta[] = [
   { id: 'speed-test', name: '网速测试', description: '测 TCP 延迟与下行速率', load: () => import('./speed-test/index.vue') },
   { id: 'bilibili-cover', name: 'B 站封面', description: '提取并保存 B 站视频封面', load: () => import('./bilibili-cover/index.vue') },
   { id: 'exchange-rate', name: '汇率换算', description: '约 30 种币种，支持缓存与手动汇率', load: () => import('./exchange-rate/index.vue') },
-  { id: 'ocr', name: '文字识别', description: '图片转文字，逐行复制（需本地模型）', tags: [TAG_AI], models: [{ layer: 'L1', modelId: 'ocr', title: 'OCR', desc: '图片转文字' }], load: () => import('./ocr/index.vue') },
-  { id: 'image-upscale', name: '图像放大', description: '2×/4× 超分，前后对比（需本地模型）', tags: [TAG_AI], models: [{ layer: 'L1', modelId: 'image-upscale', title: '超分', desc: '2×/4× 放大' }], load: () => import('./image-upscale/index.vue') },
-  { id: 'object-count', name: '对象计数', description: '数图里有几个物体，可点击修正', tags: [TAG_AI], models: [{ layer: 'L1', modelId: 'object-count', title: '对象计数', desc: '数图里的物体' }], load: () => import('./object-count/index.vue') },
+  { id: 'ocr', name: '文字识别', description: '图片转文字，逐行复制（需本地模型）', tags: [TAG_AI], tasks: [{ task: 'ocr', entry: AI_METHODS.ocr }], load: () => import('./ocr/index.vue') },
+  { id: 'image-upscale', name: '图像放大', description: '2×/4× 超分，前后对比（需本地模型）', tags: [TAG_AI], models: [{ modelId: 'image-upscale', title: '超分', desc: '2×/4× 放大' }], load: () => import('./image-upscale/index.vue') },
+  { id: 'object-count', name: '对象计数', description: '数图里有几个物体，可点击修正', tags: [TAG_AI], models: [{ modelId: 'object-count', title: '对象计数', desc: '数图里的物体' }], load: () => import('./object-count/index.vue') },
   { id: 'id-photo', name: '证件照', description: '裁剪换底色，纯色背景可自动抠图', load: () => import('./id-photo/index.vue') },
-  { id: 'table-extract', name: '图片转表格', description: '识别表格，复制 TSV/CSV，也能粘贴文字拆表', load: () => import('./table-extract/index.vue') },
-  { id: 'face-fusion', name: '人脸融合', description: '两张脸按比例合成（需本地模型）', tags: [TAG_AI], models: [{ layer: 'L1', modelId: 'face-fusion', title: '人脸融合', desc: '两张脸合成' }], load: () => import('./face-fusion/index.vue') },
-  { id: 'colorize', name: '黑白上色', description: '给黑白照上色（需本地模型）', tags: [TAG_AI], models: [{ layer: 'L1', modelId: 'colorize', title: '黑白上色', desc: '给黑白照上色' }], load: () => import('./colorize/index.vue') },
+  { id: 'table-extract', name: '图片转表格', description: '识别表格，复制 TSV/CSV，也能粘贴文字拆表', tags: [TAG_AI], tasks: [{ task: 'ocr', entry: AI_METHODS.ocr }], load: () => import('./table-extract/index.vue') },
+  { id: 'face-fusion', name: '人脸融合', description: '两张脸按比例合成（需本地模型）', tags: [TAG_AI], models: [{ modelId: 'face-fusion', title: '人脸融合', desc: '两张脸合成' }], load: () => import('./face-fusion/index.vue') },
+  { id: 'colorize', name: '黑白上色', description: '给黑白照上色（需本地模型）', tags: [TAG_AI], models: [{ modelId: 'colorize', title: '黑白上色', desc: '给黑白照上色' }], load: () => import('./colorize/index.vue') },
   { id: 'pomodoro', name: '番茄时钟', description: '专注休息轮换，到点系统提醒', load: () => import('./pomodoro/index.vue') },
   { id: 'notify-self', name: '通知自己', description: '立即或定时给自己发通知', load: () => import('./notify-self/index.vue') },
   { id: 'tts', name: '文字转语音', description: '朗读文字，可存成音频分享', load: () => import('./tts/index.vue') },
@@ -179,4 +185,15 @@ export const tools: ToolMeta[] = [
  */
 export function findTool(id: string): ToolMeta | undefined {
   return tools.find((t) => t.id === id)
+}
+
+/**
+ * 工具是否带模型选择器：带 ai 标签，且声明了任务或过渡清单模型。
+ *
+ * @param meta 工具元信息
+ * @returns 需要选择器时为 true
+ * @example hasAiChoices(findTool('translate')) // true
+ */
+export function hasAiChoices(meta: ToolMeta | undefined): boolean {
+  return !!meta?.tags?.includes(TAG_AI) && (!!meta.tasks?.length || !!meta.models?.length)
 }

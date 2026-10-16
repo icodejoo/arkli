@@ -34,7 +34,7 @@ function result(over: Partial<ImageClassifyResult> = {}): ImageClassifyResult {
     uncertain: false,
     elapsedMs: 100,
     inferMs: 80,
-    modelId: 'siglip2-q4_half',
+    modelId: 'siglip2-mnn-w8',
     ...over,
   }
 }

@@ -2,21 +2,19 @@ import { describe, expect, it, vi } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import type { ModelStatus } from '@/native/model'
-import { TAG_AI, tools, type ToolModelOption } from '@/tools/registry'
+import { TAG_AI, hasAiChoices, tools } from '@/tools/registry'
 import ModelPickerList from './ModelPickerList.vue'
+import { L4_OPENAI_ID, type CatalogItem } from './aiCatalog'
 import {
-  L4_OPENAI_ID,
   MSG_DOWNLOADING,
   MSG_NOT_READY,
   buildDesc,
   buildItems,
   buildTitle,
   decideAction,
-  filterLayers,
   formatMB,
   handlePick,
   readChoice,
-  resolveChoice,
   stateToStatus,
   writeChoice,
   type PickDeps,
@@ -28,8 +26,16 @@ function st(state: ModelStatus['state'], downloaded = 0): ModelStatus {
   return { id: 'm', displayName: 'm', version: '1', state, totalBytes: 54662805, downloadedBytes: downloaded, diskBytes: downloaded }
 }
 
-const L1: ToolModelOption = { layer: 'L1', modelId: 'm', title: '识物 SigLIP2', desc: '识别垃圾品类' }
-const L3: ToolModelOption = { layer: 'L3', modelId: 'intent-handoff', title: '系统应用交接', desc: '交给系统应用' }
+/** 造一个目录项 */
+function item(over: Partial<CatalogItem>): CatalogItem {
+  return { key: 'm', layer: 'L1', title: '识物 SigLIP2', desc: '识别垃圾品类', status: 'ready', totalBytes: 54662805, downloadedBytes: 54662805, entries: {}, selectable: true, session: false, ...over }
+}
+/** 本地小模型项（有提供者） */
+const L1 = item({ key: 'local-clip', providerId: 'local-clip', modelId: 'siglip2-mnn-w8' })
+/** 本机 AI 项 */
+const L3 = item({ key: 'intent-handoff', providerId: 'intent-handoff', layer: 'L3', title: '系统应用交接', desc: '摘要', totalBytes: 0, downloadedBytes: 0 })
+/** L4 占位 */
+const L4 = item({ key: L4_OPENAI_ID, layer: 'L4', title: 'OpenAI', desc: '在线模型', status: 'unsupported', totalBytes: 0, downloadedBytes: 0, selectable: false })
 
 describe('状态映射', () => {
   it('五种原生状态', () => {
@@ -57,21 +63,22 @@ describe('文案', () => {
   })
 })
 
-describe('层过滤与构建', () => {
-  it('L3 提供者不可用就隐藏', () => {
-    expect(filterLayers([L1, L3], [])).toEqual([L1])
-    expect(filterLayers([L1, L3], ['intent-handoff'])).toEqual([L1, L3])
+describe('目录项转行', () => {
+  it('标题带层名；选中且就绪的着色；本机 AI 备注写可用；占位未接入', () => {
+    const items = buildItems([L1, L3, L4], 'local-clip')
+    expect(items.map((i) => i.layer)).toEqual(['L1', 'L3', 'L4'])
+    expect(items[0]).toMatchObject({ id: 'local-clip', modelId: 'siglip2-mnn-w8', status: 'selected', title: '本地小模型-识物 SigLIP2', desc: '识别垃圾品类 · 已安装 54.7MB' })
+    expect(items[1]).toMatchObject({ status: 'ready', title: '本机AI-系统应用交接', desc: '摘要 · 可用' })
+    expect(items[2]).toMatchObject({ id: L4_OPENAI_ID, status: 'unsupported', desc: '未接入' })
   })
-  it('L2/L4 占位总在，置灰未接入；选中着色', () => {
-    const items = buildItems([L1, L3], { statuses: { m: st('installed') }, providerIds: ['intent-handoff'], selected: 'm' })
-    expect(items.map((i) => i.layer)).toEqual(['L1', 'L2', 'L3', 'L4'])
-    expect(items[0]).toMatchObject({ status: 'selected', title: '本地小模型-识物 SigLIP2' })
-    expect(items[1].status).toBe('unsupported')
-    expect(items[2].status).toBe('ready')
-    expect(items[3]).toMatchObject({ id: L4_OPENAI_ID, desc: '未接入' })
+  it('未下载、下载中按目录状态展示；选中但没装好的不着色', () => {
+    const missing = buildItems([item({ key: 'local-qwen', layer: 'L2', title: 'Qwen', desc: '摘要', status: 'missing' })], 'local-qwen')[0]
+    expect(missing).toMatchObject({ status: 'missing', title: '本地大模型-Qwen', desc: '摘要 · 未下载，点击下载' })
+    const loading = buildItems([item({ status: 'loading', downloadedBytes: 20224238 })], null)[0]
+    expect(loading).toMatchObject({ status: 'loading', desc: '识别垃圾品类 · 正在下载 37%' })
   })
-  it('清单里查不到的 L1 显示未接入', () => {
-    const items = buildItems([L1], { statuses: {}, providerIds: [], selected: null })
+  it('清单里查不到的过渡项显示未接入', () => {
+    const items = buildItems([item({ key: 'model:ocr', modelId: 'ocr', status: 'unsupported', totalBytes: 0, downloadedBytes: 0 })], 'model:ocr')
     expect(items[0]).toMatchObject({ status: 'unsupported', desc: '未接入' })
   })
 })
@@ -81,8 +88,8 @@ function deps(): PickDeps {
   return { select: vi.fn(), download: vi.fn().mockResolvedValue(undefined), notifyDownloading: vi.fn(), toast: vi.fn() }
 }
 /** 造一行 */
-function row(status: PickerItem['status']): PickerItem {
-  return { id: 'm', layer: 'L1', title: 't', desc: 'd', status, progress: 0 }
+function row(status: PickerItem['status'], modelId?: string): PickerItem {
+  return { id: 'm', modelId, layer: 'L1', title: 't', desc: 'd', status, progress: 0 }
 }
 
 describe('点击分支', () => {
@@ -97,6 +104,11 @@ describe('点击分支', () => {
     expect(await handlePick(row('missing'), d)).toBe('download')
     expect(d.download).toHaveBeenCalledWith('m')
     expect(d.notifyDownloading).toHaveBeenCalledTimes(1)
+  })
+  it('提供者项下载的是它的清单模型 id，不是提供者 id', async () => {
+    const d = deps()
+    await handlePick({ ...row('missing', 'qwen35-0.8b-mnn-q4'), id: 'local-qwen' }, d)
+    expect(d.download).toHaveBeenCalledWith('qwen35-0.8b-mnn-q4')
   })
   it('下载中：只提示，不重复下载', async () => {
     const d = deps()
@@ -120,13 +132,6 @@ describe('选择结果', () => {
     const m = new Map<string, string>()
     return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v) } as Storage
   }
-  it('默认第一个 L1；存值有效则用存值；失效回落', () => {
-    const a: ToolModelOption = { ...L1, modelId: 'a' }
-    expect(resolveChoice(null, [a, L1])).toBe('a')
-    expect(resolveChoice('m', [a, L1])).toBe('m')
-    expect(resolveChoice('gone', [a, L1])).toBe('a')
-    expect(resolveChoice(null, [])).toBeNull()
-  })
   it('读写与异常吞掉', () => {
     const s = mem()
     writeChoice('t', 'x', s)
@@ -146,14 +151,14 @@ describe('选择结果', () => {
 
 describe('列表组件渲染', () => {
   it('各状态带对应 class，loading 有加载图标', async () => {
-    const items = buildItems([L1], { statuses: { m: st('downloading', 1000) }, providerIds: [], selected: null })
+    const items = buildItems([item({ status: 'loading', downloadedBytes: 1000 }), item({ key: 'model:ocr', status: 'unsupported' })], null)
     const html = await renderToString(createSSRApp({ render: () => h(ModelPickerList, { items }) }))
     expect(html).toContain('mp__item--loading')
     expect(html).toContain('mp__item--unsupported')
     expect(html).toContain('本地小模型-识物 SigLIP2')
     const ready = await renderToString(
       createSSRApp({
-        render: () => h(ModelPickerList, { items: buildItems([L1], { statuses: { m: st('installed') }, providerIds: [], selected: 'm' }) }),
+        render: () => h(ModelPickerList, { items: buildItems([L1], 'local-clip') }),
       }),
     )
     expect(ready).toContain('mp__item--selected')
@@ -161,8 +166,12 @@ describe('列表组件渲染', () => {
 })
 
 describe('注册表', () => {
-  it('带 ai 标签的工具都声明了可选模型', () => {
-    const missing = tools.filter((t) => t.tags?.includes(TAG_AI) && !t.models?.length).map((t) => t.id)
+  it('带 ai 标签的工具都声明了任务或过渡清单模型', () => {
+    const missing = tools.filter((t) => t.tags?.includes(TAG_AI) && !hasAiChoices(t)).map((t) => t.id)
     expect(missing).toEqual([])
+  })
+  it('没有 ai 标签的工具不出选择器', () => {
+    expect(hasAiChoices(tools.find((t) => t.id === 'base64'))).toBe(false)
+    expect(hasAiChoices(undefined)).toBe(false)
   })
 })

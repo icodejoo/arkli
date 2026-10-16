@@ -10,25 +10,12 @@
  */
 import { call as bridgeCall, isNativeAvailable, type CallOptions } from './bridge'
 import { NativeUnavailableError } from './system'
+import { AI_METHODS } from './aiMethods'
 
 /** 原生调用函数形状，便于注入测试 */
 export type CallFn = <T = unknown>(method: string, params?: Record<string, unknown>, options?: { timeoutMs?: number }) => Promise<T>
 
-/** 方法名常量 */
-export const AI_METHODS = {
-  status: 'native.ai.status',
-  providers: 'native.ai.providers',
-  run: 'native.ai.run',
-  ocr: 'native.ai.ocr',
-  upscale: 'native.ai.upscale',
-  classify: 'native.ai.classify',
-  matte: 'native.ai.matte',
-  fuse: 'native.ai.fuse',
-  colorize: 'native.ai.colorize',
-  translate: 'native.ai.translate',
-  warmup: 'native.ai.warmup',
-  unload: 'native.ai.unload',
-} as const
+export { AI_METHODS }
 
 /** 模型名 */
 export type AiModel = 'ocr' | 'upscale' | 'classify' | 'matte' | 'fuse' | 'colorize'
@@ -56,16 +43,20 @@ export interface OcrBlock {
   score: number
 }
 
-/** OCR 结果 */
+/** OCR 结果（`native.ai.ocr` / `native.ai.invoke` 的 `ocr` 任务） */
 export interface OcrResult {
-  /** 文字块 */
+  /** 文字块，按阅读顺序 */
   blocks: OcrBlock[]
-  /** 原图宽 */
+  /** 送进识别的图宽（`box` 坐标系的基准；原图过大时是降采样后的宽） */
   width: number
-  /** 原图高 */
+  /** 送进识别的图高 */
   height: number
-  /** 耗时毫秒 */
+  /** 总耗时毫秒（含解码） */
   elapsedMs: number
+  /** 其中识别部分毫秒 */
+  inferMs?: number
+  /** 模型标识，如 `ppocrv6-small-mnn-fp16` */
+  modelId?: string
 }
 
 /** 带路径的图片结果 */
@@ -100,6 +91,21 @@ export class AiNotReadyError extends Error {
 /** 全部为 false 的状态 */
 function emptyStatus(): AiStatus {
   return { models: { ocr: false, upscale: false, classify: false, matte: false, fuse: false, colorize: false } }
+}
+
+/** 原生“已取消”错误码 */
+export const AI_CODE_CANCELLED = 'CANCELLED'
+
+/**
+ * 是不是主动取消（原生回 CANCELLED，或本地 AbortController 触发的 AbortError）；取消不该弹失败提示。
+ *
+ * @param e 捕获到的错误
+ * @returns 是取消为 true
+ * @example if (isAiCancelled(e)) return
+ */
+export function isAiCancelled(e: unknown): boolean {
+  const x = e as { code?: string; name?: string } | null
+  return x?.code === AI_CODE_CANCELLED || x?.name === 'AbortError'
 }
 
 /** 判断是否是「未就绪」类原生错误 */
@@ -142,17 +148,24 @@ async function invoke<T>(model: AiModel, method: string, params: Record<string, 
 }
 
 /**
- * 文字识别。
+ * 文字识别（本地 PP-OCRv6 small，中英文由同一个模型一并识别）。第一个按统一协议新增的任务：转调 `native.ai.invoke` 并钉住 `native.ai.ocr` 入口，
+ * 不看 `native.ai.status` 桩，模型状态由 AI 目录（`useAiCatalog('ocr')`）读取。长调用不设超时，可用 signal 取消。
  *
  * @param path 图片缓存相对路径
- * @param lang 语言，默认 zh
+ * @param signal 取消信号，触发后调用以 CANCELLED 拒绝
  * @param call 原生调用函数，默认走 bridge（仅测试注入）
- * @returns 文字块与原图尺寸
- * @throws AiNotReadyError 模型未就绪
+ * @returns 文字块与识别图尺寸
+ * @throws AiNotReadyError 无宿主、方法不存在或模型未就绪
  * @example const r = await aiOcr('cache/out/a.jpg')
  */
-export function aiOcr(path: string, lang: 'zh' | 'en' = 'zh', call: CallFn = bridgeCall): Promise<OcrResult> {
-  return invoke<OcrResult>('ocr', AI_METHODS.ocr, { path, lang }, call)
+export async function aiOcr(path: string, signal?: AbortSignal, call: CancelableCallFn = bridgeCall): Promise<OcrResult> {
+  if (!isNativeAvailable()) throw new AiNotReadyError('ocr')
+  try {
+    return await aiInvoke('ocr', { path }, { entry: AI_METHODS.ocr, signal }, call)
+  } catch (e) {
+    if (isNotReadyError(e)) throw new AiNotReadyError('ocr')
+    throw e
+  }
 }
 
 /**
@@ -207,7 +220,7 @@ export interface ImageClassifyResult {
   elapsedMs: number
   /** 其中推理部分毫秒 */
   inferMs: number
-  /** 模型标识，如 `siglip2-q4_half` */
+  /** 模型标识，如 `siglip2-mnn-w8` */
   modelId: string
 }
 
@@ -215,7 +228,7 @@ export interface ImageClassifyResult {
 const DEFAULT_IMAGE_TOP_K = 3
 
 /**
- * 本地识物（垃圾分类，SigLIP2 q4_half）：对一张缓存图片给出 top-k 物品与分类概率。
+ * 本地识物（垃圾分类，SigLIP2 MNN int8）：对一张缓存图片给出 top-k 物品与分类概率。
  *
  * 不看 `native.ai.status`（它仍是占位），直接调用；模型文件不在时原生返回 NOT_READY，这里统一成
  * {@link AiNotReadyError}。图片解码、EXIF 摆正、缩放都在原生与 Rust 里完成。
@@ -230,7 +243,8 @@ const DEFAULT_IMAGE_TOP_K = 3
 export async function aiClassifyImage(path: string, topK: number = DEFAULT_IMAGE_TOP_K, call: CallFn = bridgeCall): Promise<ImageClassifyResult> {
   if (!isNativeAvailable()) throw new AiNotReadyError('classify')
   try {
-    return await call<ImageClassifyResult>(AI_METHODS.classify, { path, topK }, NO_TIMEOUT)
+    // 钉住识图入口，与原先直接调 native.ai.classify 一致
+    return await aiInvoke('classifyImage', { path }, { entry: AI_METHODS.classify, options: { topK } }, call)
   } catch (e) {
     if (isNotReadyError(e)) throw new AiNotReadyError('classify')
     throw e
@@ -296,10 +310,54 @@ export async function fetchAiResult(path: string, fetchFn: typeof fetch = (...a)
 }
 
 /** AI 任务：页面只认任务，不认厂商 */
-export type AiTask = 'summarize' | 'proofread' | 'rewrite' | 'describeImage' | 'prompt' | 'translate' | 'classifyImage'
+export type AiTask = 'summarize' | 'proofread' | 'rewrite' | 'describeImage' | 'prompt' | 'translate' | 'classifyImage' | 'ocr'
 
 /** 提供者不可用的原因（未知值按字符串透传，页面不认识就当「不可用」） */
 export type AiUnavailableReason = 'no_handler' | 'unsupported_device' | 'not_installed' | 'not_configured' | (string & {})
+
+/** AI 层（决策 0005）：L1 本地小模型 / L2 本地大模型 / L3 本机 AI / L4 远端 API */
+export type AiLayer = 'L1' | 'L2' | 'L3' | 'L4'
+
+/** 任务入口：执行该任务要调的桥方法，取 `AI_METHODS.run/translate/classify/ocr`（未知值按字符串透传） */
+export type AiEntry = (typeof AI_METHODS)['run' | 'translate' | 'classify' | 'ocr'] | (string & {})
+
+/** 一项任务的约束，由原生给出（前端不再自己写语言清单） */
+export interface AiOfferConstraints {
+  /** 翻译：支持的应用语言码 */
+  languages?: string[]
+  /** 翻译：源语言可否为 `auto` */
+  sourceAuto?: boolean
+  /** 翻译：该提供者能译的原文字数上限（缺省时按入口上限 2000） */
+  maxChars?: number
+  /** 翻译：是否接受束宽 `numBeams`；为 false 时传了会报 BAD_PARAMS */
+  allowNumBeams?: boolean
+  /** 文本生成：允许的预设 */
+  presets?: AiPreset[]
+  /** 文本生成：温度范围（含端点），0 表示贪心 */
+  temperature?: AiRange
+  /** 文本生成：topK 范围（含端点） */
+  topK?: AiRange
+  /** 文本生成：是否允许额外传 `system`（即便允许，也只有 `prompt` 预设可传） */
+  allowSystem?: boolean
+}
+
+/** 数值范围（含端点） */
+export interface AiRange {
+  /** 下限 */
+  min: number
+  /** 上限 */
+  max: number
+}
+
+/** 提供者对一项任务的报价：做什么任务、走哪个桥方法、带什么约束 */
+export interface AiOffer {
+  /** 任务 */
+  task: AiTask
+  /** 该走的桥方法，如 `native.ai.translate` */
+  entry: AiEntry
+  /** 约束，没有则省略 */
+  constraints?: AiOfferConstraints
+}
 
 /** 一个 AI 提供者 */
 export interface AiProviderInfo {
@@ -307,12 +365,16 @@ export interface AiProviderInfo {
   id: string
   /** 展示名 */
   displayName: string
+  /** 所属层；旧原生没有此字段 */
+  layer?: AiLayer
   /** 当前是否可用 */
   available: boolean
   /** 不可用时的原因 */
   reason?: AiUnavailableReason
   /** 支持的任务 */
   tasks: AiTask[]
+  /** 每项任务的报价（入口与约束），与 `tasks` 同源；旧原生没有此字段 */
+  offers?: AiOffer[]
   /** 本地模型类提供者才有：清单里的模型 id，对应 `native.model.*` */
   modelId?: string
   /** 本地模型类提供者才有：模型已安装且 sha256 校验通过 */
@@ -321,6 +383,8 @@ export interface AiProviderInfo {
   sizeBytes?: number
   /** 本地模型类提供者才有：是否正在下载或校验 */
   downloading?: boolean
+  /** 是否持有可预热/卸载的模型会话（`native.ai.warmup` / `unload` 能用）；旧原生没有此字段 */
+  session?: boolean
 }
 
 /** `native.ai.providers` 的结果 */
@@ -343,6 +407,19 @@ export interface AiRunResult {
 
 /** 提供者 id：把文本交给系统里已有的应用 */
 export const HANDOFF_PROVIDER_ID = 'intent-handoff'
+
+/**
+ * 取提供者对某任务的报价；指定入口时还要入口一致。旧原生不带 `offers`，一律视为没有报价。
+ *
+ * @param p 提供者
+ * @param task 任务
+ * @param entry 要求的入口；省略表示不限
+ * @returns 报价，没有为 undefined
+ * @example offerOf(qwen, 'translate', AI_METHODS.translate)?.constraints?.languages // ['zh-CN', 'en', ...]
+ */
+export function offerOf(p: AiProviderInfo, task: AiTask, entry?: AiEntry): AiOffer | undefined {
+  return (p.offers ?? []).find((o) => o.task === task && (!entry || o.entry === entry))
+}
 
 /** 空的提供者结果：无宿主或原生没有该方法时使用 */
 function emptyProviders(): AiProviders {
@@ -383,7 +460,8 @@ export async function aiProviders(call: CallFn = bridgeCall): Promise<AiProvider
  */
 export async function aiRun(provider: string, task: AiTask, input: string, call: CallFn = bridgeCall): Promise<AiRunResult> {
   if (!isNativeAvailable()) throw new NativeUnavailableError(AI_METHODS.run)
-  return call<AiRunResult>(AI_METHODS.run, { provider, task, input }, NO_TIMEOUT)
+  // task 可以是任意任务（含交接的 translate），超出 AiTaskMap 的强类型，走同一条 invoke 通道并钉住 run 入口
+  return invokeRaw<AiRunResult>(task, { text: input }, { provider, entry: AI_METHODS.run }, call)
 }
 
 /**
@@ -402,6 +480,11 @@ export interface TranslateParams {
   tgt: TranslateLang
   /** beam search 宽度 1~4，缺省由原生决定 */
   numBeams?: number
+  /**
+   * 指定翻译提供者 id（`native.ai.providers` 里声明了 translate 的，如 `local-nllb`、`local-qwen`）；
+   * 缺省由原生按注册顺序取第一个能做语言对翻译的（现为 `local-nllb`）
+   */
+  provider?: string
 }
 
 /** `native.ai.translate` 的结果 */
@@ -410,7 +493,7 @@ export interface TranslateResult {
   text: string
   /** 耗时毫秒 */
   elapsedMs: number
-  /** 模型标识，如 `nllb600m-un6-ccm-int4` */
+  /** 模型标识，如 `nllb600m-un6-mnn-w6` */
   modelId: string
   /** 实际源语言（auto 时原样为 `'auto'`） */
   src: string
@@ -426,7 +509,7 @@ export interface TranslateResult {
 export type CancelableCallFn = <T = unknown>(method: string, params?: Record<string, unknown>, options?: CallOptions) => Promise<T>
 
 /**
- * 本地翻译（NLLB）。长调用不设超时，可用 signal 取消。源语言可传 `'auto'` 自动识别，
+ * 带语言对的翻译，缺省本地 NLLB，可用 `params.provider` 指定其他翻译提供者（如 `local-qwen`）。长调用不设超时，可用 signal 取消。源语言可传 `'auto'` 自动识别，
  * 结果里的 `detectedSrc` / `unrecognized` 说明识别情况。
  *
  * 原生错误码原样抛出：BAD_PARAMS（文本过长或语言不支持）、NOT_READY（模型未就绪）、
@@ -441,9 +524,128 @@ export type CancelableCallFn = <T = unknown>(method: string, params?: Record<str
  */
 export async function aiTranslate(params: TranslateParams, signal?: AbortSignal, call: CancelableCallFn = bridgeCall): Promise<TranslateResult> {
   if (!isNativeAvailable()) throw new NativeUnavailableError(AI_METHODS.translate)
-  const p: Record<string, unknown> = { text: params.text, src: params.src, tgt: params.tgt }
-  if (params.numBeams !== undefined) p.numBeams = params.numBeams
-  return call<TranslateResult>(AI_METHODS.translate, p, { ...NO_TIMEOUT, signal })
+  const options = params.numBeams === undefined ? undefined : { numBeams: params.numBeams }
+  // 钉住语言对入口：指定了没有语言对接口的提供者（交接）时照旧报 BAD_PARAMS，不会悄悄交接出去
+  return aiInvoke(
+    'translate',
+    { text: params.text, src: params.src, tgt: params.tgt },
+    { provider: params.provider, entry: AI_METHODS.translate, options, signal },
+    call,
+  )
+}
+
+/** 经 run 端口的文本任务的输入 */
+export interface AiTextInput {
+  /** 输入文本，去空白后非空、≤ 5 万字符 */
+  text: string
+}
+
+/** 翻译的输入：语言对与原文（`provider` 放调用选项，`numBeams` 放 `options`） */
+export type AiTranslateInput = Pick<TranslateParams, 'text' | 'src' | 'tgt'>
+
+/** 识图的输入 */
+export interface AiClassifyInput {
+  /** 图片缓存相对路径，如 `cache/pick/a.jpg` */
+  path: string
+}
+
+/** 文字识别的输入 */
+export interface AiOcrInput {
+  /** 图片缓存相对路径，如 `cache/pick/a.jpg` */
+  path: string
+}
+
+/** 没有附加选项的任务 */
+type NoOptions = Record<string, never>
+
+/** 文本生成预设：决定指令模板、system 与默认采样，与文本生成类任务同名 */
+export type AiPreset = 'summarize' | 'proofread' | 'rewrite' | 'prompt'
+
+/** 文本生成类任务（经 run 端口）的附加选项，不传的沿用预设默认；范围与权限以提供者报价的 `constraints` 为准 */
+export interface AiGenerateOptions {
+  /** 预设，缺省按任务；摘要、校对、改写默认贪心，提示词问答默认温度 0.7、topK 20 */
+  preset?: AiPreset
+  /** 额外 system 提示，1~2000 字符；**只有 `prompt` 预设允许**，其它预设传了报 BAD_PARAMS */
+  system?: string
+  /** 采样温度 0~1.5，0 表示贪心；非生成式提供者（如交接）收到会报 BAD_PARAMS */
+  temperature?: number
+  /** 温度采样的候选数 1~100 */
+  topK?: number
+}
+
+/**
+ * 各任务的强类型输入、附加选项与结果（按任务缺省端口的形状；原生 `native.ai.invoke` 按任务分派到对应端口）。
+ * `describeImage` 还没有端口，暂不收录。
+ */
+export interface AiTaskMap {
+  /** 摘要（run 端口） */
+  summarize: { input: AiTextInput; options: AiGenerateOptions; output: AiRunResult }
+  /** 校对（run 端口） */
+  proofread: { input: AiTextInput; options: AiGenerateOptions; output: AiRunResult }
+  /** 改写（run 端口） */
+  rewrite: { input: AiTextInput; options: AiGenerateOptions; output: AiRunResult }
+  /** 自由提示词（run 端口） */
+  prompt: { input: AiTextInput; options: AiGenerateOptions; output: AiRunResult }
+  /** 带语言对的翻译（translate 端口） */
+  translate: { input: AiTranslateInput; options: { numBeams?: number }; output: TranslateResult }
+  /** 识图（classify 端口） */
+  classifyImage: { input: AiClassifyInput; options: { topK?: number }; output: ImageClassifyResult }
+  /** 文字识别（ocr 端口） */
+  ocr: { input: AiOcrInput; options: NoOptions; output: OcrResult }
+}
+
+/** {@link aiInvoke} 的调用选项 */
+export interface AiInvokeOptions<T extends keyof AiTaskMap> {
+  /** 指定提供者 id；缺省由原生取该任务缺省端口的第一个候选 */
+  provider?: string
+  /**
+   * 钉住入口（桥方法名，取 `AI_METHODS.run/translate/classify/ocr`）。不钉时：指定了 provider 就走它报价里的入口，
+   * 否则走任务的缺省入口。**注意**：只点名交接类提供者（它的 translate 报价入口是 run）而不钉入口时，结果是 {@link AiRunResult}
+   * 形状而不是 {@link TranslateResult}；需要确定形状就钉住入口（旧封装都钉了）。
+   */
+  entry?: AiEntry
+  /** 任务的附加选项，如翻译的 `numBeams`、识图的 `topK` */
+  options?: AiTaskMap[T]['options']
+  /** 取消信号，触发后调用以 CANCELLED 拒绝 */
+  signal?: AbortSignal
+}
+
+/** 发一次 `native.ai.invoke`，只带有值的字段；不检查宿主（调用方负责） */
+function invokeRaw<R>(
+  task: string,
+  input: object,
+  opts: { provider?: string; entry?: AiEntry; options?: object; signal?: AbortSignal },
+  call: CancelableCallFn,
+): Promise<R> {
+  const p: Record<string, unknown> = { task, input }
+  if (opts.provider !== undefined) p.provider = opts.provider
+  if (opts.entry !== undefined) p.entry = opts.entry
+  if (opts.options && Object.keys(opts.options).length) p.options = opts.options
+  return call<R>(AI_METHODS.invoke, p, { ...NO_TIMEOUT, signal: opts.signal })
+}
+
+/**
+ * 统一 AI 入口：按任务分派到原生的强类型端口（翻译、识图、文本 run……），输入输出按 {@link AiTaskMap} 强类型。
+ * 长调用不设超时，可用 signal 取消。原生错误码原样抛出，语义与旧方法一致：BAD_PARAMS（参数、提供者或入口不对）、
+ * NOT_READY（提供者当前不可用）、INTERNAL、CANCELLED；旧原生没有该方法时为 UNKNOWN_METHOD。
+ *
+ * @param task 任务
+ * @param input 该任务的输入
+ * @param opts 提供者、入口、附加选项、取消信号
+ * @param call 原生调用函数，默认走 bridge（仅测试注入）
+ * @returns 该任务的结果
+ * @throws NativeUnavailableError 不在 Arkli 容器内
+ * @example const r = await aiInvoke('translate', { text: 'hi', src: 'en', tgt: 'zh-CN' }, { provider: 'local-qwen', signal })
+ * @example const s = await aiInvoke('summarize', { text: long }, { provider: 'local-qwen' }) // s.text
+ */
+export async function aiInvoke<T extends keyof AiTaskMap>(
+  task: T,
+  input: AiTaskMap[T]['input'],
+  opts: AiInvokeOptions<T> = {},
+  call: CancelableCallFn = bridgeCall,
+): Promise<AiTaskMap[T]['output']> {
+  if (!isNativeAvailable()) throw new NativeUnavailableError(AI_METHODS.invoke)
+  return invokeRaw<AiTaskMap[T]['output']>(task, input, opts, call)
 }
 
 /** `native.ai.warmup` 的结果 */
@@ -457,7 +659,7 @@ export interface WarmupResult {
 }
 
 /**
- * 预热：只加载模型会话、不翻译，已加载则幂等。长调用不设超时，可用 signal 取消。
+ * 预热：只加载模型会话、不推理，已加载则幂等。长调用不设超时，可用 signal 取消。
  *
  * 原生错误码原样抛出：NOT_READY（模型未安装）、BAD_PARAMS、INTERNAL、CANCELLED，
  * 原生还没有该方法时为 UNKNOWN_METHOD；调用方一般静默忽略。

@@ -31,14 +31,23 @@ describe('useModelsStore', () => {
   })
 
   it('init 取一次快照，补出用途与派生字段', async () => {
-    h.list = [st('siglip2-q4_half', 'installed', 100)]
+    h.list = [st('siglip2-mnn-w8', 'installed', 100)]
     const s = useModelsStore()
     s.init()
-    await vi.waitFor(() => expect(s.get('siglip2-q4_half')).toBeTruthy())
-    const m = s.get('siglip2-q4_half')!
+    await vi.waitFor(() => expect(s.get('siglip2-mnn-w8')).toBeTruthy())
+    const m = s.get('siglip2-mnn-w8')!
     expect(m.installed).toBe(true)
     expect(m.purpose).toBe('识别垃圾品类')
     expect(m.progress).toBe(1)
+  })
+
+  it('翻译模型新旧 id 都登记了用途', async () => {
+    h.list = [st('nllb600m-un6-mnn-w6', 'installed', 100), st('nllb600m-un6-ccm-int4', 'installed', 100)]
+    const s = useModelsStore()
+    s.init()
+    await vi.waitFor(() => expect(s.get('nllb600m-un6-mnn-w6')).toBeTruthy())
+    expect(s.get('nllb600m-un6-mnn-w6')!.purpose).toBe('多语翻译')
+    expect(s.get('nllb600m-un6-ccm-int4')!.purpose).toBe('多语翻译')
   })
 
   it('推送整体替换对象并更新进度', async () => {

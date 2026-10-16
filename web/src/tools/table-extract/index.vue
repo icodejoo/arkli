@@ -1,13 +1,14 @@
 <script setup lang="ts">
 // 图片提取表格：OCR 文字框 → 行列聚类 → 可编辑表格 → 复制 TSV / 下载 CSV；另有「粘贴文字拆表」入口
-import { computed, onBeforeUnmount, ref, shallowRef } from 'vue'
+import { computed, onBeforeUnmount, onDeactivated, ref, shallowRef } from 'vue'
 import { showFailToast, showSuccessToast, showToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
 import { pickImages, saveBlob, type PickedImage } from '@/shared/image-io'
 import { aiOcr, AiNotReadyError } from '@/native/ai'
-import AiGapNotice from '@/tools/_ai/AiGapNotice.vue'
-import { useAiModel } from '@/tools/_ai/useAiModel'
-import { aiErrorText, resolveImagePath } from '@/tools/_ai/aiImage'
+import { useAiCatalog } from '@/native/useAiCatalog'
+import ModelMissingNotice from '@/shared/ModelMissingNotice.vue'
+import { aiErrorText, handleNotReady, resolveImagePath } from '@/tools/_ai/aiImage'
+import { isAiCancelled } from '@/native/ai'
 import { blocksToTable, removeColumn, removeRow, textToTable, toCsv, toTsv, updateCell } from './logic'
 
 /** CSV 文件名 */
@@ -15,8 +16,16 @@ const CSV_NAME = 'table.csv'
 /** CSV 的 MIME */
 const CSV_MIME = 'text/csv;charset=utf-8'
 
-/** 模型状态 */
-const { ready, checked, loading: checking, refresh, markNotReady } = useAiModel('ocr')
+/** 本工具 id（与 registry 一致） */
+const TOOL_ID = 'table-extract'
+/** 本工具的 AI 目录（用文字识别任务）：模型状态只读，下载、删除、校验都在 AI 中心 */
+const catalog = useAiCatalog(TOOL_ID)
+/** 提供者是否已探测过；探测前不提示“无可用模型”，免得闪一下 */
+const catalogReady = catalog.ready
+/** 所选文字识别模型是否已安装 */
+const modelReady = computed(() => catalog.current.value?.status === 'ready')
+/** 当前识别的取消控制器 */
+let controller: AbortController | null = null
 
 /** 当前入口：图片识别 / 粘贴文字 */
 const tab = ref<'image' | 'text'>('image')
@@ -49,14 +58,18 @@ async function choose(): Promise<void> {
 async function recognize(): Promise<void> {
   if (!image.value || busy.value) return
   busy.value = true
+  controller = new AbortController()
   try {
-    const res = await aiOcr(await resolveImagePath(image.value))
+    const res = await aiOcr(await resolveImagePath(image.value), controller.signal)
     rows.value = blocksToTable(res.blocks)
     if (!rows.value.length) showToast('没有识别到文字')
   } catch (e) {
-    if (e instanceof AiNotReadyError) markNotReady()
+    if (isAiCancelled(e)) return
+    // 撞上“模型未就绪”：重新探测目录，提示条随之出现；状态仍显示可用时给一句通用提示
+    if (e instanceof AiNotReadyError) await handleNotReady(catalog.refresh, () => catalog.current.value?.status === 'ready', showFailToast)
     else showFailToast(aiErrorText(e))
   } finally {
+    controller = null
     busy.value = false
   }
 }
@@ -87,7 +100,14 @@ async function downloadCsv(): Promise<void> {
   }
 }
 
-onBeforeUnmount(() => image.value?.release())
+/** 离开页面：取消还在跑的识别，释放图片 */
+function cleanup(): void {
+  controller?.abort()
+  image.value?.release()
+}
+
+onDeactivated(() => controller?.abort())
+onBeforeUnmount(cleanup)
 </script>
 
 <template>
@@ -104,11 +124,11 @@ onBeforeUnmount(() => image.value?.release())
         <van-button block plain round :disabled="busy" @click="choose">{{ image ? '换一张' : '选择图片' }}</van-button>
         <p class="tool-hint">适合线框清楚、没有合并单元格的表格；效果取决于文字识别质量，识别后可以逐格修改。</p>
       </div>
-      <ai-gap-notice v-if="checked && !ready" feature="表格识别" purpose="先识别文字位置，再按行列排成表格" size="约 21MB" retry :loading="checking" @retry="refresh" />
-      <van-button type="primary" block round :loading="busy" :disabled="!image || !ready" @click="recognize">
+      <model-missing-notice v-if="catalogReady && !modelReady" />
+      <van-button type="primary" block round :loading="busy" :disabled="!image || !modelReady" @click="recognize">
         {{ busy ? '识别中…' : '识别并生成表格' }}
       </van-button>
-      <p v-if="checked && !ready" class="tool-hint">模型未就绪时，可以切到「粘贴文字」，把别处识别好的文字拆成表格。</p>
+      <p v-if="catalogReady && !modelReady" class="tool-hint">模型未就绪时，可以切到「粘贴文字」，把别处识别好的文字拆成表格。</p>
     </template>
 
     <template v-else>

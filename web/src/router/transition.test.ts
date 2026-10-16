@@ -18,6 +18,11 @@ describe('pageTransition', () => {
     expect(pageTransition('/', '/settings')).toBe('fade')
     expect(pageTransition('/favorites', '/ai')).toBe('fade')
   })
+
+  it('AI 中心与 AI 应用二级页：进入推入、返回弹出', () => {
+    expect(pageTransition('/ai/apps', '/ai')).toBe('push')
+    expect(pageTransition('/ai', '/ai/apps')).toBe('pop')
+  })
   it('tab → 工具页：推入', () => {
     expect(pageTransition('/tool/ruler', '/')).toBe('push')
     expect(pageTransition('/tool/ruler', '/favorites')).toBe('push')

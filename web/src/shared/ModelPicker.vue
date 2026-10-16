@@ -1,12 +1,10 @@
 <script setup lang="ts">
-// 模型选择器：触发器可通过默认插槽自定义（默认是 AI 图标按钮），点开底部弹层选模型；状态见 docs/design/model-picker.md
+// 模型选择器：触发器可通过默认插槽自定义（默认是 AI 图标按钮），点开底部弹层选模型；行由 AI 目录按工具声明的任务算出，见 docs/design/model-picker.md
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { closeNotify, showNotify, showToast } from 'vant'
 import { useModelsStore } from '@/stores/models'
-import { useAiProviders } from '@/native/useAiProviders'
-import { useModelChoice } from '@/native/useModelChoice'
-import type { ToolModelOption } from '@/tools/registry'
+import { useAiCatalog } from '@/native/useAiCatalog'
 import ModelPickerList from './ModelPickerList.vue'
 import {
   AI_CENTER_PATH,
@@ -19,35 +17,29 @@ import {
 /** 顶部提示停留时长（毫秒） */
 const NOTIFY_MS = 4000
 
-/** 工具 id 与它声明的可选模型 */
-const props = defineProps<{ toolId: string; models: ToolModelOption[] }>()
+/** 工具 id（可选项由它在 registry 里声明的 tasks 推导） */
+const props = defineProps<{ toolId: string }>()
 
 /** 路由器 */
 const router = useRouter()
-/** 本机 AI 探测 */
-const ai = useAiProviders()
-/** 当前工具的选择结果 */
-const { choice, set } = useModelChoice(props.toolId)
+/** 该工具的 AI 目录与当前选择 */
+const catalog = useAiCatalog(props.toolId)
+/** 当前选择值 */
+const choice = catalog.choice
 /** 弹层是否打开 */
 const open = ref(false)
-/** 模型状态源：只读，下载由推送实时更新 */
+/** 模型 store：选择器只用它触发下载，状态由推送实时更新 */
 const store = useModelsStore()
 
 /** 全部行 */
-const items = computed<PickerItem[]>(() =>
-  buildItems(props.models, {
-    statuses: store.byId,
-    providerIds: ai.providers.value.filter((p) => p.available).map((p) => p.id),
-    selected: choice.value,
-  }),
-)
+const items = computed<PickerItem[]>(() => buildItems(catalog.items.value, choice.value))
 /** 按钮上显示的简称：当前选中模型名，没有则「模型」 */
 const label = computed(() => {
   const cur = items.value.find((i) => i.id === choice.value)
   return cur ? cur.title.split('-').slice(1).join('-') : '模型'
 })
 watch(open, (v) => {
-  if (v) void ai.refresh()
+  if (v) void catalog.refresh()
 })
 
 /** 底部按钮文案：去 AI 中心 */
@@ -77,7 +69,7 @@ function notifyDownloading(): void {
 async function onPick(item: PickerItem): Promise<void> {
   await handlePick(item, {
     select: (id) => {
-      set(id)
+      catalog.set(id)
       open.value = false
     },
     download: async (id) => {

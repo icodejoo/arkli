@@ -85,7 +85,20 @@ describe('单模型方法', () => {
   it('MODEL_METHODS 与桥协议方法名一致', async () => {
     const { MODEL_METHODS } = await load(true)
     expect(Object.values(MODEL_METHODS).sort()).toEqual(
-      ['native.model.cancel', 'native.model.ensure', 'native.model.list', 'native.model.remove', 'native.model.status', 'native.model.verify'].sort(),
+      ['native.model.cancel', 'native.model.ensure', 'native.model.list', 'native.model.remove', 'native.model.sources', 'native.model.status', 'native.model.verify'].sort(),
     )
+  })
+})
+
+describe('modelSources', () => {
+  it('有宿主：传 id 并返回结果', async () => {
+    const { modelSources } = await load(true)
+    const call = fakeCall({ id: 'a', dir: 'models/a', files: [], releasePages: [] })
+    expect((await modelSources('a', call)).dir).toBe('models/a')
+    expect(call).toHaveBeenCalledWith('native.model.sources', { id: 'a' })
+  })
+  it('无宿主：抛 NativeUnavailableError', async () => {
+    const { modelSources } = await load(false)
+    await expect(modelSources('a', fakeCall({}))).rejects.toThrow()
   })
 })

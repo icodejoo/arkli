@@ -1,29 +1,36 @@
 <script setup lang="ts">
 // 文字识别：选图 → 本地 OCR → 按阅读顺序排行 → 逐行/全文复制，识别框叠加在原图上
-import { computed, onBeforeUnmount, ref, shallowRef } from 'vue'
+import { computed, onBeforeUnmount, onDeactivated, ref, shallowRef } from 'vue'
 import { showToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
 import { pickImages, type PickedImage } from '@/shared/image-io'
 import { aiOcr, AiNotReadyError, type OcrResult } from '@/native/ai'
-import AiGapNotice from '@/tools/_ai/AiGapNotice.vue'
-import { useAiModel } from '@/tools/_ai/useAiModel'
-import { aiErrorText, resolveImagePath } from '@/tools/_ai/aiImage'
+import { useAiCatalog } from '@/native/useAiCatalog'
+import ModelMissingNotice from '@/shared/ModelMissingNotice.vue'
+import { aiErrorText, handleNotReady, resolveImagePath } from '@/tools/_ai/aiImage'
+import { isAiCancelled } from '@/native/ai'
 import { boxPoints } from '@/tools/_ai/ocrBox'
 import { averageScore, groupLines, lineIndexAt, linesToText, type OcrLine } from './logic'
 
-/** 模型状态 */
-const { ready, checked, loading: checking, refresh, markNotReady } = useAiModel('ocr')
+/** 本工具 id（与 registry 一致） */
+const TOOL_ID = 'ocr'
+/** 本工具的 AI 目录：模型状态只读（下载、删除、校验都在 AI 中心） */
+const catalog = useAiCatalog(TOOL_ID)
+/** 提供者是否已探测过；探测前不提示“无可用模型”，免得闪一下 */
+const catalogReady = catalog.ready
+/** 所选文字识别模型是否已安装 */
+const modelReady = computed(() => catalog.current.value?.status === 'ready')
 
 /** 已选图片 */
 const image = shallowRef<PickedImage | null>(null)
-/** 识别语言 */
-const lang = ref<'zh' | 'en'>('zh')
 /** 识别中 */
 const busy = ref(false)
 /** 识别结果 */
 const result = shallowRef<OcrResult | null>(null)
 /** 当前高亮的行，-1 为无 */
 const active = ref(-1)
+/** 当前识别的取消控制器 */
+let controller: AbortController | null = null
 /** 预览容器，用于把点击换算回原图坐标 */
 const stage = ref<HTMLElement | null>(null)
 
@@ -68,15 +75,19 @@ async function choose(): Promise<void> {
 async function run(): Promise<void> {
   if (!image.value || busy.value) return
   busy.value = true
+  controller = new AbortController()
   try {
     const path = await resolveImagePath(image.value)
-    result.value = await aiOcr(path, lang.value)
+    result.value = await aiOcr(path, controller.signal)
     active.value = -1
     if (!result.value.blocks.length) showToast('没有识别到文字')
   } catch (e) {
-    if (e instanceof AiNotReadyError) markNotReady()
+    if (isAiCancelled(e)) return
+    // 撞上“模型未就绪”：重新探测目录，提示条随之出现；状态仍显示可用时给一句通用提示
+    if (e instanceof AiNotReadyError) await handleNotReady(catalog.refresh, () => catalog.current.value?.status === 'ready', showToast)
     else showToast(aiErrorText(e))
   } finally {
+    controller = null
     busy.value = false
   }
 }
@@ -97,7 +108,14 @@ function onStageClick(ev: MouseEvent): void {
   active.value = lineIndexAt(lines.value, (ev.clientX - rect.left) * k, (ev.clientY - rect.top) * k)
 }
 
-onBeforeUnmount(() => image.value?.release())
+/** 离开页面：取消还在跑的识别，释放图片 */
+function cleanup(): void {
+  controller?.abort()
+  image.value?.release()
+}
+
+onDeactivated(() => controller?.abort())
+onBeforeUnmount(cleanup)
 </script>
 
 <template>
@@ -111,19 +129,12 @@ onBeforeUnmount(() => image.value?.release())
         </svg>
       </div>
       <van-button block plain round :disabled="busy" @click="choose">{{ image ? '换一张' : '选择图片' }}</van-button>
-      <van-cell title="识别语言" center>
-        <template #value>
-          <van-radio-group v-model="lang" direction="horizontal" class="is-radios">
-            <van-radio name="zh">中文（含英文数字）</van-radio>
-            <van-radio name="en">英文</van-radio>
-          </van-radio-group>
-        </template>
-      </van-cell>
+      <p class="tool-hint">中文、英文、数字由同一个模型一起识别。</p>
     </div>
 
-    <ai-gap-notice v-if="checked && !ready" feature="文字识别" purpose="检测并识别图中的文字" size="约 21MB" retry :loading="checking" @retry="refresh" />
+    <model-missing-notice v-if="catalogReady && !modelReady" />
 
-    <van-button type="primary" block round :loading="busy" :disabled="!image || !ready" @click="run">
+    <van-button type="primary" block round :loading="busy" :disabled="!image || !modelReady" @click="run">
       {{ busy ? '识别中…' : '开始识别' }}
     </van-button>
 
@@ -141,10 +152,6 @@ onBeforeUnmount(() => image.value?.release())
 </template>
 
 <style lang="scss" scoped>
-.is-radios {
-  justify-content: flex-end;
-}
-
 /* 预览容器：图自适应宽度，叠加层铺满 */
 .stage {
   position: relative;

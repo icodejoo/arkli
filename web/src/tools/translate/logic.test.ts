@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { LANGS_STORAGE_KEY } from './data'
-import { defaultPair, isCancelled, MSG_BAD_PARAMS, MSG_FAILED, MSG_NOT_READY, parsePair, readPair, swapPair, swapTexts, translateErrorMessage, writePair } from './logic'
+import { defaultPair, isLatestRun, MSG_BAD_PARAMS, MSG_FAILED, MSG_NOT_READY, parsePair, readPair, swapPair, swapTexts, translateErrorMessage, writePair } from './logic'
 
 /** 内存版 localStorage（node 环境没有） */
 function stubStorage(): void {
@@ -59,10 +59,16 @@ describe('错误归类', () => {
     expect(translateErrorMessage(new Error('x'))).toBe(MSG_FAILED)
     expect(translateErrorMessage(null)).toBe(MSG_FAILED)
   })
-  it('isCancelled 识别 CANCELLED 与 AbortError', () => {
-    expect(isCancelled({ code: 'CANCELLED' })).toBe(true)
-    expect(isCancelled({ name: 'AbortError' })).toBe(true)
-    expect(isCancelled({ code: 'INTERNAL' })).toBe(false)
+  it('BAD_PARAMS 带原生中文原因（如超字数上限）时原样显示，英文技术消息仍用通用提示', () => {
+    const msg = '该模型最多翻译 300 字，请改用本地翻译模型'
+    expect(translateErrorMessage({ code: 'BAD_PARAMS', message: msg })).toBe(msg)
+    expect(translateErrorMessage({ code: 'BAD_PARAMS', message: 'bad numBeams' })).toBe(MSG_BAD_PARAMS)
+    expect(translateErrorMessage({ code: 'BAD_PARAMS' })).toBe(MSG_BAD_PARAMS)
+    expect(translateErrorMessage({ code: 'INTERNAL', message: '中文也不显示' })).toBe(MSG_FAILED)
+  })
+  it('isLatestRun：序号被取消或新请求推进后，旧一轮不再是最新', () => {
+    expect(isLatestRun(3, 3)).toBe(true)
+    expect(isLatestRun(3, 4)).toBe(false)
   })
 })
 

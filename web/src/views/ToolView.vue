@@ -5,7 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { showToast } from 'vant'
 import CameraIcon from '~icons/cil/camera?width=1em&height=1em'
 import KeyboardIcon from '~icons/cil/keyboard?width=1em&height=1em'
-import { MODE_CAMERA, MODE_QUERY, TAG_AI, findTool } from '@/tools/registry'
+import { MODE_CAMERA, MODE_QUERY, findTool, hasAiChoices } from '@/tools/registry'
 import ModelPicker from '@/shared/ModelPicker.vue'
 import { useToolsStore } from '@/stores/tools'
 import { useFavoritesStore } from '@/stores/favorites'
@@ -51,7 +51,7 @@ const hasCamera = computed(() => !!meta.value?.camera)
 /** 当前是否在拍照识别模式 */
 const cameraOn = computed(() => route.query[MODE_QUERY] === MODE_CAMERA)
 /** 带 ai 标签且声明了模型的工具才在标题栏显示模型选择器；摄像头工具与声明 pickerInPage 的工具把选择器放在页面里 */
-const showPicker = computed(() => !!meta.value?.tags?.includes(TAG_AI) && !!meta.value.models?.length && !hasCamera.value && !meta.value.pickerInPage)
+const showPicker = computed(() => hasAiChoices(meta.value) && !hasCamera.value && !meta.value?.pickerInPage)
 
 /** 在普通模式与拍照识别模式间切换（replace，不堆历史） */
 function toggleCamera(): void {
@@ -92,7 +92,7 @@ watchEffect(() => {
       @click-left="goBack"
     >
       <template v-if="meta" #right>
-        <model-picker v-if="showPicker" :tool-id="meta.id" :models="meta.models!" />
+        <model-picker v-if="showPicker" :tool-id="meta.id" />
         <component
           :is="cameraOn ? KeyboardIcon : CameraIcon"
           v-if="hasCamera"

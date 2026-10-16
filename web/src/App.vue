@@ -13,13 +13,13 @@ const DARK_QUERY = '(prefers-color-scheme: dark)'
 /** keep-alive 缓存的视图组件名（与 CACHED_ROUTES 对应） */
 const CACHED_VIEWS = ['HomeView', 'AiView', 'FavoritesView', 'SettingsView']
 
-/** 底栏四个 tab：路径、文案、Vant 图标（顺序与 TAB_PATHS 一致） */
-const TABS = [
+/** 底栏四个 tab：路径、文案、Vant 图标、是否只显示自定义图标（AI 用 `<i-arkli-ai />`，不带文字；顺序与 TAB_PATHS 一致） */
+const TABS: ReadonlyArray<{ to: string; label: string; icon: string; onlyIcon?: boolean }> = [
   { to: '/', label: '首页', icon: 'home-o' },
-  { to: '/ai', label: 'AI', icon: 'bulb-o' },
+  { to: '/ai', label: 'AI', icon: 'bulb-o', onlyIcon: true },
   { to: '/favorites', label: '收藏', icon: 'star-o' },
   { to: '/settings', label: '设置', icon: 'setting-o' },
-] as const
+]
 
 /** 路由器 */
 const router = useRouter()
@@ -110,6 +110,35 @@ onBeforeUnmount(() => {
   </router-view>
   <!-- 底栏：route 模式按当前路径高亮；tab 之间用 replace，不堆历史，返回键从工具页回到来的那个 tab -->
   <van-tabbar v-if="showTabbar" route replace fixed safe-area-inset-bottom>
-    <van-tabbar-item v-for="t in TABS" :key="t.to" :to="t.to" :icon="t.icon">{{ t.label }}</van-tabbar-item>
+    <!-- AI tab 只放一个 <i-arkli-ai /> 图标、不显示文字；用 aria-label 保留无障碍名称 -->
+    <van-tabbar-item v-for="t in TABS" :key="t.to" :to="t.to" :icon="t.icon" :aria-label="t.label" :class="{ 'tab-only-icon': t.onlyIcon }">
+      <template v-if="t.onlyIcon" #icon>
+        <span class="tab-ai-box"><i-arkli-ai class="tab-ai-icon" /></span>
+      </template>
+      <template v-if="!t.onlyIcon">{{ t.label }}</template>
+    </van-tabbar-item>
   </van-tabbar>
 </template>
+
+<style scoped>
+/* 只有图标的 tab 没有文字，去掉 Vant 给图标留的 4px 下边距，图标才垂直居中 */
+.tab-only-icon :deep(.van-tabbar-item__icon) {
+  margin-bottom: 0;
+}
+
+/* 底栏 AI tab：方形 4px 圆角的强调色容器，里面是 18px 白色图标（选中与否都不变，保持显眼） */
+.tab-ai-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: var(--c-ai-accent);
+  border-radius: 4px;
+}
+
+.tab-ai-icon {
+  font-size: 18px;
+  color: #fff;
+}
+</style>

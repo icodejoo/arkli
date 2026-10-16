@@ -1,5 +1,8 @@
 // 语言目录与选择规则（与具体页面无关）：全球主流语言、模型支持集合、语言对纠正
-import type { ToolModelOption } from '@/tools/registry'
+import type { AiOfferConstraints } from '@/native/ai'
+
+/** 模型的语言约束：languages 省略或为 'all' 表示不限；sourceAuto 为真表示源语言可写 auto（原生报价的 constraints 即此形状） */
+export type LangConstraints = Pick<AiOfferConstraints, 'sourceAuto'> & { languages?: readonly string[] | 'all' }
 
 /** 源语言为 auto 换目标时优先选的语言 */
 const PREFERRED_TGT = 'en'
@@ -91,7 +94,7 @@ export function isSourceLang(v: unknown): v is string {
  * @param option 模型选项
  * @returns `sourceAuto` 为真时 true
  */
-export function allowsAuto(option?: Pick<ToolModelOption, 'sourceAuto'> | null): boolean {
+export function allowsAuto(option?: Pick<LangConstraints, 'sourceAuto'> | null): boolean {
   return !!option?.sourceAuto
 }
 
@@ -139,7 +142,7 @@ export interface LangColumn {
  * @returns 支持的语言码（目录内的）
  * @example supportedOf({ ...opt, languages: ['en', 'fr'] }) // ['en', 'fr']
  */
-export function supportedOf(option?: Pick<ToolModelOption, 'languages'> | null): string[] {
+export function supportedOf(option?: Pick<LangConstraints, 'languages'> | null): string[] {
   const all = LANGS.map((l) => l.code)
   const langs = option?.languages
   if (!langs || langs === 'all') return all
@@ -153,7 +156,7 @@ export function supportedOf(option?: Pick<ToolModelOption, 'languages'> | null):
  * @param code 语言码
  * @returns 支持为 true
  */
-export function isSupported(option: Pick<ToolModelOption, 'languages'> | null | undefined, code: string): boolean {
+export function isSupported(option: Pick<LangConstraints, 'languages'> | null | undefined, code: string): boolean {
   return supportedOf(option).includes(code)
 }
 

@@ -12,10 +12,19 @@ import {
   type ModelStatus,
 } from '@/native/model'
 
+/** 垃圾分类模型的用途说明 */
+const PURPOSE_CLASSIFY = '识别垃圾品类'
+/** 翻译模型的用途说明 */
+const PURPOSE_TRANSLATE = '多语翻译'
+
 /** 模型 id 到用途说明的映射（原生清单不带用途，这里补） */
 const MODEL_PURPOSES: Record<string, string> = {
-  'siglip2-q4_half': '识别垃圾品类',
-  'nllb600m-un6-ccm-int4': '多语翻译',
+  'siglip2-mnn-w8': PURPOSE_CLASSIFY,
+  // 旧 ONNX 版仍在清单里（待 M9 退役），用途不变
+  'siglip2-q4_half': PURPOSE_CLASSIFY,
+  'nllb600m-un6-mnn-w6': PURPOSE_TRANSLATE,
+  // 旧 ONNX 版仍在清单里（待 M9 退役），用途不变
+  'nllb600m-un6-ccm-int4': PURPOSE_TRANSLATE,
 }
 
 /** 没登记用途的模型的兜底文案 */
@@ -56,7 +65,7 @@ function toModel(s: ModelStatus): AiModel {
  * 使用示例：
  * ```ts
  * const store = useModelsStore()
- * const m = computed(() => store.get('siglip2-q4_half'))   // AiModel | undefined
+ * const m = computed(() => store.get('siglip2-mnn-w8'))   // AiModel | undefined
  * if (m.value?.installed) { ... }
  * ```
  */

@@ -10,5 +10,3 @@ export const DEFAULT_SRC: TranslateLang = 'en'
 export const DEFAULT_TGT: TranslateLang = 'zh-CN'
 /** 语言选择在 localStorage 里的键 */
 export const LANGS_STORAGE_KEY = 'arkli:translate:langs'
-/** 本地翻译模型的清单 id（与 registry 的 L1 一致） */
-export const NLLB_MODEL_ID = 'nllb600m-un6-ccm-int4'

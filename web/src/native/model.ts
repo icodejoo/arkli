@@ -19,6 +19,7 @@ export const MODEL_METHODS = {
   cancel: 'native.model.cancel',
   remove: 'native.model.remove',
   verify: 'native.model.verify',
+  sources: 'native.model.sources',
 } as const
 
 /** 原生推送事件：某模型状态或下载进度变化，data 同 {@link ModelStatus}（下载进度约 300 毫秒一条） */
@@ -40,7 +41,7 @@ export interface ModelError {
 
 /** 一个模型的状态 */
 export interface ModelStatus {
-  /** 模型 id，如 `siglip2-q4_half` */
+  /** 模型 id，如 `siglip2-mnn-w8` */
   id: string
   /** 展示名 */
   displayName: string
@@ -103,7 +104,7 @@ export async function modelList(call: CallFn = bridgeCall): Promise<ModelStatus[
  * @returns 状态
  * @throws NativeUnavailableError 不在 Arkli 容器内
  * @throws 原生错误 BAD_PARAMS：id 不在清单里
- * @example const s = await modelStatus('siglip2-q4_half')
+ * @example const s = await modelStatus('siglip2-mnn-w8')
  */
 export async function modelStatus(id: string, call: CallFn = bridgeCall): Promise<ModelStatus> {
   requireHost(MODEL_METHODS.status)
@@ -118,7 +119,7 @@ export async function modelStatus(id: string, call: CallFn = bridgeCall): Promis
  * @returns 状态加 `started`、`meteredHint`
  * @throws NativeUnavailableError 不在 Arkli 容器内
  * @throws 原生错误 BAD_PARAMS：id 不在清单里
- * @example const r = await modelEnsure('siglip2-q4_half'); if (r.meteredHint) tip('当前是移动网络')
+ * @example const r = await modelEnsure('siglip2-mnn-w8'); if (r.meteredHint) tip('当前是移动网络')
  */
 export async function modelEnsure(id: string, call: CallFn = bridgeCall): Promise<ModelEnsureResult> {
   requireHost(MODEL_METHODS.ensure)
@@ -132,7 +133,7 @@ export async function modelEnsure(id: string, call: CallFn = bridgeCall): Promis
  * @param call 原生调用函数，默认走 bridge（仅测试注入）
  * @returns 取消后的状态
  * @throws NativeUnavailableError 不在 Arkli 容器内
- * @example await modelCancel('siglip2-q4_half')
+ * @example await modelCancel('siglip2-mnn-w8')
  */
 export async function modelCancel(id: string, call: CallFn = bridgeCall): Promise<ModelStatus> {
   requireHost(MODEL_METHODS.cancel)
@@ -147,7 +148,7 @@ export async function modelCancel(id: string, call: CallFn = bridgeCall): Promis
  * @returns 删除后的状态（absent、占用 0）
  * @throws NativeUnavailableError 不在 Arkli 容器内
  * @throws 原生错误 INTERNAL：有文件删不掉
- * @example await modelRemove('siglip2-q4_half')
+ * @example await modelRemove('siglip2-mnn-w8')
  */
 export async function modelRemove(id: string, call: CallFn = bridgeCall): Promise<ModelStatus> {
   requireHost(MODEL_METHODS.remove)
@@ -162,9 +163,49 @@ export async function modelRemove(id: string, call: CallFn = bridgeCall): Promis
  * @returns 校验后的状态
  * @throws NativeUnavailableError 不在 Arkli 容器内
  * @throws 原生错误 NOT_READY：正在下载
- * @example const s = await modelVerify('siglip2-q4_half'); if (s.state !== 'installed') tip('模型已损坏')
+ * @example const s = await modelVerify('siglip2-mnn-w8'); if (s.state !== 'installed') tip('模型已损坏')
  */
 export async function modelVerify(id: string, call: CallFn = bridgeCall): Promise<ModelStatus> {
   requireHost(MODEL_METHODS.verify)
   return call<ModelStatus>(MODEL_METHODS.verify, { id }, NO_TIMEOUT)
+}
+
+/** 清单里一个文件的下载来源 */
+export interface ModelSourceFile {
+  /** 文件名（落在模型目录下） */
+  name: string
+  /** 字节数 */
+  bytes: number
+  /** 小写十六进制 sha256 */
+  sha256: string
+  /** 下载地址，按原生回退顺序，镜像都列（已去掉查询串，只含白名单主机） */
+  urls: string[]
+}
+
+/** `native.model.sources` 的结果 */
+export interface ModelSources {
+  /** 模型 id */
+  id: string
+  /** 模型目录，相对应用私有 files 目录，如 `models/siglip2-mnn-w8` */
+  dir: string
+  /** 全部文件 */
+  files: ModelSourceFile[]
+  /** 由下载地址推出的 GitHub release 页面，已去重 */
+  releasePages: string[]
+}
+
+/**
+ * 读取模型的下载来源（只读，不改变下载行为）：文件名、大小、sha256、下载地址与 release 页面。
+ * 地址只来自随包清单，供用户在别处下载后手动放入。
+ *
+ * @param id 模型 id
+ * @param call 原生调用函数，默认走 bridge（仅测试注入）
+ * @returns 下载来源
+ * @throws NativeUnavailableError 不在 Arkli 容器内
+ * @throws 原生错误 BAD_PARAMS：id 不在清单里
+ * @example const s = await modelSources('siglip2-mnn-w8'); console.log(s.files[0].urls)
+ */
+export async function modelSources(id: string, call: CallFn = bridgeCall): Promise<ModelSources> {
+  requireHost(MODEL_METHODS.sources)
+  return call<ModelSources>(MODEL_METHODS.sources, { id })
 }

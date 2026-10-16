@@ -1,9 +1,11 @@
 /**
- * 模型选择器的纯逻辑：状态映射、标题与备注文案、层过滤、点击分支、选择结果的读写。
+ * 模型选择器的纯逻辑：状态映射、标题与备注文案、点击分支、选择结果的读写。
+ * 有哪些行由 AI 目录（`./aiCatalog`）算出，这里只负责把目录项变成展示行。
  * 不依赖 Vue 与原生，组件与测试都直接用它。
  */
 import type { ModelStateName, ModelStatus } from '@/native/model'
-import type { ModelLayer, ToolModelOption } from '@/tools/registry'
+import type { ModelLayer } from '@/tools/registry'
+import type { CatalogItem } from './aiCatalog'
 
 /** 选择结果在 localStorage 里的键前缀，后接工具 id */
 export const CHOICE_KEY_PREFIX = 'arkli.modelChoice.'
@@ -14,12 +16,10 @@ export const MSG_DOWNLOADING = '正在下载，可以去AI中心查看'
 export const MSG_NOT_READY = '还没接入'
 /** 未接入项备注 */
 export const DESC_NOT_READY = '未接入'
+/** 工具页发现没有就绪模型时的提示文案（只提示，不指定下载入口） */
+export const MSG_NO_MODEL = '无可用模型，去查看'
 /** 点击后跳转的 AI 中心路径 */
 export const AI_CENTER_PATH = '/ai'
-/** L2 占位项的模型 id */
-export const L2_PLACEHOLDER_ID = 'l2-none'
-/** L4 占位项的模型 id */
-export const L4_OPENAI_ID = 'l4-openai'
 
 /** 层名 */
 export const LAYER_NAMES: Record<ModelLayer, string> = {
@@ -34,8 +34,10 @@ export type ItemStatus = 'ready' | 'selected' | 'missing' | 'loading' | 'unsuppo
 
 /** 选择器的一行 */
 export interface PickerItem {
-  /** 选项 id（持久化值） */
+  /** 选项 id（持久化值，即目录项的 key） */
   id: string
+  /** 要下载的清单模型 id；没有则用 id */
+  modelId?: string
   /** 层级 */
   layer: ModelLayer
   /** 标题「层名-模型名」 */
@@ -48,16 +50,6 @@ export interface PickerItem {
   progress: number
 }
 
-/** 构建行所需的运行时信息 */
-export interface BuildContext {
-  /** 清单模型状态，按模型 id 索引；不在清单里的模型视为未接入 */
-  statuses: Record<string, ModelStatus | undefined>
-  /** 当前可用的本机 AI 提供者 id 集合；不含的 L3 项不显示 */
-  providerIds: string[]
-  /** 当前选中的选项 id */
-  selected: string | null
-}
-
 /** 点击后的动作 */
 export type PickAction = 'select' | 'download' | 'notify' | 'toast'
 
@@ -65,7 +57,7 @@ export type PickAction = 'select' | 'download' | 'notify' | 'toast'
 export interface PickDeps {
   /** 选中并关闭弹层 */
   select: (id: string) => void
-  /** 启动下载（模型 id） */
+  /** 启动下载（清单模型 id） */
   download: (id: string) => Promise<unknown>
   /** 弹出可点击的「正在下载」提示 */
   notifyDownloading: () => void
@@ -113,7 +105,7 @@ export function buildTitle(layer: ModelLayer, name: string): string {
  * @param st 清单状态（取体积与进度）
  * @returns 如「识别垃圾品类 · 已安装 54.7MB」
  */
-export function buildDesc(desc: string, status: ItemStatus, st?: ModelStatus): string {
+export function buildDesc(desc: string, status: ItemStatus, st?: Pick<ModelStatus, 'totalBytes' | 'downloadedBytes'>): string {
   if (status === 'unsupported') return DESC_NOT_READY
   if (status === 'loading') return `${desc} · 正在下载 ${Math.round(progressOf(st) * 100)}%`
   if (status === 'missing') return `${desc} · 未下载，点击下载`
@@ -121,50 +113,23 @@ export function buildDesc(desc: string, status: ItemStatus, st?: ModelStatus): s
 }
 
 /** 下载进度 0~1，未知为 0 */
-export function progressOf(st?: ModelStatus): number {
+export function progressOf(st?: Pick<ModelStatus, 'totalBytes' | 'downloadedBytes'>): number {
   return st && st.totalBytes > 0 ? Math.min(1, st.downloadedBytes / st.totalBytes) : 0
 }
 
-/** 全部 L2/L4 占位项（没接入，统一补给每个 AI 工具） */
-export const PLACEHOLDERS: ToolModelOption[] = [
-  { layer: 'L2', modelId: L2_PLACEHOLDER_ID, title: '暂无', desc: '本地大模型' },
-  { layer: 'L4', modelId: L4_OPENAI_ID, title: 'OpenAI', desc: '在线模型' },
-]
-
-/** 是否可被选中为结果（L1 已声明的、L3；占位 L2/L4 不可选） */
-export function isSelectable(opt: ToolModelOption): boolean {
-  return opt.layer === 'L1' || opt.layer === 'L3'
-}
-
 /**
- * 层过滤：L3 只有提供者当前可用才保留；其余照旧。
+ * 把 AI 目录变成选择器的行：标题加层名、备注加状态，当前选中且就绪的着色。本机 AI 项备注写「可用」。
  *
- * @param options 工具声明的选项
- * @param providerIds 可用提供者 id
- * @returns 过滤后的选项
- */
-export function filterLayers(options: ToolModelOption[], providerIds: string[]): ToolModelOption[] {
-  return options.filter((o) => o.layer !== 'L3' || providerIds.includes(o.modelId))
-}
-
-/**
- * 构建选择器的全部行：声明项（过滤后）+ L2/L4 占位，按层 L1~L4 排序。
- *
- * @param declared 工具声明的选项
- * @param ctx 运行时信息
+ * @param catalog 目录（已按层排好、已过滤掉不适用与不可用的本机 AI）
+ * @param selected 当前选中的选择值
  * @returns 行列表
+ * @example buildItems(catalog, 'local-nllb')[0].status // 'selected'
  */
-export function buildItems(declared: ToolModelOption[], ctx: BuildContext): PickerItem[] {
-  const all = [...filterLayers(declared, ctx.providerIds), ...PLACEHOLDERS].sort((a, b) => a.layer.localeCompare(b.layer))
-  return all.map((o) => {
-    const st = o.layer === 'L1' ? ctx.statuses[o.modelId] : undefined
-    let status: ItemStatus
-    if (o.layer === 'L1') status = stateToStatus(st?.state)
-    else if (o.layer === 'L3') status = 'ready'
-    else status = 'unsupported'
-    if (status === 'ready' && ctx.selected === o.modelId) status = 'selected'
-    const desc = o.layer === 'L3' && status !== 'unsupported' ? `${o.desc} · 可用` : buildDesc(o.desc, status, st)
-    return { id: o.modelId, layer: o.layer, title: buildTitle(o.layer, o.title), desc, status, progress: progressOf(st) }
+export function buildItems(catalog: readonly CatalogItem[], selected: string | null): PickerItem[] {
+  return catalog.map((c) => {
+    const status: ItemStatus = c.status === 'ready' && selected === c.key ? 'selected' : c.status
+    const desc = c.layer === 'L3' && status !== 'unsupported' ? `${c.desc} · 可用` : buildDesc(c.desc, status, c)
+    return { id: c.key, modelId: c.modelId, layer: c.layer, title: buildTitle(c.layer, c.title), desc, status, progress: progressOf(c) }
   })
 }
 
@@ -193,23 +158,10 @@ export async function handlePick(item: PickerItem, deps: PickDeps): Promise<Pick
   if (action === 'select') deps.select(item.id)
   else if (action === 'download') {
     deps.notifyDownloading()
-    await deps.download(item.id)
+    await deps.download(item.modelId ?? item.id)
   } else if (action === 'notify') deps.notifyDownloading()
   else deps.toast(MSG_NOT_READY)
   return action
-}
-
-/**
- * 解析最终选中值：存的值仍在可选项里就用它，否则取第一个 L1 项，再没有则 null。
- *
- * @param stored 持久化的值（可能为空或已失效）
- * @param options 工具声明的选项
- * @returns 选项 id 或 null
- */
-export function resolveChoice(stored: string | null, options: ToolModelOption[]): string | null {
-  const selectable = options.filter(isSelectable)
-  if (stored && selectable.some((o) => o.modelId === stored)) return stored
-  return options.find((o) => o.layer === 'L1')?.modelId ?? null
 }
 
 /** 精简的存储接口，便于测试注入 */
