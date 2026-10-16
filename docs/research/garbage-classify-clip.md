@@ -1,7 +1,7 @@
 ---
 title: 垃圾分类拍照识别：CLIP 零样本选型与四模型对比
 status: draft
-updated: 2026-10-14
+updated: 2026-10-15
 summary: 垃圾分类拍照识别的路线对比、候选模型、四个 CLIP 类模型的实测对比、易混物品 top-3 策略与中文处理方案
 ---
 ## TL;DR
@@ -179,6 +179,14 @@ PC 301 张，fp32 向量，物品 top1 / top3 / 四分类 top1：仅英文 0.804
 - 真机测试文件保留：手机上 `com.example.siglipspike`、`/sdcard/Android/data/com.example.siglipspike/`、`/data/local/tmp/siglipspike/`（约 1.5GB）；产物在会话临时目录的 `spike\`，不在仓库。
 - ~~与 [media-ai.md](../design/tools/media-ai.md) 的“图像识别”设计冲突~~：已同步为 CLIP 零样本（2026-10-14）。
 - **Web 页已做（第 3 步，2026-10-14）**：`web/src/tools/waste-classify/`，替换旧 `image-classify`（旧 `aiClassify` 已删）。点候选即采纳、拿不准不给强结论、本地易混提示表（id 与词表核对）、连续识别超 20 次提示歇一会儿。**App 接入完成，待发布模型**；词表分类仍是草稿，待对照官方指引核对。
+
+## 迁移到 MNN（2026-10-15）
+
+识物已从 ORT 的 `q4_half.onnx`（int4 `MatMulNBits`）切到 MNN：模型 id `siglip2-mnn-w8`，文件 `model.mnn`（int8 逐通道仅权重量化，94,775,452 B，sha256 `8af99950…60d5`），运行态 `memory=low`。原因与全貌见 [ONNX 全量迁移到 MNN](onnx-to-mnn-migration.md)。要点：
+
+- MNN 不认 `MatMulNBits`，所以从 fp32 原版出发由 MNN 做 int8 量化；桌面 30 张图对 ORT fp32 的向量余弦均值 0.9908（最小 0.9564），top-1 一致 0.933，比 q4_half 的 0.9612 / 0.9143 / 0.833 更好；体积 94.8MB（q4_half 54.7MB，下载多约 40MB）。上文 q4_half 的数字（54.7MB、q4f16 SIGILL、真机延迟与 RSS）仍是旧路径的历史记录，**MNN 版的真机数据待验**（清单见迁移文档 M5 一节）。
+- 词表（`garbage_vocab`）与预处理（Rust 侧 PIL 同款 bilinear、`(v/255-0.5)/0.5`）不变，只换推理后端；输入 `pixel_values`、输出 `pooler_output`。
+- 旧模型 `siglip2-q4_half` 暂时仍留在清单里，待真机验收通过后再退役。
 
 ## 9. 数据位置
 

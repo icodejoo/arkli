@@ -12,7 +12,7 @@ summary: L2 本地文本模型 Qwen3.5-0.8B 的 MNN 权重与运行库：来源�
 - **来源**：[taobao-mnn/Qwen3.5-0.8B-MNN](https://huggingface.co/taobao-mnn/Qwen3.5-0.8B-MNN)（Apache-2.0，基座 [Qwen/Qwen3.5-0.8B](https://huggingface.co/Qwen/Qwen3.5-0.8B)）。**权重与上游逐字节一致**，只改了两个配置。
 - **运行时要求 MNN master**：MNN 3.6.1 加载这份权重会在 `Llm::forwardRaw` 里 SIGBUS 崩溃，master 正常（见第 4 节）。
 - **真机速度**（STG-AL00，4 线程，`precision=low`）：解码约 17.4 tok/s，预填约 35.7 tok/s，加载约 3.1~3.4 s；**卸载后内存回落到基线 +3MB**（见 3.1）。
-- **运行库**：`libMNN.so` + `libarkli-mnn.so`，发布在 release `mnn-478c10e-v1`（<https://github.com/icodejoo/arkli/releases/tag/mnn-478c10e-v1>），由 `native/mnn/build.sh` 复现，sha256 见第 8 节。
+- **运行库**：`libMNN.so` + `libarkli-mnn.so`（v2 release 同时还放语音用的 `libsherpa-mnn-jni.so`，与 Qwen 无关，但三个同属 `mnn-478c10e-v2`）。`libMNN.so` 发布在 release `mnn-478c10e-v1`（<https://github.com/icodejoo/arkli/releases/tag/mnn-478c10e-v1>）；`libarkli-mnn.so` 在 M2 加了 C ABI（见迁移方案 4.2），新版计划放进 release `mnn-478c10e-v2`（**待用户上传**，上传前本地靠 `.gradle/arkli-mnn` 缓存构建；v2 里也要放一份不变的 `libMNN.so`，因为下载前缀是同一个）。由 `native/mnn/build.sh` 复现，sha256 见第 8 节。
 - **建议**：先用 `precision=low`、4 线程、关闭思考；不用来写对联和背古诗（见 [对比文档](on-device-llm-comparison.md) 第 8 节）；事实类问答要提醒用户可能出错。
 
 ## 1. 文件清单与校验
@@ -50,7 +50,7 @@ summary: L2 本地文本模型 Qwen3.5-0.8B 的 MNN 权重与运行库：来源�
 | 解码，`precision=low` | 93 token，5.35 s，约 17.4 tok/s |
 | 解码，`precision=normal` | 约 18.4 tok/s（只生成 17 token，样本太小，**不能据此说 normal 更快**） |
 | `libMNN.so`（ARM82 关，已 strip） | 4,899,952 字节，gzip -9 后 1,982,865 字节 |
-| `libarkli-mnn.so`（JNI 封装） | 37,752 字节，gzip -9 后 16,823 字节 |
+| `libarkli-mnn.so`（JNI 封装 + C ABI，M2 版） | 71,592 字节，gzip -9 后 31,003 字节（第 6 步：按次采样；M2 版 69,728 字节 / 30,047 字节；M2 之前的纯 JNI 版 37,752 字节 / 16,823 字节） |
 
 ### 3.1 接入后在 App 进程里的实测（2026-10-15）
 
@@ -102,9 +102,14 @@ summary: L2 本地文本模型 Qwen3.5-0.8B 的 MNN 权重与运行库：来源�
 | 文件 | 字节 | sha256 |
 |---|---|---|
 | `libMNN.so` | 4,899,952 | `9cc1ff8b8b039431913a37ad1853dfa51162b41ae8b90927507204397096a353` |
-| `libarkli-mnn.so` | 37,752 | `a596c65c26d042e2d19b1fe37772945af5a924e47885c2f59bfca4c424bbf18f` |
+| `libarkli-mnn.so`（JNI + C ABI + 按次采样，release v2；M2 版 69,728 字节 `1229e2f6…6f81` 已作废） | 71,592 | `b4c9bf34e2d72867a8b265fcedd5f14435cf1d994a7ee2af0253445c88c09f40` |
+| `libsherpa-mnn-jni.so`（语音 sherpa-mnn JNI，release v2；Qwen 不用，随同一 release 发布） | 2,690,520 | `aa79262fa17431bf513c7c4ac9855df02d09c1fe364396c0d8032df652a0c339` |
 | `MNN-LICENSE.txt` | 11,346 | `a830d59c4f98d110e0540d0581efada06192ba6e798434307d1794b07a290302` |
 
+> 历史：release v1 里的 `libarkli-mnn.so` 是 37,752 字节、sha256 `a596c65c…bbf18f` 的纯 JNI 旧版（不含 C ABI 与“贪心采样/system 消息”改动）。
+>
+> **采样（第 6 步读 MNN 源码得出的结论）**：采样器只在 `Llm::load()` 里按配置建一次（`llm.cpp` 的 `mSampler.reset(...)`），`load()` 之后调 `set_config` 只改配置表、**不会重建采样器**。所以此前 JNI 在 `load()` 之后设的“贪心”其实没生效，实际一直是模型 config.json 的默认混合采样（`penalty 1.1 / topK 20 / topP 0.95 / temperature 1.0`）。现在 JNI 在 `load()` **之前**设采样配置，并在每次生成时比较采样参数，变了就在 JNI 里整个重建会话（加载约 3.4 s，见 §3）；字段：贪心 `{"sampler_type":"greedy"}`，温度采样 `{"sampler_type":"mixed","mixed_samplers":["topK","topP","temperature"],"temperature":T,"topK":K}`。
+>
 > 改了 so 要同步改 `app/build.gradle.kts` 里的 sha256 与本表，并用 `gh release upload --clobber` 替换 release 附件。
 
 ## 9. 复现模型

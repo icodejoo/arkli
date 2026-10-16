@@ -1,9 +1,11 @@
 ---
 title: Spike 报告：ort 对接 sherpa 自带 ORT 与 OCR 可行性
 status: draft
-updated: 2026-10-13
+updated: 2026-10-15
 summary: 验证 Rust ort crate 能否驱动 sherpa-onnx 自带的 onnxruntime，以及 PP-OCR 在其上的算子兼容、耗时与体积
 ---
+> **已迁移（2026-10-15，M7 桌面部分）**：语音识别已从 sherpa-onnx 切到 sherpa-mnn（`libsherpa-mnn-jni.so` + MNN 模型），识物/翻译也已迁 MNN；本文是迁移前的 ORT 路线历史记录，结论不改。迁移情况见 [onnx-to-mnn-migration.md](onnx-to-mnn-migration.md)。
+
 ## TL;DR
 - **GO**：决策 0002 的"视觉类复用 sherpa 自带的同一份 ORT"在真机上走通了。`ort = "=2.0.0-rc.14"` + `load-dynamic` 直接加载 sherpa-onnx 1.13.8 的 `libonnxruntime.so`（ORT 1.28.2），无需任何适配；sherpa c-api 与 ort 在同一进程里共用同一个 ORT 实例（OrtApi 表指针一致）。
 - PP-OCRv5 mobile 的 det/rec/cls（以及 v4 的 det/rec）Session 全部创建成功，无算子报错；Rust 手写前后处理 + DB 后处理 + CTC 解码端到端跑通，1080x2400 的仿手机截图 20 行文字全部检出且识别正确（仅中英数字间空格有出入）。

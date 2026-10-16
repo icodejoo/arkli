@@ -25,6 +25,7 @@ summary: 盲做阶段（无真机）攒下的全部待验证项，按风险排�
 - 分享：FileProvider 授权；图片/zip/txt/wav 在微信、相册等目标是否能收到；缓存目录外文件是否被拒。
 - `settings.open` 11 个页面在华为/小米 ROM 上是否存在；`developer` 未开启时的表现。
 - `intent.open` 各 scheme；`processText` 有/无翻译应用。
+- 翻译页「拍照翻译」：拍照与相册多选、逐张进度与取消、译文叠层位置与字号、查看文本弹窗、OCR 或翻译模型缺失时的提示条（见 model-picker.md 末节）。
 - 震动：API 26+ waveform、`repeat`、`cancel`、无马达；`vibrator` 工具节奏与强度近似体感。
 - 屏幕：`keepAwake`、`brightness -1` 恢复、`immersive` 退出后布局。
 - 设备信息：鸿蒙标识（`BuildEx`）、传感器列表、特性键名、刷新率/电压/温度单位；`ruler` 的 `ydpi` 换算误差（华为 ydpi 可能不准，保留手动校准）。

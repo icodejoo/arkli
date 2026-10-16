@@ -1,7 +1,7 @@
 ---
 title: 当前状态与待办
 status: active
-updated: 2026-10-14
+updated: 2026-10-16
 summary: 接手入口：做到哪、已拍板什么、验证到什么程度、下一步按顺序做什么、技术债、本机环境与工作约定
 ---
 ## TL;DR
@@ -58,7 +58,7 @@ summary: 接手入口：做到哪、已拍板什么、验证到什么程度、�
 - **调试入口**（仅 debug 源集，release 不含）：`adb shell am broadcast -a com.let188.arkli.debug.CMD --es cmd <命令>`。命令：`crash` `hello` `ping` `state` `sleep` `ticker` `cancel` `filepick` `filesave` `writetest` `writeopen` `rangetest` `videotest` `listcache` `securitytest` `nettest` `imgprep` `imgrun` `exifdump` `imglist` `nav` `rpc`（`--es method --es params [--es id]`，任意调一个 bridge 方法，结果看 `DBGMSG`）`previewtest`（生成 1080×20000 长图并打开原生预览，日志含底图/局部解码耗时）。日志过滤 `adb logcat | grep -E "ArkliDebug|DBGMSG|DBGNET"`。
 
 ### Rust
-- `core/crates/arkli-ai`：PP-OCR 管线的纯逻辑（预处理、DB 后处理、CTC、取消与进度）、provider 探测、推理后端 trait；`ort` 仅在 `ort-backend` 特性后。`arkli-core` 仍零依赖。**识物（`clip` 编码器 + `classify` 分类，纯函数）已经经 `arkli-ffi` 的 UniFFI 接入并进 APK，真机裸名 dlopen 已在 APK 进程内复验；OCR 管线本身仍没接 UniFFI，OCR 端到端耗时没复验。**
+- `core/crates/arkli-ai`：PP-OCR 管线的纯逻辑（预处理、DB 后处理、CTC、取消与进度）、provider 探测、推理后端 trait；`ort` 仅在 `ort-backend` 特性后。`arkli-core` 仍零依赖。**识物（`clip` 编码器 + `classify` 分类，纯函数）已经经 `arkli-ffi` 的 UniFFI 接入并进 APK，真机裸名 dlopen 已在 APK 进程内复验；OCR 管线 M8（2026-10-16）已改经 `GraphSession` 用 MNN fp16 模型并经 UniFFI 导出 `ocr_load/ocr_recognize/ocr_cancel/ocr_unload`，桌面真库对拍通过，真机耗时与内存没复验，见 [ONNX→MNN 迁移](research/onnx-to-mnn-migration.md) 的 M8。**
 - **本地翻译 NLLB 接入（2026-10-15）**：Rust `arkli-ai::translate`（feature `ort-backend`，移植自 Cisox snow-translator，只留 m2m100 路径：清单、分词含 null charsmap 修补、分句、束搜索、全角标点后处理）+ UniFFI `translate_load/translate_run/translate_unload` + Kotlin `local-nllb` 提供者与桥方法 `native.ai.translate`（`TranslateService`/`AiTranslatePolicy`，走 `AiHeavyGate`，删除模型前 `addReleaseHook` 释放）+ `models.json` 新条目 `nllb600m-un6-ccm-int4`（6 个文件 404,501,627 字节，sha256 已在宿主机与设备上各校验一次）。新依赖只加了 `tokenizers 0.23.2`（`default-features=false, features=["fancy-regex"]`，用户已批准）与 `serde`/`serde_json`（均为其传递依赖，optional，随 `ort-backend`）；`ort` 仍是 `=2.0.0-rc.14`，没引 ndarray，没用补丁分支。`OrtBackend::load` 改成进程内共享环境、幂等（rc.14 一个进程只许建一次环境，识物与翻译共用）。**证据**：宿主机（onnxruntime 1.28.2）`cargo test -p arkli-ai --features ort-backend`：126 通过，真实模型 ignored 测试 zh-CN→en / en→zh-CN / en→fr 通过，与 Cisox `nllb_parity.json` 夹具对拍 9/9 译文逐字一致（ja 两对不在本包语言内，跳过）；`./gradlew :app:testDebugUnitTest` 575 通过。**真机（STG-AL00，Android 12）**：sherpa 自带 ORT 1.28.2 能加载 MatMulNBits int4 模型；模型加载 2.8 秒，首句总耗时 4.8 秒（含加载），后续短句 1.4~2.0 秒，两句长文本 beams=4 约 5.0 秒；进程 RSS 基线约 237MB，翻译后 577MB（峰值 616MB），卸载后 513MB。`libarkli_ffi.so`（arm64 release）510,912 → 3,315,600 字节，gzip -9 237,143 → 1,239,468（+2.8MB 原始 / +1.0MB 压缩，主要是 tokenizers 与 regex 的 Unicode 表）。
 
 ### Web（25 个工具，id 见 `web/src/tools/registry.ts`）
@@ -85,7 +85,7 @@ summary: 接手入口：做到哪、已拍板什么、验证到什么程度、�
 `native.task.*`、前台服务（API 35+ 声明 `mediaProcessing`）、通知封装、闹钟（番茄钟）。视频压缩、提取音频走 Media3 Transformer 与平台 `MediaExtractor/Muxer`，**先问用户确认 Media3 依赖**。
 
 ### 4. AI 运行时真机复验
-`arkli-ai` 的 OCR 管线经 UniFFI 接入（`CancelToken` 做 Object、进度做 callback interface；识物那部分已接，见上）；与 sherpa 共用同一份 ORT（裸名 dlopen 已在 APK 进程里复验，sherpa JNI 同进程共用未测）；通道顺序 BGR/RGB、cls 模型输入尺寸（v5 未核实）、默认参数在 1080×2400 截图上的检出率、耗时与内存；每次升级 sherpa 加一条 OCR 端到端回归；NNAPI 默认关。模型文件来源（约 21.5MB，ModelScope RapidAI）与托管位置待定。PNG 解码 `png` crate 未批准，输入暂由原生解码成像素。
+（M8 起 OCR 管线已接 UniFFI 并改走 MNN，不再与 sherpa 共用 ORT，待真机复验速度与内存；下面是更早的待办原文）`arkli-ai` 的 OCR 管线经 UniFFI 接入（`CancelToken` 做 Object、进度做 callback interface；识物那部分已接，见上）；与 sherpa 共用同一份 ORT（裸名 dlopen 已在 APK 进程里复验，sherpa JNI 同进程共用未测）；通道顺序 BGR/RGB、cls 模型输入尺寸（v5 未核实）、默认参数在 1080×2400 截图上的检出率、耗时与内存；每次升级 sherpa 加一条 OCR 端到端回归；NNAPI 默认关。模型文件来源（约 21.5MB，ModelScope RapidAI）与托管位置待定。PNG 解码 `png` crate 未批准，输入暂由原生解码成像素。
 
 ### 5. 其余 P0
 OCR 工具页（依赖 4）。二维码扫码原型已做，待真机验证。
@@ -118,6 +118,65 @@ OCR 工具页（依赖 4）。二维码扫码原型已做，待真机验证。
 
 - **L2 本地文本模型：MNN + Qwen3.5-0.8B（2026-10-15）**：用户拍板改 0002，L2 用 MNN（见 [0002 修订](decisions/0002-ai-inference-base.md)）。新增 `native/mnn/`（JNI 封装 `arkli_mnn_jni.cpp`、`CMakeLists.txt`、`build.sh`，钉死 MNN 提交 `478c10e…`），Kotlin 侧 `MnnNative` / `QwenService` / `LocalQwenProvider`（`local-qwen`，任务 `prompt`/`summarize`/`proofread`/`rewrite`）/ `AiQwenPolicy`，接入 `AiModule`、`AiRecycle`、`native.ai.warmup/unload`；清单新增 `qwen35-0.8b-mnn-q4`；`fetchMnnRuntime` 构建时取 release `mnn-478c10e-v1` 的两个 so 并校验 sha256。**测试**：新增 23 个 Kotlin 单测（策略 9、服务与提供者 14）全过，`ai` 包既有测试无回归。**真机 STG-AL00 验证**：桥 → `local-qwen` → JNI → MNN 跑通，加载约 3.1 s、解码约 17 tok/s；**内存**基线 PSS 约 160MB → 加载后约 950MB → 卸载后约 163MB（+3MB，过 +30MB 验收线）。踩坑：首版卸载后只释放 15MB，原因是 MNN 全局执行器的缓存与分配器空闲页没还，`nativeDestroy` 里加 `Executor::gc(FULL)` 与 `mallopt(M_PURGE)` 后解决。**未验证**：App 内经真实 release 链路下载（测试时手机没有网络，改为把已知一致的文件拷进 App 目录，再由 App 做 sha256 校验）；前端页面（目前只有桥方法，没有 UI）；低内存机型；流式输出与取消（目前一次返回整段，最多 256 token）。**质量**：0.8B 会一本正经地说错（自我介绍说成“7B”、西湖介绍里有编造的景点），界面接入时要有提示。
 
+**下载地址的单一来源是 `models.json`**（2026-10-16）：AI 中心（`/ai`）的「下载地址」面板经只读桥方法 `native.model.sources` 从原生读取，界面不重复硬编码；用户可点击下载，也可查看地址在别处下载后手动放入再「校验」。设计见 [模型下载管理](design/model-download.md)。**只过单测与编译，未上真机。**
+
+## 待上传 release 总清单（用户执行上传；字节数、sha256 以 `models.json` 与 `app/build.gradle.kts` 的 `mnnLibs` 为准，已逐项核对）
+
+全部上传到公开仓库 `icodejoo/arkli`。上传前对应下载会失败；上传后按 302 与 sha256 复核。构建所需的三个 so 上传前靠本机 `.gradle/arkli-mnn` 缓存。
+
+**`mnn-478c10e-v2`**（运行库，三个都要放，下载前缀相同）
+
+| 文件 | 字节 | sha256 |
+|---|---|---|
+| `libMNN.so`（与 v1 相同，不变） | 4,899,952 | `9cc1ff8b8b039431913a37ad1853dfa51162b41ae8b90927507204397096a353` |
+| `libarkli-mnn.so` | 71,592 | `b4c9bf34e2d72867a8b265fcedd5f14435cf1d994a7ee2af0253445c88c09f40` |
+| `libsherpa-mnn-jni.so` | 2,690,520 | `aa79262fa17431bf513c7c4ac9855df02d09c1fe364396c0d8032df652a0c339` |
+
+**`siglip2-mnn-v1`**（识物，1 个文件）
+
+| 文件 | 字节 | sha256 |
+|---|---|---|
+| `model.mnn` | 94,775,452 | `8af99950b0fb39c2df90e66d67181eecc4e538617fbfdc0242ee420b36ac60d5` |
+
+**`nllb-mnn-v1`**（翻译，12 个文件，共 392,177,035 B；`model.json` 是 `num_beams=1` 的可信版，复现方法见 `scripts/mnn/README.md`）
+
+| 文件 | 字节 | sha256 |
+|---|---|---|
+| `LICENSE-CC-BY-NC-4.0.txt` | 19,347 | `41003d4a74749c0220e33dd415042164b5a1093ed401f36277234f772d22d3d0` |
+| `NOTICE.txt` | 2,136 | `a4188346a1266d3d9547558f08ef8893a9d077c3772b4aa6934457bafd52f4a3` |
+| `cross_kv.mnn` | 28,784 | `8a860332b7dab8c63e0d5b1a405d98bae1cc3156a85113a301fb8ab7b6422ab8` |
+| `cross_kv.mnn.weight` | 19,170,960 | `8236984b2cebaac9104599553a2e916a3d67f0cb1ef55bcc03b77aefe914126e` |
+| `decoder_step.mnn` | 624,080 | `09e231235a3938d40c86d7a9bcb09db096669c927613c036f4b2f1a44e838f5d` |
+| `decoder_step.mnn.weight` | 186,455,862 | `ca32acd63cd3d6d129cac220f673d4c2c4b7b88ac2b0d20953908d67dd1a66d5` |
+| `embed.i8` | 63,279,104 | `d1dc9511201a86481b84dfd3404e6c919da2fdb57b41482b22d6ce13324bef23` |
+| `embed.scale` | 247,184 | `7e49a46dedb9a5bed0669a905b538ea451b8d139fb793c451d1cfee346d42591` |
+| `encoder.mnn` | 380,896 | `497f3e7cd5e6ae1de396d4fc17b803e0cd2b1d946fea66a0fc5cbc569cb0479f` |
+| `encoder.mnn.weight` | 118,985,648 | `dafaee96b607b9c93532b53ab92f4e557eae6a7c9bc86e61e6a7288451e3c135` |
+| `model.json` | 1,218 | `1db584251cde24fc8570f393f019ede6e7c6d58225b40ed0e71c330e16a14d36` |
+| `tokenizer.json` | 2,981,816 | `d93881797f945c189dd89a9fee75764e8a8d564e780fc66dac30c0d3747044f2` |
+
+**`asr-mnn-v1`**（语音，4 个文件，共 168,813,626 B）
+
+| 文件 | 字节 | sha256 |
+|---|---|---|
+| `decoder.mnn` | 10,603,880 | `bf91f6513a4d05b3c1c4f06c034e51caddda8d503caba3ad6250bd016950e018` |
+| `encoder.mnn` | 155,527,912 | `982314ac18794997a4e5d0ae8ff52bfcbf0299503caed8256fe469cab6b7af8f` |
+| `joiner.mnn` | 2,623,028 | `47b490b2ae3abb402f54a35183ec07cd50bde180b5c55f12dd5241a116bba2e9` |
+| `tokens.txt` | 58,806 | `b818a60878b9aae978cbb8ad594acbd403d76d1af2e31ef4197c84e2dbdba27c` |
+
+**`ocr-mnn-v1`**（文字识别，6 个文件，共 11,438,043 B）
+
+| 文件 | 字节 | sha256 |
+|---|---|---|
+| `LICENSE-Apache-2.0.txt` | 11,376 | `3840c5c0c61c294264d2dd77b8777be6ddd90121ef4e0e64abcd22edea581d6e` |
+| `NOTICE.txt` | 1,555 | `9eb926caa8f5415e75a0b612a423cd30e86741ce10554101a1fdf26b2b9b7cb0` |
+| `cls.mnn` | 516,824 | `58ac0a454c0414352e41450220f4249d7c542eef3dbcf62290756a0815480d7c` |
+| `det.mnn` | 2,411,040 | `73d519a359883d440efce876a52691d2afa064ccdb5120f4c1cedff1a9d7d319` |
+| `ppocr_keys.txt` | 74,012 | `d1979e9f794c464c0d2e0b70a7fe14dd978e9dc644c0e71f14158cdf8342af1b` |
+| `rec.mnn` | 8,423,236 | `9350d716fa78ae220736e3141ec89382367b3bf01d0592c379bec5db31437c18` |
+
+> 待确认：`siglip2-mnn-v1`、`asr-mnn-v1` 目前不带 LICENSE/NOTICE（NLLB、OCR 带）。上游均为 Apache-2.0，第 4(a) 条要求再分发时随附许可证副本，建议补上后再上传（清单要同步加文件）。
+
 ## 待用户拍板 / 未知
 - **开源协议**还没选（仓库无 LICENSE）：GPL 类依赖（如 libimagequant）会牵连整个 App，选协议要早于引入这类依赖。
 - 模型与数据包托管位置（识物 `q4_half.onnx` 已于 2026-10-15 发布到 GitHub release `siglip2-q4half-v1`（公开仓库），真实下载链路已实测：302 直接落到 `release-assets.githubusercontent.com`，下载后 sha256 与清单一致；后续考虑补镜像，单连接在菲律宾偏慢）；Qwen3.5-0.8B 的 MNN 文本模型已于 2026-10-15 发布到 GitHub release `qwen35-mnn-v1`（公开仓库，6 个文件合计 484,349,699 字节，真实链路已实测，溯源见 [Qwen3.5 MNN 模型](research/qwen35-mnn-model.md)）；拼豆色号表数据来源；国内商店对按需下载 so 的规则（没查到原文）。
@@ -127,7 +186,12 @@ OCR 工具页（依赖 4）。二维码扫码原型已做，待真机验证。
 - ~~端侧 LLM 的 tokenizer：引入 `tokenizers` 还是自写 BPE~~：**已解决（2026-10-15）**，L2 改用 MNN，分词与聊天模板用 MNN 自带的，不引入也不自写。
 - `ArkliPage` 里 `bridge` 字段先于 `binarySupported` 初始化，`native.hello` 的 `features.binary` 可能一直是 false（只会永远走 base64 兜底，不出错但慢）：修不修待定。
 - 宜忌释义 123 条非"待核对"条目是通俗改写，没有逐条对权威黄历核过，正式上线前建议找懂行的人过一遍。
-- **翻译模型托管待定**：`nllb600m-un6-ccm-int4` 解压后的 6 个单文件还没上传到 release，`models.json` 里的 URL 是占位 `https://github.com/icodejoo/Cisox/releases/download/models/<文件名>`，上传后要核对 URL、字节数与 sha256（`encoder.onnx_data` 158,297,088 字节、`decoder.onnx_data` 229,598,080 字节，单文件需小于 GitHub release 2GB 上限）。
+- **NLLB MNN 版 release `nllb-mnn-v1` 待用户上传（M6c）**：12 个文件（清单、字节数、sha256 见 [onnx-to-mnn-migration.md](research/onnx-to-mnn-migration.md) 的 M6c 一节），`models.json` 的 `nllb600m-un6-mnn-w6` 已指向 `https://github.com/icodejoo/arkli/releases/download/nllb-mnn-v1/<文件名>`；上传前下载会失败，上传后按 302 与 sha256 复核。旧条目 `nllb600m-un6-ccm-int4` 暂留清单、不进 `retired`，待真机验收通过后（M9）再退役。
+- **识物 MNN 版 release `siglip2-mnn-v1` 待用户上传**：1 个文件 `model.mnn`（94,775,452 B），`models.json` 的 `siglip2-mnn-w8` 已指向它；清单见上方“待上传 release 总清单”。
+- **语音 MNN 版待用户上传（M7）**：（a）`mnn-478c10e-v2` 要放三个 so（`libMNN.so`、`libarkli-mnn.so`、新增的 `libsherpa-mnn-jni.so` 2,690,520 B，sha 见 [onnx-to-mnn-migration.md](research/onnx-to-mnn-migration.md) 的 M7 一节）；（b）release `asr-mnn-v1` 的 4 个文件（`encoder.mnn`/`decoder.mnn`/`joiner.mnn`/`tokens.txt`，共 168,813,626 B）；`models.json` 已首次加入 `asr-zipformer-zh-en-mnn-w8`，上传前设备下载会失败，上传后按 302 与 sha256 复核。旧手动目录 `asr-zipformer-zh-en-int8` 暂不进 `retired`（M9 / 真机验收后）。sherpa-mnn JNI 真机能否跑通是最高风险项，待真机清单在该节末尾。
+- **文字识别升级 PP-OCRv6 small，release `ocr-mnn-v2` 待用户上传**：6 个文件 `det.mnn`（4,967,972 B）、`rec.mnn`（10,648,948 B）、`cls.mnn`（516,824 B，与 v5 包同一个文件）、`ppocr_keys.txt`（74,947 B）、`NOTICE.txt`（1,693 B）、`LICENSE-Apache-2.0.txt`（11,376 B），sha256 见 `models.json` 的 `ppocrv6-small-mnn-fp16` 与 [onnx-to-mnn-migration.md](research/onnx-to-mnn-migration.md) 的“M8 升级 PP-OCRv6 small”一节；本机产物在 `E:\workspacesrkli-models\ppocrv6-small-mnn-fp16\`（`scripts/device-push-models.sh` 可直接推）。Kotlin 的 `OcrService.MODEL_ID` / `OCR_MODEL_DIR` 已指向它；旧 `ppocrv5-mnn-fp16` 保留、未进 retired，待 v6 真机验收通过再退役。
+- **（旧）文字识别 MNN 版 release `ocr-mnn-v1` 待用户上传（M8）**：6 个文件 `det.mnn`、`rec.mnn`、`cls.mnn`、`ppocr_keys.txt`、`NOTICE.txt`、`LICENSE-Apache-2.0.txt`（字节数、sha256 见 [onnx-to-mnn-migration.md](research/onnx-to-mnn-migration.md) 的 M8 一节，`models.json` 已登记 `ppocrv5-mnn-fp16`），上传前下载会失败；另请确认 ModelScope 模型页的许可证标注（上游 PaddleOCR / RapidOCR 仓库均为 Apache-2.0）。真机验收（1080×2400 ≤ 2.2 s、峰值 RSS ≤ 210MB）待做。
+- **翻译模型托管待定（旧 ONNX 版）**：`nllb600m-un6-ccm-int4` 解压后的 6 个单文件还没上传到 release，`models.json` 里的 URL 是占位 `https://github.com/icodejoo/Cisox/releases/download/models/<文件名>`，上传后要核对 URL、字节数与 sha256（`encoder.onnx_data` 158,297,088 字节、`decoder.onnx_data` 229,598,080 字节，单文件需小于 GitHub release 2GB 上限）。
 - **翻译模型授权说明待在下载界面落地**：权重是 CC-BY-NC-4.0（仅限非商业、不用于生产部署），需在 AI 中心下载界面展示署名、来源与修改说明，文案见 [bridge-protocol 的“本地翻译模型授权”](design/bridge-protocol.md)；App 若商用发布需换模型或另获授权。
 - **翻译模型的质量局限（已知，未处理）**：词表裁剪后个别生僻字会被静默丢掉，如 “lazy”→“惰的”（缺“懒”）、“sunny”→“阳光明的”（缺“媚”），宿主机与真机一致，是模型本身的问题；短句偶有离谱结果（`Good morning.` en→es 得 `- ¿Qué pasa?`）。是否在界面提示、或换更大词表/更高精度的包，待用户定。
 
