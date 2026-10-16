@@ -39,11 +39,15 @@ LONG_PERCENT = 35
 SAD_MIN = 2
 #: 感伤线索（命中一个计 1）
 SAD_WORDS = ("愁 泪 悲 哀 恨 怨 寂寞 孤 凄 惆怅 断肠 憔悴 落寞 寥 残 殇 痛 哭 伤 叹 瘦 病 死 亡 别 离 苦 憾 怅 "
-             "凉 泣 萧 衰 败 枯 空 寒 冷 落").split()
+             "凉 泣 萧 衰 败 枯 空 寒 冷 落 惨 恻 奈何").split()
 #: 感伤时排除的基调
 SAD_EXCLUDE = {"喜", "励"}
-#: 挽联弱判定时允许的基调
-SOLEMN_ALLOW = {"雅", "感", "庄", "讽"}
+#: 挽联弱判定且对联带感伤线索时允许的基调
+SOLEMN_ALLOW = {"感", "庄"}
+#: 挽联弱判定但对联不带感伤线索时允许的基调
+SOLEMN_ALLOW_CALM = {"雅", "感", "庄", "讽"}
+#: 挽联弱判定时“通用-感怀”节点的类权重（与主题类的庄重/感怀节点竞争）
+SOLEMN_FALLBACK_W = 0.6
 #: 共享字统计时忽略的虚字/数字
 STOP_CHARS = set("之一不人有无而其以于为是在也的了千万百十三两二四五六七八九大小上下中天地年日月何此彼何谁我你他")
 #: 判断“与对联重合过半”时忽略的虚字
@@ -104,6 +108,7 @@ class BannerPicker:
                 id=nd["id"], cls=nd["cls"], mood=nd["mood"],
                 trig=[self._parse_trig(x) for x in nd.get("trig", "").split()],
                 min_hits=nd.get("min_hits", 1),
+                solemn=nd.get("solemn", True), need_sad=nd.get("need_sad", False),
                 b4=nd.get("b4", "").split(), b2=nd.get("b2", "").split(), bl=nd.get("bl", "").split()))
         #: 类 → 节点列表
         self.by_cls = {}
@@ -196,18 +201,20 @@ class BannerPicker:
             return word, float(w)
         return token, (TRIG_CHAR if len(token) == 1 else TRIG_WORD)
 
-    def node_scores(self, text, cats, solemn, sad):
+    def node_scores(self, text, cats, allow, sad):
         """计算候选节点分。
 
-        参数：text 上下联拼接；cats [(类, 权重)]；solemn 是否挽联弱判定；sad 是否感伤
+        参数：text 上下联拼接；cats [(类, 权重)]；allow 允许的基调集合（None 不限，挽联弱判定时给出）；sad 是否感伤
         返回：[(分, 节点)]，按分降序
         """
         out = []
         for cls, w in cats:
             for nd in self.by_cls.get(cls, []):
-                if solemn and (cls == "挽联" or nd["mood"] not in SOLEMN_ALLOW):
-                    continue  # 弱判定不确定是否挽联：不用挽联横批，主题横批也只取庄重/雅致/感怀
+                if allow is not None and (cls == "挽联" or nd["mood"] not in allow or not nd["solemn"]):
+                    continue  # 挽联弱判定：不用挽联横批，只用允许的基调，且不用评点式横批
                 if sad and nd["mood"] in SAD_EXCLUDE:
+                    continue
+                if nd["need_sad"] and not sad:
                     continue
                 if nd["trig"]:
                     hits = [w for x, w in nd["trig"] if x in text]
@@ -234,17 +241,22 @@ class BannerPicker:
         h = _hash(text)
         if cats and cats[0][0] == "通用" and guess and guess != "挽联":
             cats = [(guess, GUESS_W), ("通用", 1.0 - GUESS_W)]
+        sad = is_sad(text)
+        solemn = False
         if wan_level == 2 or (cats and cats[0][0] == "挽联"):
             cats = [("挽联", 1.0)]
+        elif wan_level == 1:
+            # 弱判定（不确定是否挽联）：不用挽联横批、不用喜庆/励志；带感伤线索时再收紧到庄重/感怀
+            solemn = True
+            cats = [(c, w) for c, w in cats if c != "挽联"] + [("通用", SOLEMN_FALLBACK_W)]
         elif cats and cats[0][0] != "通用" and cats[0][1] < UNSURE_W:
             cats = list(cats) + [("通用", UNSURE_W - cats[0][1])]
-        solemn = wan_level == 1
-        sad = is_sad(text)
-        scored = self.node_scores(text, cats, solemn, sad)
+        allow = (SOLEMN_ALLOW if sad else SOLEMN_ALLOW_CALM) if solemn else None
+        scored = self.node_scores(text, cats, allow, sad)
         if not scored and solemn:
-            scored = self.node_scores(text, [("挽联", 1.0)], False, False)
+            scored = self.node_scores(text, [("挽联", 1.0)], None, False)
         if not scored:
-            scored = self.node_scores(text, [("通用", 1.0)], False, False)
+            scored = self.node_scores(text, [("通用", 1.0)], None, False)
         best = scored[0][0]
         pool = [nd for s, nd in scored if s >= best - NODE_BAND]
 

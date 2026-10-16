@@ -5,6 +5,7 @@
     python -I derive.py --limit 20000        # 只取去重后前 N 对（训练也只用这些，结果与全量不同，仅供试跑）
     python -I derive.py --eval dev           # 全量推导后在金标 dev 上评估，结果写入 stats.json
     python -I derive.py --eval holdout --sheet  # 另输出横批判定表，供人工逐条判定
+    python -I derive.py --eval both --eval-only # 只评估（读人工判定算横批合格率），合并进已有 stats.json
 输出目录默认 E:\\workspaces\\arkli-models\\_src\\couplet-derived\\
 """
 
@@ -154,6 +155,8 @@ def main(argv=None):
     ap.add_argument("--limit", type=int, default=None, help="只取去重后前 N 对")
     ap.add_argument("--eval", choices=["dev", "holdout", "both"], default=None, help="在金标上评估")
     ap.add_argument("--sheet", action="store_true", help="评估时另写横批判定表")
+    ap.add_argument("--eval-only", action="store_true",
+                    help="只训练并评估，不重写 derived.tsv；评估结果合并进已有 stats.json")
     args = ap.parse_args(argv)
 
     os.makedirs(args.out, exist_ok=True)
@@ -163,6 +166,20 @@ def main(argv=None):
     log(f"去重后 {len(pairs)} 对")
     clf, bp = build(pairs)
     train_seconds = round(time.time() - t0, 1)
+    stats_path = os.path.join(args.out, "stats.json")
+    if args.eval_only:
+        if not args.eval:
+            ap.error("--eval-only 需要同时给 --eval")
+        with open(stats_path, encoding="utf-8") as f:
+            stats = json.load(f)
+        index = dict(enumerate(corpus.load_pairs(args.data)))
+        splits = ["dev", "holdout"] if args.eval == "both" else [args.eval]
+        stats.setdefault("eval", {}).update(
+            {s: evaluate_gold(clf, bp, index, s, args.out if args.sheet else None) for s in splits})
+        with open(stats_path, "w", encoding="utf-8") as f:
+            json.dump(stats, f, ensure_ascii=False, indent=1)
+        log(json.dumps(stats["eval"], ensure_ascii=False))
+        return
     stats = run(pairs, clf, bp, os.path.join(args.out, "derived.tsv"))
     stats["train_seconds"] = train_seconds
     stats["total_seconds"] = round(time.time() - t0, 1)
@@ -176,7 +193,7 @@ def main(argv=None):
         splits = ["dev", "holdout"] if args.eval == "both" else [args.eval]
         stats["eval"] = {s: evaluate_gold(clf, bp, index, s, args.out if args.sheet else None) for s in splits}
         log(json.dumps(stats["eval"], ensure_ascii=False))
-    with open(os.path.join(args.out, "stats.json"), "w", encoding="utf-8") as f:
+    with open(stats_path, "w", encoding="utf-8") as f:
         json.dump(stats, f, ensure_ascii=False, indent=1)
     log(f"完成，用时 {stats['total_seconds']} 秒；回落通用 {stats['fallback_rate']}；"
         f"最大单横批占比 {stats['banner_max_share']}")
