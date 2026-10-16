@@ -70,9 +70,9 @@ class TranslateServiceTest {
         fillModel(dir)
         val s = TranslateService(env(dir), FakeBackend())
         assertTrue(s.isModelReady())
-        File(dir, "decoder.onnx_data").writeText("")
+        File(dir, "decoder_step.mnn.weight").writeText("")
         assertFalse(s.isModelReady())
-        File(dir, "decoder.onnx_data").delete()
+        File(dir, "decoder_step.mnn.weight").delete()
         assertFalse(s.isModelReady())
     }
 
@@ -127,7 +127,7 @@ class TranslateServiceTest {
         val b = FakeBackend()
         val s = TranslateService(env(dir), b)
         runBlocking { s.translate(req) }
-        File(dir, "encoder.onnx").writeText("longer content")
+        File(dir, "encoder.mnn").writeText("longer content")
         runBlocking { s.translate(req) }
         assertEquals(listOf("load", "translate:zh-CN>en", "unload", "load", "translate:zh-CN>en"), b.calls)
     }
@@ -267,11 +267,44 @@ class TranslateServiceTest {
         assertEquals(TRANSLATE_MODEL_DIR, e!!.dir)
         assertEquals("cc-by-nc-4.0", e.license)
         assertEquals(TranslateService.REQUIRED_FILES.toSet(), e.files.map { it.name }.toSet())
-        assertEquals(404_501_627L, e.totalBytes)
+        assertEquals(392_177_035L, e.totalBytes)
+        assertEquals(e.totalBytes, e.files.sumOf { it.bytes })
         assertEquals(
-            "05687c19b11c4ff6ffa1c3a03c22d8936716c23f043e1626e3908d03a352073d",
-            e.files.first { it.name == "decoder.onnx" }.sha256,
+            "09e231235a3938d40c86d7a9bcb09db096669c927613c036f4b2f1a44e838f5d",
+            e.files.first { it.name == "decoder_step.mnn" }.sha256,
+        )
+        // model.json 的 num_beams 已改 1 并重新登记（待用户上传的就是这一份）
+        assertEquals(
+            "1db584251cde24fc8570f393f019ede6e7c6d58225b40ed0e71c330e16a14d36",
+            e.files.first { it.name == "model.json" }.sha256,
         )
         assertTrue(e.files.all { f -> f.urls.all { NetPolicy.isAllowedDownload(it) } })
+    }
+
+    @Test
+    fun requiredFiles_areMnnSplitSet_noOnnx() {
+        val f = TranslateService.REQUIRED_FILES
+        assertEquals(12, f.size)
+        assertEquals(f.size, f.toSet().size)
+        assertTrue(f.containsAll(listOf("encoder.mnn", "cross_kv.mnn", "decoder_step.mnn", "embed.i8", "embed.scale", "model.json")))
+        assertTrue(f.none { it.endsWith(".onnx") || it.endsWith(".onnx_data") })
+        assertEquals("nllb600m-un6-mnn-w6", TranslateService.MODEL_ID)
+        assertEquals("models/nllb600m-un6-mnn-w6", TRANSLATE_MODEL_DIR)
+    }
+
+    @Test
+    fun translate_withoutModel_throwsNotReady() {
+        val s = TranslateService(env(tmp.newFolder("empty")), FakeBackend())
+        val e = assertThrows(BridgeException::class.java) { runBlocking { s.translate(req) } }
+        assertEquals(BridgeErrors.NOT_READY, e.code)
+    }
+
+    @Test
+    fun shippedManifest_keepsOldOnnxEntry_notRetired() {
+        val m = ModelManifestParser.parse(File("src/main/assets/ai/models.json").readText())
+        val old = m.find("nllb600m-un6-ccm-int4")
+        assertNotNull(old)
+        assertTrue(old!!.displayName.contains("旧 ONNX 版"))
+        assertTrue(m.retired.none { it.id == "nllb600m-un6-ccm-int4" })
     }
 }

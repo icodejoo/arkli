@@ -28,7 +28,7 @@ data class TranslateOutcome(
  */
 interface TranslateBackend {
     /**
-     * 加载 ORT 与翻译模型；同一目录重复调用无副作用。
+     * 加载运行库与翻译模型；同一目录重复调用无副作用。
      *
      * @param modelDir 模型目录绝对路径
      */
@@ -156,11 +156,13 @@ class TranslateService(
 
     companion object {
         /** 模型标识，与 `assets/ai/models.json` 的 id 一致，也写进结果 */
-        const val MODEL_ID = "nllb600m-un6-ccm-int4"
+        const val MODEL_ID = "nllb600m-un6-mnn-w6"
 
         /** 设备上必需的文件名，与清单里 files 一致 */
         val REQUIRED_FILES: List<String> = listOf(
-            "encoder.onnx", "encoder.onnx_data", "decoder.onnx", "decoder.onnx_data", "tokenizer.json", "model.json",
+            "encoder.mnn", "encoder.mnn.weight", "cross_kv.mnn", "cross_kv.mnn.weight",
+            "decoder_step.mnn", "decoder_step.mnn.weight", "embed.i8", "embed.scale",
+            "tokenizer.json", "model.json", "NOTICE.txt", "LICENSE-CC-BY-NC-4.0.txt",
         )
 
         /** 纳秒转毫秒 */
@@ -178,7 +180,7 @@ class TranslateService(
 }
 
 /**
- * 本地翻译提供者（L1，NLLB-200 600M int4）：只声明 `translate`，可用性取决于模型是否由 `native.model.*` 装好并校验通过。
+ * 本地翻译提供者（L1，NLLB-200 600M，MNN 6 位）：只声明 `translate`，可用性取决于模型是否由 `native.model.*` 装好并校验通过。
  *
  * 文本入口 [run] 不适用（需要语言对），请走 `native.ai.translate`。
  *
@@ -195,6 +197,15 @@ class LocalNllbProvider(private val service: TranslateService, private val model
     /** 展示名 */
     override val displayName: String = "本地翻译（NLLB）"
 
+    /** 专用翻译小模型，属 L1 */
+    override val layer: AiLayer = AiLayer.L1
+
+    /** 会话依赖翻译模型，删除它前先卸载 */
+    override val sessionModelId: String = TranslateService.MODEL_ID
+
+    /** 翻译报价带语言清单（与 Qwen 共用 [AiTranslatePolicy.OFFER_CONSTRAINTS]） */
+    override fun offers(): List<AiOffer> = listOf(AiOffer(AiTask.TRANSLATE, AiTranslatePolicy.OFFER_CONSTRAINTS))
+
     /** 只做翻译 */
     override fun capabilities(): Set<AiTask> = setOf(AiTask.TRANSLATE)
 
@@ -209,9 +220,8 @@ class LocalNllbProvider(private val service: TranslateService, private val model
         AiModelInfo(TranslateService.MODEL_ID, it.installed, it.diskBytes, it.downloading)
     }
 
-    /** 文本入口不支持 */
-    override suspend fun run(task: AiTask, input: String): AiRunResult =
-        throw BridgeException(BridgeErrors.BAD_PARAMS, "$ID 只支持 native.ai.translate")
+    /** 文本入口一律不收：翻译要语言对，只经 `native.ai.translate`（[AiPort.Translate]）；路由也不会把 run 派到这里 */
+    override suspend fun run(task: AiTask, input: String): AiRunResult = throw AiRouter.notRunnable(ID, task)
 
     /** 转交服务 */
     override suspend fun translate(req: AiTranslateRequest): TranslateResult = service.translate(req)

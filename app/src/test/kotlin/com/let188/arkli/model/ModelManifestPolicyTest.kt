@@ -46,8 +46,8 @@ class ModelManifestPolicyTest {
         assertNotNull(e)
         assertEquals(CLIP_MODEL_DIR, e!!.dir)
         assertEquals(CLIP_MODEL_FILE, e.files.single().name)
-        assertEquals(54_662_805L, e.totalBytes)
-        assertEquals("6b4ea1ecba627b754df325d86cc971620ac961b47d81310a3c0659827dff217a", e.files.single().sha256)
+        assertEquals(94_775_452L, e.totalBytes)
+        assertEquals("8af99950b0fb39c2df90e66d67181eecc4e538617fbfdc0242ee420b36ac60d5", e.files.single().sha256)
         assertTrue(e.files.single().urls.all { NetPolicy.isAllowedDownload(it) })
     }
 

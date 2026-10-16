@@ -38,6 +38,9 @@ class IntentHandoffProvider(private val platform: HandoffPlatform) : AiProvider 
     /** 展示名 */
     override val displayName: String = "系统应用交接"
 
+    /** 系统提供的能力（交接型），属 L3 */
+    override val layer: AiLayer = AiLayer.L3
+
     /** 支持全部文本类任务 */
     override fun capabilities(): Set<AiTask> = AiTask.values().filter { it.isText }.toSet()
 

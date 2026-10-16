@@ -3,11 +3,14 @@ package com.let188.arkli.model
 import android.content.Context
 import android.net.ConnectivityManager
 import android.util.Log
+import com.let188.arkli.ai.AiHeavyGate
 import com.let188.arkli.bridge.ArkliBridge
 import com.let188.arkli.net.JdkHttpTransport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** 日志 tag */
 private const val MODEL_LOG_TAG = "ArkliModel"
@@ -67,7 +70,7 @@ internal object ModelRuntime {
 }
 
 /**
- * 模型下载管理的桥方法：`native.model.list/status/ensure/cancel/remove/verify`，
+ * 模型下载管理的桥方法：`native.model.list/status/ensure/cancel/remove/verify/sources`，
  * 并在状态或下载进度变化时推送 `model.changed` 事件。
  * 下载地址只来自随包清单（页面只能传 id），全部只接受主 frame，契约见 docs/design/bridge-protocol.md「模型下载管理」。
  *
@@ -92,6 +95,12 @@ object ModelModule {
     /** 方法名：重新校验 */
     const val METHOD_VERIFY = "native.model.verify"
 
+    /** 方法名：下载来源（只读） */
+    const val METHOD_SOURCES = "native.model.sources"
+
+    /** 退役清理每个进程只排一次 */
+    private val retiredScheduled = AtomicBoolean(false)
+
     /** 事件名：某模型状态或下载进度变化，data 同 `native.model.status` 的返回 */
     const val EVENT_CHANGED = "model.changed"
 
@@ -110,8 +119,23 @@ object ModelModule {
         bridge.register(METHOD_CANCEL, ModelCancelHandler(manager))
         bridge.register(METHOD_REMOVE, ModelRemoveHandler(manager))
         bridge.register(METHOD_VERIFY, ModelVerifyHandler(manager))
+        bridge.register(METHOD_SOURCES, ModelSourcesHandler(manager))
         // 管理器是进程单例、桥是每会话一个：后装的桥接管推送，旧会话的事件本来就会被丢弃
         manager.setListener { bridge.emit(EVENT_CHANGED, ModelPolicy.snapshotJson(it)) }
+        scheduleRetiredCleanup(manager.manifest, context.applicationContext.filesDir)
         return manager
+    }
+
+    /** 后台排在 [AiHeavyGate] 之后回收退役模型目录；每进程一次，失败只记日志，不阻塞启动 */
+    private fun scheduleRetiredCleanup(manifest: ModelManifest, filesDir: java.io.File) {
+        if (manifest.retired.isEmpty() || !retiredScheduled.compareAndSet(false, true)) return
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            try {
+                val deleted = AiHeavyGate.run { ModelRetiredCleaner.run(manifest, FileRetiredFs(filesDir, manifest.models.map { it.dir }.toSet())) }
+                if (deleted.isNotEmpty()) Log.i(MODEL_LOG_TAG, "已回收退役模型：$deleted")
+            } catch (e: Exception) {
+                Log.w(MODEL_LOG_TAG, "退役清理异常", e)
+            }
+        }
     }
 }

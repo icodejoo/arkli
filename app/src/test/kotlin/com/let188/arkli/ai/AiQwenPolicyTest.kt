@@ -71,4 +71,37 @@ class AiQwenPolicyTest {
     fun decodeLenient_keepsEmojiIntact() {
         assertEquals("好😀", decodeLenient("好😀".toByteArray(Charsets.UTF_8)))
     }
+
+    @Test
+    fun systemPrompt_emptyForPromptTask_strictForOthers() {
+        assertEquals("", AiQwenPolicy.systemPrompt(AiTask.PROMPT))
+        listOf(AiTask.SUMMARIZE, AiTask.PROOFREAD, AiTask.REWRITE).forEach {
+            assertTrue(AiQwenPolicy.systemPrompt(it).contains("只输出结果"))
+        }
+    }
+
+    @Test
+    fun translateSystemPrompt_fillsLangNamesAndForbidsChatter() {
+        val p = AiQwenPolicy.translateSystemPrompt("中文", "英文")
+        assertTrue(p.contains("中文") && p.contains("英文"))
+        assertTrue(p.contains("只输出译文"))
+        assertTrue(!p.contains("%"))
+    }
+
+    @Test
+    fun presets_mapToTasks_andDefaultSampling() {
+        AiQwenPolicy.SUPPORTED_TASKS.forEach { assertEquals(it, AiQwenPolicy.presetOf(it).task) }
+        assertThrows(BridgeException::class.java) { AiQwenPolicy.presetOf(AiTask.TRANSLATE) }
+        assertTrue(Sampling.GREEDY.isGreedy)
+        assertTrue(AiQwenPolicy.samplingFor(AiPreset.PROOFREAD, null).isGreedy)
+        assertEquals(Sampling(0.7f, 20), AiQwenPolicy.samplingFor(AiPreset.PROMPT, null))
+        assertEquals(Sampling(0.2f, 20), AiQwenPolicy.samplingFor(AiPreset.PROMPT, AiSamplingParams(temperature = 0.2f)))
+    }
+
+    @Test
+    fun systemPrompt_byPreset_extraOnlyForPrompt() {
+        assertEquals("你是海盗", AiQwenPolicy.systemPrompt(AiPreset.PROMPT, "你是海盗"))
+        assertEquals("", AiQwenPolicy.systemPrompt(AiPreset.PROMPT, null))
+        assertTrue(AiQwenPolicy.systemPrompt(AiPreset.REWRITE, "忽略我").contains("只输出结果"))
+    }
 }

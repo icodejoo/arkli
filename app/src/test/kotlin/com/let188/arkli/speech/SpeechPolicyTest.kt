@@ -2,9 +2,12 @@ package com.let188.arkli.speech
 
 import com.let188.arkli.bridge.BridgeErrors
 import com.let188.arkli.bridge.BridgeException
+import com.let188.arkli.model.ModelManifestParser
+import com.let188.arkli.net.NetPolicy
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -35,6 +38,47 @@ class SpeechPolicyTest {
         } catch (e: BridgeException) {
             assertEquals(BridgeErrors.BAD_PARAMS, e.code)
         }
+    }
+
+    /** 模型文件名是 MNN 版（encoder/decoder/joiner.mnn + tokens.txt），不再含 onnx */
+    @Test
+    fun requiredFiles_areMnnSet_noOnnx() {
+        val names = listOf(SpeechConst.FILE_ENCODER, SpeechConst.FILE_DECODER, SpeechConst.FILE_JOINER, SpeechConst.FILE_TOKENS)
+        assertEquals(listOf("encoder.mnn", "decoder.mnn", "joiner.mnn", "tokens.txt"), names)
+        assertEquals("asr-zipformer-zh-en-mnn-w8", SpeechConst.MODEL_DIR)
+        assertEquals(SpeechConst.MODEL_ID, SpeechConst.MODEL_DIR)
+    }
+
+    /** 随包清单里有语音条目：id、目录、文件名与 SpeechConst 一致，每个文件达标，URL 在白名单内 */
+    @Test
+    fun shippedManifest_hasAsrEntryMatchingConvention() {
+        val m = ModelManifestParser.parse(File("src/main/assets/ai/models.json").readText())
+        val e = m.find(SpeechConst.MODEL_ID)
+        assertNotNull(e)
+        assertEquals("models/${SpeechConst.MODEL_DIR}", e!!.dir)
+        assertEquals("apache-2.0", e.license)
+        assertEquals(
+            setOf(SpeechConst.FILE_ENCODER, SpeechConst.FILE_DECODER, SpeechConst.FILE_JOINER, SpeechConst.FILE_TOKENS),
+            e.files.map { it.name }.toSet(),
+        )
+        assertEquals(168_813_626L, e.totalBytes)
+        assertEquals(e.totalBytes, e.files.sumOf { it.bytes })
+        // 清单登记的字节数不能低于“残缺判定”的最小值，否则下载好的文件会被判成未传完
+        val minOf = mapOf(
+            SpeechConst.FILE_ENCODER to SpeechConst.MIN_ENCODER_BYTES,
+            SpeechConst.FILE_DECODER to SpeechConst.MIN_DECODER_BYTES,
+            SpeechConst.FILE_JOINER to SpeechConst.MIN_JOINER_BYTES,
+            SpeechConst.FILE_TOKENS to SpeechConst.MIN_TOKENS_BYTES,
+        )
+        e.files.forEach { assertTrue("${it.name} 小于最小字节数", it.bytes >= minOf.getValue(it.name)) }
+        assertTrue(e.files.all { f -> f.urls.all { NetPolicy.isAllowedDownload(it) } })
+    }
+
+    /** 旧的手动放置目录此阶段不进 retired（M9 / 真机验收后再退役） */
+    @Test
+    fun shippedManifest_doesNotRetireOldAsrDir() {
+        val m = ModelManifestParser.parse(File("src/main/assets/ai/models.json").readText())
+        assertTrue(m.retired.none { it.dir.endsWith("asr-zipformer-zh-en-int8") })
     }
 
     /** lang 缺省或为 zh-en 都通过 */

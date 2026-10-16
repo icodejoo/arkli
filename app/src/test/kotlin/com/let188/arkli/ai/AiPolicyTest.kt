@@ -33,6 +33,7 @@ class AiPolicyTest {
         private val result: AiRunResult = AiRunResult.Text("ok"),
     ) : AiProvider {
         override val displayName = "假 $id"
+        override val layer = AiLayer.L3
         override fun capabilities() = tasks
         override fun availability() = avail
         override suspend fun run(task: AiTask, input: String) = result
@@ -108,6 +109,42 @@ class AiPolicyTest {
     }
 
     @Test
+    fun providerJson_appendsLayerAndOffers_keepsOldFields() {
+        val j = AiPolicy.providerJson(IntentHandoffProvider(FakePlatform(true)))
+        // 旧字段原样保留
+        assertEquals("系统应用交接", j.getString("displayName"))
+        assertTrue(j.getJSONArray("tasks").length() > 0)
+        // 新增：层与报价；交接的翻译经 run，没有约束
+        assertEquals("L3", j.getString("layer"))
+        val offers = j.getJSONArray("offers")
+        assertEquals(j.getJSONArray("tasks").length(), offers.length())
+        val tr = (0 until offers.length()).map { offers.getJSONObject(it) }.first { it.getString("task") == "translate" }
+        assertEquals("native.ai.run", tr.getString("entry"))
+        assertFalse(tr.has("constraints"))
+    }
+
+    @Test
+    fun offersJson_translateConstraintsSerialized() {
+        /** 带语言对接口与约束的翻译替身 */
+        val p = object : AiProvider, TextTranslator {
+            override val id = "tr"
+            override val displayName = "翻译"
+            override val layer = AiLayer.L1
+            override fun capabilities() = setOf(AiTask.TRANSLATE)
+            override fun offers() = listOf(AiOffer(AiTask.TRANSLATE, AiConstraints.Translate(listOf("en", "fr"), false)))
+            override fun availability() = AiAvailability.AVAILABLE
+            override suspend fun run(task: AiTask, input: String): AiRunResult = throw AiRouter.notRunnable(id, task)
+            override suspend fun translate(req: AiTranslateRequest): TranslateResult = throw UnsupportedOperationException()
+        }
+        val o = AiPolicy.offersJson(p).getJSONObject(0)
+        assertEquals("translate", o.getString("task"))
+        assertEquals("native.ai.translate", o.getString("entry"))
+        val c = o.getJSONObject("constraints")
+        assertEquals(listOf("en", "fr"), (0 until c.getJSONArray("languages").length()).map { c.getJSONArray("languages").getString(it) })
+        assertFalse(c.getBoolean("sourceAuto"))
+    }
+
+    @Test
     fun providersJson_listsAndMerges() {
         val j = AiPolicy.providersJson(listOf(FakeProvider("a", setOf(AiTask.PROOFREAD), AiAvailability.AVAILABLE)))
         assertEquals(1, j.getJSONArray("providers").length())
@@ -124,18 +161,6 @@ class AiPolicyTest {
         assertFalse(t.getBoolean("handoff"))
         assertTrue(t.getBoolean("handled"))
         assertEquals("答案", t.getString("text"))
-    }
-
-    @Test
-    fun requireRunnable_errors() {
-        val req = AiRunRequest("p", AiTask.TRANSLATE, "x")
-        assertEquals(BridgeErrors.BAD_PARAMS, assertThrows(BridgeException::class.java) { AiPolicy.requireRunnable(null, req) }.code)
-        val noTask = FakeProvider("p", setOf(AiTask.PROMPT), AiAvailability.AVAILABLE)
-        assertEquals(BridgeErrors.BAD_PARAMS, assertThrows(BridgeException::class.java) { AiPolicy.requireRunnable(noTask, req) }.code)
-        val off = FakeProvider("p", setOf(AiTask.TRANSLATE), AiAvailability.unavailable(AiUnavailableReason.NO_HANDLER))
-        assertEquals(BridgeErrors.NOT_READY, assertThrows(BridgeException::class.java) { AiPolicy.requireRunnable(off, req) }.code)
-        val ok = FakeProvider("p", setOf(AiTask.TRANSLATE), AiAvailability.AVAILABLE)
-        assertSame(ok, AiPolicy.requireRunnable(ok, req))
     }
 
     @Test

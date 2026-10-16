@@ -48,11 +48,15 @@ internal class MnnQwenBackend : QwenBackend {
         if (h != 0L) MnnNative.nativeDestroy(h)
     }
 
-    /** 单轮生成 */
-    override fun generate(prompt: String, maxNewTokens: Int): String {
+    /** 单轮生成；采样变化时原生层会重建会话（比普通生成慢一次加载的时间） */
+    override fun generate(system: String, prompt: String, maxNewTokens: Int, sampling: Sampling): String {
         val h = handle
         if (h == 0L) throw BridgeException(BridgeErrors.NOT_READY, "文本模型会话未加载")
-        val bytes = guard { MnnNative.nativeGenerate(h, prompt.toByteArray(Charsets.UTF_8), maxNewTokens) }
+        val bytes = guard {
+            MnnNative.nativeGenerate(
+                h, system.toByteArray(Charsets.UTF_8), prompt.toByteArray(Charsets.UTF_8), maxNewTokens, sampling.temperature, sampling.topK,
+            )
+        }
         return decodeLenient(bytes)
     }
 
@@ -96,13 +100,6 @@ internal object QwenRuntime {
     /** 单例，首次使用时创建 */
     @Volatile
     private var service: QwenService? = null
-
-    /**
-     * 只看不建：没创建过服务说明从没加载过模型。
-     *
-     * @return 已创建的服务，没有返回 null
-     */
-    fun peek(): QwenService? = service
 
     /**
      * 取文本模型服务。

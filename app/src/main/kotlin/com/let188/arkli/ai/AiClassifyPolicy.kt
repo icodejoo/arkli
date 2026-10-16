@@ -18,7 +18,7 @@ import kotlin.math.roundToLong
 data class AiClassifyRequest(val provider: String?, val path: String, val topK: Int)
 
 /**
- * 识物的纯逻辑：参数校验、提供者选择、词表解析、像素转换、结果序列化。无 Android 依赖，可单测。
+ * 识物的纯逻辑（选提供者归 [AiRouter]）：参数校验、词表解析、像素转换、结果序列化。无 Android 依赖，可单测。
  *
  * 使用示例：`AiClassifyPolicy.parse(JSONObject("""{"path":"cache/pick/a.jpg"}"""))`
  */
@@ -29,8 +29,8 @@ object AiClassifyPolicy {
     /** topK 上限 */
     const val MAX_TOP_K = 10
 
-    /** 路径长度上限 */
-    const val MAX_PATH = 1024
+    /** 路径长度上限（与 [AiPolicy.MAX_PATH] 同一个值） */
+    const val MAX_PATH = AiPolicy.MAX_PATH
 
     /** 词表文件格式版本，与 `tools/ai-vocab/build_vocab.py` 一致 */
     const val VOCAB_FORMAT = 1
@@ -64,8 +64,7 @@ object AiClassifyPolicy {
      * @throws BridgeException BAD_PARAMS：path 缺失或过长、provider 类型不对、topK 不是 1~[MAX_TOP_K] 的整数
      */
     fun parse(params: JSONObject): AiClassifyRequest {
-        val path = params.opt("path") as? String ?: throw bad("path 需要是字符串")
-        if (path.isBlank() || path.length > MAX_PATH) throw bad("path 需要 1~$MAX_PATH 字符")
+        val path = AiPolicy.pagePath(params)
         val provider = when (val p = params.opt("provider")) {
             null, JSONObject.NULL -> null
             is String -> p.takeIf { it.isNotEmpty() && it.length <= AiPolicy.MAX_ID }
@@ -80,29 +79,6 @@ object AiClassifyPolicy {
         }
         if (topK !in 1..MAX_TOP_K) throw bad("topK 需要 1~$MAX_TOP_K")
         return AiClassifyRequest(provider, path, topK)
-    }
-
-    /**
-     * 选出执行识图的提供者并检查可用性。
-     *
-     * @param providers 全部提供者（注册顺序）
-     * @param requested 请求里指定的 id，null 表示取第一个支持识图的
-     * @return 可用的识图提供者
-     * @throws BridgeException BAD_PARAMS（id 未知、不支持识图）、NOT_READY（当前不可用，message 带 reason）
-     */
-    fun requireClassifier(providers: List<AiProvider>, requested: String?): ImageClassifier {
-        val provider = if (requested == null) {
-            providers.firstOrNull { AiTask.CLASSIFY_IMAGE in it.capabilities() }
-                ?: throw bad("没有支持 classifyImage 的 provider")
-        } else {
-            providers.firstOrNull { it.id == requested } ?: throw bad("未知的 provider：$requested")
-        }
-        if (AiTask.CLASSIFY_IMAGE !in provider.capabilities() || provider !is ImageClassifier) {
-            throw bad("${provider.id} 不支持 ${AiTask.CLASSIFY_IMAGE.wire}")
-        }
-        val a = provider.availability()
-        if (!a.available) throw BridgeException(BridgeErrors.NOT_READY, "${provider.id} 当前不可用：${a.reason?.wire}")
-        return provider
     }
 
     /**

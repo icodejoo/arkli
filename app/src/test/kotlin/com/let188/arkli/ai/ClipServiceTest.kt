@@ -109,7 +109,7 @@ class ClipServiceTest {
 
     @Test
     fun classify_loadsLazilyOnceAndBuildsResult() {
-        val m = tmp.newFile("q4_half.onnx").apply { writeText("x") }
+        val m = tmp.newFile("model.mnn").apply { writeText("x") }
         val be = FakeBackend()
         val codec = FakeCodec(2, 3)
         var t = 0L
@@ -118,7 +118,7 @@ class ClipServiceTest {
         val r1 = runBlocking { svc.classify(File("a.jpg"), 3) }
         runBlocking { svc.classify(File("b.jpg"), 2) }
         // 词表与模型各只加载一次
-        assertEquals(listOf("vocab:1", "load:q4_half.onnx", "classify:3", "classify:2"), be.calls)
+        assertEquals(listOf("vocab:1", "load:model.mnn", "classify:3", "classify:2"), be.calls)
         assertEquals(2 to 3, be.lastSize)
         assertEquals(2 * 3 * 3, be.lastRgbLen)
         assertTrue(codec.closed)
@@ -131,18 +131,18 @@ class ClipServiceTest {
 
     @Test
     fun classify_reloadsWhenModelReplaced() {
-        val m = tmp.newFile("q4_half.onnx").apply { writeText("x") }
+        val m = tmp.newFile("model.mnn").apply { writeText("x") }
         val be = FakeBackend()
         val svc = ClipService(env(m), be, FakeCodec())
         runBlocking { svc.classify(File("a.jpg"), 1) }
         m.writeText("长度变了")
         runBlocking { svc.classify(File("a.jpg"), 1) }
-        assertEquals(listOf("vocab:1", "load:q4_half.onnx", "classify:1", "unload", "load:q4_half.onnx", "classify:1"), be.calls)
+        assertEquals(listOf("vocab:1", "load:model.mnn", "classify:1", "unload", "load:model.mnn", "classify:1"), be.calls)
     }
 
     @Test
     fun classify_brokenVocabIsInternal() {
-        val m = tmp.newFile("q4_half.onnx").apply { writeText("x") }
+        val m = tmp.newFile("model.mnn").apply { writeText("x") }
         val bad = object : ClipEnv {
             override fun modelFile() = m
             override fun readVocabJson() = vocabJson
@@ -175,7 +175,7 @@ class ClipServiceTest {
 
     @Test
     fun provider_availabilityFollowsModel() {
-        val m = File(tmp.root, "q4_half.onnx")
+        val m = File(tmp.root, "model.mnn")
         val p = LocalClipProvider(ClipService(env(m), FakeBackend(), FakeCodec()))
         assertEquals(setOf(AiTask.CLASSIFY_IMAGE), p.capabilities())
         assertEquals(AiAvailability.unavailable(AiUnavailableReason.NOT_INSTALLED), p.availability())
@@ -188,7 +188,7 @@ class ClipServiceTest {
 
     @Test
     fun providersJson_listsLocalClip() {
-        val m = File(tmp.root, "q4_half.onnx")
+        val m = File(tmp.root, "model.mnn")
         val p = LocalClipProvider(ClipService(env(m), FakeBackend(), FakeCodec()))
         val down = AiPolicy.providersJson(listOf(p))
         assertEquals("not_installed", down.getJSONArray("providers").getJSONObject(0).getString("reason"))

@@ -26,6 +26,15 @@ object AiPolicy {
     /** 提供者 id 长度上限 */
     const val MAX_ID = 64
 
+    /** 参数键：提供者 id */
+    const val KEY_PROVIDER = "provider"
+
+    /** 参数键：页面缓存路径 */
+    const val KEY_PATH = "path"
+
+    /** 路径长度上限 */
+    const val MAX_PATH = 1024
+
     /**
      * 解析并校验 `native.ai.run` 的参数。
      *
@@ -34,14 +43,63 @@ object AiPolicy {
      * @throws BridgeException BAD_PARAMS：缺字段、类型不对、任务未知、input 为空或超长、任务需要非文本输入
      */
     fun parseRun(params: JSONObject): AiRunRequest {
-        val provider = str(params, "provider")
-        if (provider.isEmpty() || provider.length > MAX_ID) throw bad("provider 需要 1~$MAX_ID 字符")
+        val provider = providerId(params.opt(KEY_PROVIDER), required = true)!!
+        val task = parseTask(params)
+        return AiRunRequest(provider, task, checkRunText(task, str(params, "input")))
+    }
+
+    /**
+     * 解析 `task` 字段（`native.ai.run` 与 `native.ai.invoke` 共用）。
+     *
+     * @param params 含 `task` 的参数
+     * @return 任务
+     * @throws BridgeException BAD_PARAMS：缺失、不是字符串或不认识
+     */
+    fun parseTask(params: JSONObject): AiTask {
         val taskName = str(params, "task")
-        val task = AiTask.fromWire(taskName) ?: throw bad("不支持的 task：$taskName")
-        val input = str(params, "input")
+        return AiTask.fromWire(taskName) ?: throw bad("不支持的 task：$taskName")
+    }
+
+    /**
+     * 校验经 run 端口执行的文本输入（`native.ai.run` 的 `input`、`native.ai.invoke` 的 `input.text` 共用）。
+     *
+     * @param task 任务
+     * @param input 文本
+     * @return 原样返回的文本
+     * @throws BridgeException BAD_PARAMS：为空、全是空白、超过 [MAX_INPUT]，或任务要非文本输入
+     */
+    fun checkRunText(task: AiTask, input: String): String {
         if (input.isBlank() || input.length > MAX_INPUT) throw bad("input 需要 1~$MAX_INPUT 字符且不能全是空白")
-        if (!task.isText) throw bad("task $taskName 需要非文本输入，当前不支持")
-        return AiRunRequest(provider, task, input)
+        if (!task.isText) throw bad("task ${task.wire} 需要非文本输入，当前不支持")
+        return input
+    }
+
+    /**
+     * 校验页面缓存路径字段（识图、文字识别等以图片为输入的入口共用）。
+     *
+     * @param params 含 `path` 的参数
+     * @return 页面缓存路径，如 `cache/pick/a.jpg`（是否真在缓存里由路径解析器另查）
+     * @throws BridgeException BAD_PARAMS：不是字符串，或不在 1~[MAX_PATH] 字符
+     */
+    fun pagePath(params: JSONObject): String {
+        val path = params.opt(KEY_PATH) as? String ?: throw bad("path 需要是字符串")
+        if (path.isBlank() || path.length > MAX_PATH) throw bad("path 需要 1~$MAX_PATH 字符")
+        return path
+    }
+
+    /**
+     * 校验提供者 id 字段。
+     *
+     * @param v 原始值（缺省为 null 或 [JSONObject.NULL]）
+     * @param required 是否必填
+     * @return id；选填且缺省时为 null
+     * @throws BridgeException BAD_PARAMS：不是 1~[MAX_ID] 字符的字符串，或必填却缺省
+     */
+    fun providerId(v: Any?, required: Boolean): String? {
+        if (!required && (v == null || v == JSONObject.NULL)) return null
+        val s = v as? String
+        if (s.isNullOrEmpty() || s.length > MAX_ID) throw bad("provider 需要 1~$MAX_ID 字符")
+        return s
     }
 
     /**
@@ -59,20 +117,38 @@ object AiPolicy {
      * 序列化单个提供者。
      *
      * @param p 提供者
-     * @return `{ id, displayName, available, reason?, tasks[], modelId?, downloaded?, sizeBytes?, downloading? }`，
-     *   后四项只有本地模型类提供者才有
+     * @return `{ id, displayName, layer, available, reason?, session, tasks[], offers[], modelId?, downloaded?, sizeBytes?, downloading? }`，
+     *   modelId 等四项只有本地模型类提供者才有；offers 每项 `{ task, entry, constraints? }`；
+     *   session 表示持有可预热/卸载的会话（实现了 [AiSessionControl]），前端据此决定要不要预热
      */
     fun providerJson(p: AiProvider): JSONObject {
         val a = p.availability()
         val caps = p.capabilities()
         val tasks = JSONArray()
         AiTask.values().filter { it in caps }.forEach { tasks.put(it.wire) }
-        val o = JSONObject().put("id", p.id).put("displayName", p.displayName).put("available", a.available)
+        val o = JSONObject().put("id", p.id).put("displayName", p.displayName).put("layer", p.layer.wire).put("available", a.available)
+            .put("session", AiPort.Session.bind(p) != null)
         a.reason?.let { o.put("reason", it.wire) }
         p.modelInfo()?.let {
             o.put("modelId", it.modelId).put("downloaded", it.downloaded).put("sizeBytes", it.sizeBytes).put("downloading", it.downloading)
         }
-        return o.put("tasks", tasks)
+        return o.put("tasks", tasks).put("offers", offersJson(p))
+    }
+
+    /**
+     * 序列化提供者的报价，入口由 [AiRouter.entryOf] 按实现推导。
+     *
+     * @param p 提供者
+     * @return `[{ task, entry, constraints? }]`
+     */
+    fun offersJson(p: AiProvider): JSONArray {
+        val arr = JSONArray()
+        p.offers().forEach { offer ->
+            val o = JSONObject().put("task", offer.task.wire).put("entry", AiRouter.entryOf(p, offer.task))
+            offer.constraints?.let { o.put("constraints", it.toJson()) }
+            arr.put(o)
+        }
+        return arr
     }
 
     /**
@@ -98,22 +174,6 @@ object AiPolicy {
     fun resultJson(r: AiRunResult): JSONObject = when (r) {
         is AiRunResult.Handoff -> JSONObject().put("handoff", true).put("handled", r.handled)
         is AiRunResult.Text -> JSONObject().put("handoff", false).put("handled", true).put("text", r.text)
-    }
-
-    /**
-     * 检查提供者能否执行任务，不能则抛对应错误。
-     *
-     * @param provider 提供者，找不到传 null
-     * @param req 请求
-     * @return 可执行的提供者
-     * @throws BridgeException BAD_PARAMS（提供者未知或不支持该任务）、NOT_READY（当前不可用）
-     */
-    fun requireRunnable(provider: AiProvider?, req: AiRunRequest): AiProvider {
-        if (provider == null) throw bad("未知的 provider：${req.provider}")
-        if (req.task !in provider.capabilities()) throw bad("${req.provider} 不支持 ${req.task.wire}")
-        val a = provider.availability()
-        if (!a.available) throw BridgeException(BridgeErrors.NOT_READY, "${req.provider} 当前不可用：${a.reason?.wire}")
-        return provider
     }
 
     /** 取字符串参数，缺失或非字符串返回空串 */

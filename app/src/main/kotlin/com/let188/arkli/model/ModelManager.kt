@@ -56,7 +56,7 @@ data class EnsureResult(val snapshot: ModelSnapshot, val started: Boolean, val m
  * 模型下载管理器：进程内唯一。下载跑在自己的协程作用域里，不随页面会话关闭而取消，
  * 页面重载后用 `status` 即可接着看进度。同一模型同一时刻只允许一个任务。
  *
- * 使用示例：`manager.ensure("siglip2-q4_half")`，之后轮询 `manager.status(id)`
+ * 使用示例：`manager.ensure("siglip2-mnn-w8")`，之后轮询 `manager.status(id)`
  *
  * @param manifest 随包清单
  * @param root 模型根目录的父目录（filesDir），清单里的 dir 相对于它

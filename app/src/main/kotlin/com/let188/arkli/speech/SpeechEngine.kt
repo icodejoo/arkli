@@ -2,14 +2,14 @@ package com.let188.arkli.speech
 
 import android.content.Context
 import android.util.Log
-import com.k2fsa.sherpa.onnx.EndpointConfig
-import com.k2fsa.sherpa.onnx.EndpointRule
-import com.k2fsa.sherpa.onnx.FeatureConfig
-import com.k2fsa.sherpa.onnx.OnlineModelConfig
-import com.k2fsa.sherpa.onnx.OnlineRecognizer
-import com.k2fsa.sherpa.onnx.OnlineRecognizerConfig
-import com.k2fsa.sherpa.onnx.OnlineStream
-import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig
+import com.k2fsa.sherpa.mnn.EndpointConfig
+import com.k2fsa.sherpa.mnn.EndpointRule
+import com.k2fsa.sherpa.mnn.FeatureConfig
+import com.k2fsa.sherpa.mnn.OnlineModelConfig
+import com.k2fsa.sherpa.mnn.OnlineRecognizer
+import com.k2fsa.sherpa.mnn.OnlineRecognizerConfig
+import com.k2fsa.sherpa.mnn.OnlineStream
+import com.k2fsa.sherpa.mnn.OnlineTransducerModelConfig
 import com.let188.arkli.ai.AiHeavyGate
 import com.let188.arkli.bridge.BridgeErrors
 import com.let188.arkli.bridge.BridgeException
@@ -34,7 +34,7 @@ private const val TAG = "ArkliSpeech"
 data class DecodeStep(val text: String, val endpoint: Boolean)
 
 /**
- * 包住 sherpa 的一路在线识别流：喂音频、解码、取文本。麦克风与 debug 离线喂 wav 共用这一条解码路径。
+ * 包住 sherpa-mnn 的一路在线识别流：喂音频、解码、取文本。麦克风与 debug 离线喂 wav 共用这一条解码路径。
  * 音频只在内存里流转，不落盘。
  *
  * @param rec 识别器（由 [SpeechService] 持有，本类不释放它）
@@ -44,18 +44,19 @@ class SpeechDecoder internal constructor(private val rec: OnlineRecognizer) {
     private val stream: OnlineStream = rec.createStream("")
 
     /**
-     * 喂一段音频并解码。
+     * 喂一段音频并解码。每块解码都在 [AiHeavyGate] 里串行执行：sherpa-mnn 与识物/翻译/OCR 共用同一份 MNN 全局执行器，
+     * 并发推理会崩溃（真机复现），所以与其他 AI 重任务互斥，代价是和它们同时跑时中间结果会晚几百毫秒。
      *
      * @param samples 16kHz 单声道浮点采样
      * @return 当前这句的文本与是否到了句尾；到句尾时已重置流
      */
-    fun feed(samples: FloatArray): DecodeStep {
+    suspend fun feed(samples: FloatArray): DecodeStep = AiHeavyGate.run {
         stream.acceptWaveform(samples, SpeechConst.SAMPLE_RATE)
         decodeReady()
         val text = rec.getResult(stream).text
         val ep = rec.isEndpoint(stream)
         if (ep) rec.reset(stream)
-        return DecodeStep(text, ep)
+        DecodeStep(text, ep)
     }
 
     /**
@@ -63,11 +64,11 @@ class SpeechDecoder internal constructor(private val rec: OnlineRecognizer) {
      *
      * @return 最后一句文本
      */
-    fun finish(): String {
+    suspend fun finish(): String = AiHeavyGate.run {
         stream.acceptWaveform(FloatArray((SpeechConst.TAIL_PADDING_SEC * SpeechConst.SAMPLE_RATE).toInt()), SpeechConst.SAMPLE_RATE)
         stream.inputFinished()
         decodeReady()
-        return rec.getResult(stream).text
+        rec.getResult(stream).text
     }
 
     /** 释放识别流 */
@@ -80,8 +81,8 @@ class SpeechDecoder internal constructor(private val rec: OnlineRecognizer) {
 }
 
 /**
- * 语音识别服务：识别器懒加载、可复用，空闲一段时间自动释放（模型约 170MB）。
- * 加载排在 [AiHeavyGate] 之后，避免和识物同时加载吃爆内存；会话期间不占闸门。
+ * 语音识别服务：识别器懒加载、可复用，空闲一段时间自动释放（模型约 160MB）。
+ * 加载与每块解码都排在 [AiHeavyGate] 之后：避免和识物同时加载吃爆内存，也避免和其他 MNN 推理并发崩溃；会话期间不长期占闸门，只在每块解码时短暂占用。
  *
  * 使用示例：`service.withDecoder { d -> d.feed(samples) }`
  *
@@ -109,10 +110,13 @@ class SpeechService(context: Context) {
     var lastLoadMs: Long = 0
         private set
 
-    /** sherpa 库能否加载（首次探测后缓存） */
+    /** sherpa-mnn 库能否加载（首次探测后缓存）：先载 libMNN.so，再触发 OnlineRecognizer 的静态初始化去载 libsherpa-mnn-jni.so */
     private val libOk: Boolean by lazy {
-        runCatching { Class.forName(OnlineRecognizer::class.java.name) }
-            .onFailure { Log.e(TAG, "sherpa 库加载失败", it) }
+        runCatching {
+            System.loadLibrary(MNN_CORE_LIB)
+            Class.forName(OnlineRecognizer::class.java.name)
+        }
+            .onFailure { Log.e(TAG, "sherpa-mnn 库加载失败", it) }
             .isSuccess
     }
 
@@ -236,6 +240,9 @@ class SpeechService(context: Context) {
     }
 
     private companion object {
+        /** MNN 核心库名（libMNN.so）；sherpa-mnn 的 JNI 动态依赖它，加载 JNI 前先确保它可用 */
+        const val MNN_CORE_LIB = "MNN"
+
         /** fbank 维度 */
         const val FEATURE_DIM = 80
 

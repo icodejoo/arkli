@@ -158,7 +158,7 @@ class ClipService(
 
     companion object {
         /** 模型标识，写进结果 */
-        const val MODEL_ID = "siglip2-q4_half"
+        const val MODEL_ID = "siglip2-mnn-w8"
 
         /** 解码阶段的最长边：先降采样省内存，最终缩到 224 由 Rust 完成 */
         const val DECODE_MAX_EDGE = 896
@@ -169,7 +169,7 @@ class ClipService(
 }
 
 /**
- * 本地识物提供者（L1，SigLIP2 q4_half）：声明 `classifyImage`，可用性取决于模型文件是否就绪。
+ * 本地识物提供者（L1，SigLIP2 MNN int8）：声明 `classifyImage`，可用性取决于模型文件是否就绪。
  *
  * 文本入口 [run] 不适用（输入是图片），请走 `native.ai.classify`。
  *
@@ -186,6 +186,12 @@ class LocalClipProvider(private val service: ClipService, private val models: Mo
     /** 展示名 */
     override val displayName: String = "本地识物（SigLIP2）"
 
+    /** 专用小模型，属 L1 */
+    override val layer: AiLayer = AiLayer.L1
+
+    /** 会话依赖识物模型，删除它前先卸载 */
+    override val sessionModelId: String = ClipService.MODEL_ID
+
     /** 只做识图 */
     override fun capabilities(): Set<AiTask> = setOf(AiTask.CLASSIFY_IMAGE)
 
@@ -200,9 +206,8 @@ class LocalClipProvider(private val service: ClipService, private val models: Mo
         AiModelInfo(ClipService.MODEL_ID, it.installed, it.diskBytes, it.downloading)
     }
 
-    /** 文本入口不支持 */
-    override suspend fun run(task: AiTask, input: String): AiRunResult =
-        throw BridgeException(BridgeErrors.BAD_PARAMS, "$ID 只支持 native.ai.classify")
+    /** 文本入口一律不收：输入是图片，只经 `native.ai.classify`（[AiPort.Classify]）；路由也不会把 run 派到这里 */
+    override suspend fun run(task: AiTask, input: String): AiRunResult = throw AiRouter.notRunnable(ID, task)
 
     /** 转交服务 */
     override suspend fun classify(file: File, topK: Int): ClassifyResult = service.classify(file, topK)

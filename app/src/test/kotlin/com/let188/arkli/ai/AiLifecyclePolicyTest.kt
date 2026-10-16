@@ -7,12 +7,11 @@ import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** 预热/卸载纯逻辑：参数校验、提供者判定、批量卸载、响应组装、trim 判定 */
+/** 预热/卸载纯逻辑：参数校验、选会话、批量卸载、响应组装、trim 判定（预热选提供者见 AiRouterTest） */
 class AiLifecyclePolicyTest {
     /** 断言抛指定错误码 */
     private fun assertCode(code: String, block: () -> Unit) {
@@ -28,6 +27,7 @@ class AiLifecyclePolicyTest {
         private val failUnload: Boolean = false,
     ) : AiProvider, AiSessionControl {
         override val displayName = "会话"
+        override val layer = AiLayer.L3
         override fun capabilities() = setOf(AiTask.TRANSLATE)
         override fun availability() = avail
         override suspend fun run(task: AiTask, input: String): AiRunResult = AiRunResult.Text("")
@@ -42,6 +42,7 @@ class AiLifecyclePolicyTest {
     private class Plain : AiProvider {
         override val id = "handoff"
         override val displayName = "交接"
+        override val layer = AiLayer.L3
         override fun capabilities() = setOf(AiTask.PROMPT)
         override fun availability() = AiAvailability.AVAILABLE
         override suspend fun run(task: AiTask, input: String): AiRunResult = AiRunResult.Handoff(true)
@@ -61,22 +62,6 @@ class AiLifecyclePolicyTest {
         assertNull(AiLifecyclePolicy.parseUnload(JSONObject("""{"provider":null}""")))
         assertEquals("local-clip", AiLifecyclePolicy.parseUnload(JSONObject("""{"provider":"local-clip"}""")))
         assertCode(BridgeErrors.BAD_PARAMS) { AiLifecyclePolicy.parseUnload(JSONObject("""{"provider":3}""")) }
-    }
-
-    @Test
-    fun requireWarmable_picksByIdAndChecksAvailability() {
-        val a = Sess("local-nllb")
-        val (p, c) = AiLifecyclePolicy.requireWarmable(listOf(Plain(), a), "local-nllb")
-        assertSame(a, p)
-        assertSame(a, c)
-        // 乱填 / 不支持预热 -> BAD_PARAMS
-        assertCode(BridgeErrors.BAD_PARAMS) { AiLifecyclePolicy.requireWarmable(listOf(a), "nope") }
-        assertCode(BridgeErrors.BAD_PARAMS) { AiLifecyclePolicy.requireWarmable(listOf(Plain()), "handoff") }
-        // 未安装 -> NOT_READY 且 message 带 not_installed
-        val off = Sess("local-nllb", AiAvailability.unavailable(AiUnavailableReason.NOT_INSTALLED))
-        val e = assertThrows(BridgeException::class.java) { AiLifecyclePolicy.requireWarmable(listOf(off), "local-nllb") }
-        assertEquals(BridgeErrors.NOT_READY, e.code)
-        assertTrue(e.message!!.contains("not_installed"))
     }
 
     @Test

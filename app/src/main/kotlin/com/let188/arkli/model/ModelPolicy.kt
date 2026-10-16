@@ -2,7 +2,9 @@ package com.let188.arkli.model
 
 import com.let188.arkli.bridge.BridgeErrors
 import com.let188.arkli.bridge.BridgeException
+import com.let188.arkli.net.HOST_GITHUB
 import com.let188.arkli.net.NetPolicy
+import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 import java.net.URI
@@ -24,6 +26,12 @@ const val BACKOFF_MAX_MS = 8_000L
 
 /** 校验标记文件名，放在模型目录里，记录“这些文件已通过 sha256”及其长度与修改时间 */
 internal const val MARKER_NAME = ".arkli-model.json"
+
+/** release 下载地址的路径形态：`/<owner>/<repo>/releases/download/<tag>/<文件>` */
+private val RELEASE_DOWNLOAD_PATH = Regex("^/([^/]+)/([^/]+)/releases/download/([^/]+)/[^/]+$")
+
+/** release 页面地址前缀（github.com 的 https 根） */
+private const val RELEASE_PAGE_ROOT = "https://github.com"
 
 /** 桥参数里的模型 id 字段名 */
 private const val KEY_ID = "id"
@@ -164,6 +172,32 @@ data class ModelSnapshot(
  * 使用示例：`ModelPolicy.requiredFreeBytes(54_662_805)` 为 65_595_366
  */
 object ModelPolicy {
+    /**
+     * 算出应当回收的退役模型目录。
+     * 规则：路径必须是 `models/<单段名>`（拒绝含 `..`、绝对路径、多段、空、反斜杠）；
+     * 与现行条目的 dir 重名则跳过；只返回设备上实际存在的目录；结果去重并保持清单顺序。
+     *
+     * @param manifest 随包清单
+     * @param existingDirs 设备上实际存在的模型目录，形如 `models/<单段名>`
+     * @return 应删除的目录列表；`retired` 为空时返回空列表
+     *
+     * 使用示例：`retiredDirsToDelete(manifest, setOf("models/old"))`
+     */
+    fun retiredDirsToDelete(manifest: ModelManifest, existingDirs: Set<String>): List<String> {
+        if (manifest.retired.isEmpty()) return emptyList()
+        val live = manifest.models.map { it.dir }.toSet()
+        return manifest.retired.map { it.dir }
+            .filter { isSingleSegmentModelDir(it) && it !in live && it in existingDirs }
+            .distinct()
+    }
+
+    /** 是否形如 `models/<单段名>`：单段、不以点开头、无分隔符、非 `.`/`..` */
+    internal fun isSingleSegmentModelDir(dir: String): Boolean {
+        if (!dir.startsWith(MODEL_DIR_PREFIX)) return false
+        val seg = dir.substring(MODEL_DIR_PREFIX.length)
+        return SEGMENT_REGEX.matches(seg) && seg != "." && seg != ".."
+    }
+
     /** 下载阶段名 */
     const val PHASE_DOWNLOAD = "download"
 
@@ -361,5 +395,48 @@ object ModelPolicy {
         s.speedBps?.let { o.put("speedBps", it) }
         if (s.errorCode != null) o.put("error", JSONObject().put("code", s.errorCode).put("message", s.errorMessage.orEmpty()))
         return o
+    }
+
+    /**
+     * 由一条下载地址推出所属 GitHub release 页面地址。
+     *
+     * @param url 清单里的下载地址
+     * @return 形如 `https://github.com/o/r/releases/tag/<tag>`；不是 github.com release 下载地址返回 null
+     *
+     * 使用示例：`releasePageOf("https://github.com/o/r/releases/download/v1/a.bin")` 为 `https://github.com/o/r/releases/tag/v1`
+     */
+    fun releasePageOf(url: String): String? {
+        val u = try {
+            URI(url)
+        } catch (e: Exception) {
+            return null
+        }
+        if (u.scheme?.lowercase() != "https" || u.host?.lowercase() != HOST_GITHUB) return null
+        val m = RELEASE_DOWNLOAD_PATH.matchEntire(u.rawPath.orEmpty()) ?: return null
+        return "$RELEASE_PAGE_ROOT/${m.groupValues[1]}/${m.groupValues[2]}/releases/tag/${m.groupValues[3]}"
+    }
+
+    /**
+     * 序列化一个模型的下载来源（只读，供界面展示与手动下载）。
+     * 地址只取随包清单：先过 [NetPolicy.isAllowedDownload]（不放行回环明文）再经 [NetPolicy.redact] 去掉查询串与片段，
+     * 因此不会回显带 token 的地址；debug 的 URL 覆盖不在这里，永远不会出现。不含磁盘绝对路径，`dir` 是相对 filesDir 的目录。
+     *
+     * @param entry 清单里的模型
+     * @return `{ id, dir, files: [{ name, bytes, sha256, urls }], releasePages: [string] }`
+     *
+     * 使用示例：`sourcesJson(entry).getJSONArray("releasePages")`
+     */
+    fun sourcesJson(entry: ModelEntry): JSONObject {
+        val pages = LinkedHashSet<String>()
+        val files = JSONArray()
+        entry.files.forEach { f ->
+            val urls = JSONArray()
+            f.urls.filter { NetPolicy.isAllowedDownload(it) }.map { NetPolicy.redact(it) }.forEach {
+                urls.put(it)
+                releasePageOf(it)?.let(pages::add)
+            }
+            files.put(JSONObject().put("name", f.name).put("bytes", f.bytes).put("sha256", f.sha256).put("urls", urls))
+        }
+        return JSONObject().put("id", entry.id).put("dir", entry.dir).put("files", files).put("releasePages", JSONArray(pages.toList()))
     }
 }

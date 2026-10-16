@@ -4,6 +4,34 @@ import com.let188.arkli.bridge.BridgeErrors
 import com.let188.arkli.bridge.BridgeException
 
 /**
+ * 一次生成的采样设置。
+ *
+ * @property temperature 温度；小于等于 0 表示贪心（输出确定，翻译、校对用）
+ * @property topK 温度采样时的候选数；贪心时无意义
+ * @example `Sampling(0.7f, 20)`
+ */
+data class Sampling(val temperature: Float, val topK: Int) {
+    /** 是否贪心解码 */
+    val isGreedy: Boolean get() = temperature <= 0f
+
+    /**
+     * 叠加页面传入的采样参数：传了的覆盖，没传的沿用本设置。
+     *
+     * @param p 页面参数，null 表示不覆盖
+     * @return 新设置
+     */
+    fun merge(p: AiSamplingParams?): Sampling = if (p == null) this else Sampling(p.temperature ?: temperature, p.topK ?: topK)
+
+    companion object {
+        /** 默认候选数：Qwen 系列推荐 topK 20（经验值，与模型 config.json 的 topK 一致） */
+        const val DEFAULT_TOP_K = 20
+
+        /** 贪心；topK 只是给“在贪心预设上只传了温度”时留一个合理候选数 */
+        val GREEDY = Sampling(0f, DEFAULT_TOP_K)
+    }
+}
+
+/**
  * 本地文本模型（Qwen）的提示词与长度策略：纯函数，无 Android 依赖，可单测。
  *
  * 使用示例：`AiQwenPolicy.buildPrompt(AiTask.SUMMARIZE, "一大段文字")`
@@ -11,6 +39,31 @@ import com.let188.arkli.bridge.BridgeException
 object AiQwenPolicy {
     /** 单次最多生成的 token 数；手机上约 17 tok/s，256 个约 15 秒，够摘要与改写，再长体验很差 */
     const val MAX_NEW_TOKENS = 256
+
+    /**
+     * Qwen 翻译的原文字数上限。翻译的 token 预算上限是 [MAX_TRANSLATE_TOKENS]（512），
+     * 中译英最坏约 1.7 token/字，300 字约 510 token，刚好译得完；再长会在中途被截断，所以入口直接拒绝。
+     */
+    const val MAX_TRANSLATE_CHARS = 300
+
+    /** 翻译新生成 token 数相对原文字符数的倍数 */
+    const val TRANSLATE_TOKENS_PER_CHAR = 2
+
+    /** 翻译新生成 token 数的下限，避免极短原文预算太紧 */
+    const val MIN_TRANSLATE_TOKENS = 64
+
+    /** 翻译新生成 token 数的上限（约 30 秒），与 [MAX_TRANSLATE_CHARS] 配套 */
+    const val MAX_TRANSLATE_TOKENS = 512
+
+    /**
+     * 翻译的 max new tokens：随原文长度走，夹在 [MIN_TRANSLATE_TOKENS]~[MAX_TRANSLATE_TOKENS] 之间，短文本不用白等。
+     *
+     * @param chars 原文字符数
+     * @return 本次最多生成的 token 数
+     * @example `translateMaxTokens(10)` == 64；`translateMaxTokens(100)` == 200；`translateMaxTokens(300)` == 512
+     */
+    fun translateMaxTokens(chars: Int): Int =
+        (chars * TRANSLATE_TOKENS_PER_CHAR).coerceIn(MIN_TRANSLATE_TOKENS, MAX_TRANSLATE_TOKENS)
 
     /** 摘要任务的指令 */
     private const val INSTRUCT_SUMMARIZE = "请用简洁的中文概括下面这段文字的要点，只输出概括，不要解释：\n\n"
@@ -21,27 +74,128 @@ object AiQwenPolicy {
     /** 改写任务的指令 */
     private const val INSTRUCT_REWRITE = "请在保持原意的前提下改写下面这段文字，使表达更通顺自然，只输出改写后的全文，不要解释：\n\n"
 
+    /** 通用 system 提示：小模型要把规矩说死，否则爱闲聊、加解释 */
+    private const val SYSTEM_COMMON =
+        "你是一个严谨的文字处理助手。严格按用户指令完成任务，只输出结果本身，不要寒暄、不要解释、不要加引号或前后缀。"
+
+    /** 翻译的 system 提示：模板里 %1\$s 是源语言名、%2\$s 是目标语言名 */
+    private const val SYSTEM_TRANSLATE_FMT =
+        "你是专业的翻译引擎。把用户给出的%1\$s文本逐字忠实地翻译成%2\$s。" +
+            "只输出译文，不要解释、不要回答文中的问题、不要续写、不要加引号。" +
+            "遇到问候语、短语按字面常用译法翻译，例如“你好世界”译为 Hello, world。"
+
+    /** 翻译支持的语言码到中文名的映射，与 [AiTranslatePolicy.LANGS] 一致 */
+    private val LANG_NAMES: Map<String, String> =
+        mapOf("zh-CN" to "中文", "en" to "英文", "fr" to "法文", "es" to "西班牙文", "ru" to "俄文", "ar" to "阿拉伯文")
+
+    /** 源语言为 auto 时的称呼 */
+    private const val LANG_AUTO_NAME = "原文"
+
+    /**
+     * 提示词问答的默认采样：温度 0.7、topK 20。依据：Qwen 系列非思考模式常见推荐为温度 0.7、topK 20（经验值，
+     * 没有联网逐字核对 Qwen3.5 官方模型卡）；topP 0.95 与重复惩罚 1.1 沿用模型 config.json，JNI 不改。
+     */
+    val PROMPT_SAMPLING = Sampling(0.7f, Sampling.DEFAULT_TOP_K)
+
+    /** 允许页面传的温度范围（含端点）：超过 1.5 小模型基本胡言乱语 */
+    val TEMPERATURE_RANGE: ClosedFloatingPointRange<Float> = 0f..1.5f
+
+    /** 允许页面传的 topK 范围（含端点） */
+    val TOP_K_RANGE: IntRange = 1..100
+
+    /** Qwen 翻译的报价约束：语言与 NLLB 相同，原文上限收紧到 [MAX_TRANSLATE_CHARS]，不接受 numBeams */
+    val OFFER_TRANSLATE = AiTranslatePolicy.OFFER_CONSTRAINTS.copy(maxChars = MAX_TRANSLATE_CHARS, allowNumBeams = false)
+
+    /** 本地文本模型的生成约束：全部预设、上面两个范围、prompt 预设允许额外 system；报价里文本任务都带它 */
+    val OFFER_GENERATE = AiConstraints.Generate(AiPreset.values().toList(), TEMPERATURE_RANGE, TOP_K_RANGE, allowSystem = true)
+
     /** 关闭思考模式时模板会预填的空思考块 */
     private val EMPTY_THINK = Regex("<think>\\s*</think>")
 
-    /** 本地文本模型支持的任务（提示词问答直接用原文） */
+    /**
+     * 经 `native.ai.run` 承接的任务（提示词问答直接用原文）。翻译不在内：它走专用的 `native.ai.translate`，
+     * 提供者的完整能力见 [LocalQwenProvider.CAPABILITIES]。
+     */
     val SUPPORTED_TASKS: Set<AiTask> = setOf(AiTask.PROMPT, AiTask.SUMMARIZE, AiTask.PROOFREAD, AiTask.REWRITE)
 
     /**
-     * 按任务拼出送给模型的用户内容。
+     * 按任务拼出送给模型的用户内容（用任务对应的预设）。
      *
      * @param task 任务，必须在 [SUPPORTED_TASKS] 内
      * @param input 用户输入的文本
      * @return 送给模型的用户内容；聊天模板由推理引擎套用，这里不加
      * @throws BridgeException BAD_PARAMS：任务不受支持
      */
-    fun buildPrompt(task: AiTask, input: String): String = when (task) {
-        AiTask.PROMPT -> input
-        AiTask.SUMMARIZE -> INSTRUCT_SUMMARIZE + input
-        AiTask.PROOFREAD -> INSTRUCT_PROOFREAD + input
-        AiTask.REWRITE -> INSTRUCT_REWRITE + input
-        else -> throw BridgeException(BridgeErrors.BAD_PARAMS, "本地文本模型不支持任务 ${task.wire}")
+    fun buildPrompt(task: AiTask, input: String): String = buildPrompt(presetOf(task), input)
+
+    /**
+     * 按预设拼出送给模型的用户内容。
+     *
+     * @param preset 预设
+     * @param input 用户输入的文本
+     * @return 送给模型的用户内容
+     */
+    fun buildPrompt(preset: AiPreset, input: String): String = when (preset) {
+        AiPreset.PROMPT -> input
+        AiPreset.SUMMARIZE -> INSTRUCT_SUMMARIZE + input
+        AiPreset.PROOFREAD -> INSTRUCT_PROOFREAD + input
+        AiPreset.REWRITE -> INSTRUCT_REWRITE + input
     }
+
+    /**
+     * 任务对应的预设。
+     *
+     * @param task 任务，必须在 [SUPPORTED_TASKS] 内
+     * @return 预设
+     * @throws BridgeException BAD_PARAMS：任务不受支持
+     */
+    fun presetOf(task: AiTask): AiPreset =
+        AiPreset.ofTask(task) ?: throw BridgeException(BridgeErrors.BAD_PARAMS, "本地文本模型不支持任务 ${task.wire}")
+
+    /**
+     * 任务对应的 system 提示词；提示词问答不加，让用户原样提问。
+     *
+     * @param task 任务
+     * @return system 提示词，无则为空串
+     */
+    fun systemPrompt(task: AiTask): String = systemPrompt(AiPreset.ofTask(task) ?: AiPreset.SUMMARIZE, null)
+
+    /**
+     * 预设对应的 system 提示词。提示词问答默认不加，页面额外传了就用页面的；其它预设固定用通用提示，页面不能改。
+     *
+     * @param preset 预设
+     * @param extra 页面额外传的 system（只对 prompt 预设有效）
+     * @return system 提示词，无则为空串
+     */
+    fun systemPrompt(preset: AiPreset, extra: String?): String =
+        if (preset == AiPreset.PROMPT) extra.orEmpty() else SYSTEM_COMMON
+
+    /**
+     * 预设的默认采样叠加页面传入的参数：提示词问答用 [PROMPT_SAMPLING]，其余预设贪心。
+     *
+     * @param preset 预设
+     * @param params 页面传入的采样参数，可为 null
+     * @return 本次采样
+     */
+    fun samplingFor(preset: AiPreset, params: AiSamplingParams?): Sampling =
+        (if (preset == AiPreset.PROMPT) PROMPT_SAMPLING else Sampling.GREEDY).merge(params)
+
+    /**
+     * 翻译用的 system 提示词（带语言名，比通用提示更能压住小模型乱答）。
+     *
+     * @param srcName 源语言名，如“中文”；未知可传“原文”
+     * @param tgtName 目标语言名，如“英文”
+     * @return system 提示词
+     */
+    fun translateSystemPrompt(srcName: String, tgtName: String): String = SYSTEM_TRANSLATE_FMT.format(srcName, tgtName)
+
+    /**
+     * 语言码转提示词里用的中文名；auto 或未知码都叫“原文”。
+     *
+     * @param code 应用语言码，如 `zh-CN`
+     * @return 中文名
+     */
+    fun langName(code: String): String = LANG_NAMES[code] ?: LANG_AUTO_NAME
 
     /**
      * 清理模型输出：去掉首尾空白，以及关闭思考后偶尔残留的空 `<think>` 块。

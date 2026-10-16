@@ -9,11 +9,12 @@ import org.json.JSONObject
  * 一次 `native.ai.translate` 校验通过的请求。
  *
  * @property text 原文（1~[AiTranslatePolicy.MAX_TEXT] 字符，非全空白）
- * @property src 源语言码，取自 [AiTranslatePolicy.LANGS]，或 [AiTranslatePolicy.AUTO]（按句自动识别）
- * @property tgt 目标语言码，取自 [AiTranslatePolicy.LANGS]，且不等于 [src]
+ * @property src 源语言码，或 [AiTranslatePolicy.AUTO]（按句自动识别）；是否支持按选中提供者的约束查
+ * @property tgt 目标语言码，不等于 [src]、不能是 auto；是否支持按选中提供者的约束查
  * @property numBeams 束宽 1~[AiTranslatePolicy.MAX_BEAMS]；null 表示用模型缺省
+ * @property provider 指定翻译提供者 id；null 表示用默认的本地翻译模型（NLLB）
  */
-data class AiTranslateRequest(val text: String, val src: String, val tgt: String, val numBeams: Int?)
+data class AiTranslateRequest(val text: String, val src: String, val tgt: String, val numBeams: Int?, val provider: String? = null)
 
 /**
  * 一次翻译的完整结果，交给 [AiTranslatePolicy.resultJson] 序列化。
@@ -53,7 +54,7 @@ interface TextTranslator {
 }
 
 /**
- * 本地翻译的纯逻辑：参数校验、提供者选择、结果序列化。无 Android 依赖，可单测。
+ * 翻译的纯逻辑（选提供者归 [AiRouter]）：参数校验、结果序列化。无 Android 依赖，可单测。
  *
  * 使用示例：`AiTranslatePolicy.parse(JSONObject("""{"text":"hi","src":"en","tgt":"zh-CN"}"""))`
  */
@@ -70,22 +71,30 @@ object AiTranslatePolicy {
     /** 源语言取此值表示自动识别（只对 src 合法，tgt 不可以） */
     const val AUTO = "auto"
 
-    /** 支持的应用语言码（NLLB 裁剪包的六种联合国语言） */
+    /** 应用认识的翻译语言码（NLLB 裁剪包的六种联合国语言）；各提供者的报价只能从中选（契约测试检查），入口按报价校验 */
     val LANGS: List<String> = listOf("zh-CN", "en", "fr", "es", "ru", "ar")
 
     /**
-     * 解析并校验 `native.ai.translate` 的参数。
+     * 翻译报价的约束：[LANGS] 六种语言、源语言可写 auto。本地 NLLB 与 Qwen 支持的语言相同，共用这一份，
+     * 是前端语言清单的唯一来源（经 `native.ai.providers` 的 offers 下发）。
+     */
+    val OFFER_CONSTRAINTS = AiConstraints.Translate(LANGS, sourceAuto = true)
+
+    /**
+     * 解析并做结构校验 `native.ai.translate` 的参数。**语言是否支持不在这里查**：要等选出提供者后，
+     * 按它报价里的约束查（[checkLanguages]，经 [AiConstraints.Translate.check]），不同提供者语言可以不同。
      *
-     * @param params `{ text: string, src: string | 'auto', tgt: string, numBeams?: number }`
-     * @return 校验通过的请求
-     * @throws BridgeException BAD_PARAMS：文本缺失/为空/过长、tgt 不在 [LANGS]（含 auto）、src 不在 [LANGS] 且不是 [AUTO]、src 等于 tgt、numBeams 不是 1~[MAX_BEAMS] 的整数
+     * @param params `{ text: string, src: string | 'auto', tgt: string, numBeams?: number, provider?: string }`
+     * @return 结构合法的请求
+     * @throws BridgeException BAD_PARAMS：文本缺失/为空/过长、src/tgt 不是非空字符串、tgt 是 auto、src 等于 tgt、numBeams 不是 1~[MAX_BEAMS] 的整数
      */
     fun parse(params: JSONObject): AiTranslateRequest {
         val text = params.opt("text") as? String ?: throw bad("text 需要是字符串")
         if (text.isBlank()) throw bad("text 不能为空")
         if (text.length > MAX_TEXT) throw bad("text 最多 $MAX_TEXT 字符")
-        val src = lang(params, "src", allowAuto = true)
+        val src = lang(params, "src")
         val tgt = lang(params, "tgt")
+        if (tgt == AUTO) throw bad("tgt 不能是 $AUTO")
         if (src == tgt) throw bad("src 与 tgt 不能相同")
         val beams = when (val b = params.opt("numBeams")) {
             null, JSONObject.NULL -> null
@@ -94,22 +103,8 @@ object AiTranslatePolicy {
             else -> throw bad("numBeams 需要是整数")
         }
         if (beams != null && beams !in MIN_BEAMS..MAX_BEAMS) throw bad("numBeams 需要 $MIN_BEAMS~$MAX_BEAMS")
-        return AiTranslateRequest(text, src, tgt, beams)
-    }
-
-    /**
-     * 选出执行翻译的本地提供者并检查可用性：取第一个声明 `translate` 且实现了 [TextTranslator] 的提供者。
-     *
-     * @param providers 全部提供者（注册顺序）
-     * @return 可用的翻译提供者
-     * @throws BridgeException BAD_PARAMS（没有这样的提供者）、NOT_READY（当前不可用，message 带 reason）
-     */
-    fun requireTranslator(providers: List<AiProvider>): TextTranslator {
-        val provider = providers.firstOrNull { AiTask.TRANSLATE in it.capabilities() && it is TextTranslator }
-            ?: throw bad("没有支持语言对翻译的 provider")
-        val a = provider.availability()
-        if (!a.available) throw BridgeException(BridgeErrors.NOT_READY, "${provider.id} 当前不可用：${a.reason?.wire}")
-        return provider as TextTranslator
+        val provider = AiPolicy.providerId(params.opt(AiPolicy.KEY_PROVIDER), required = false)
+        return AiTranslateRequest(text, src, tgt, beams, provider)
     }
 
     /**
@@ -122,11 +117,29 @@ object AiTranslatePolicy {
         JSONObject().put("text", r.text).put("elapsedMs", r.elapsedMs).put("modelId", r.modelId).put("src", r.src).put("tgt", r.tgt)
             .put("detectedSrc", JSONArray(r.detectedSrc)).put("unrecognized", r.unrecognized)
 
-    /** 取语言码参数并校验在支持列表里；[allowAuto] 为真时额外放行 [AUTO] */
-    private fun lang(params: JSONObject, key: String, allowAuto: Boolean = false): String {
+    /**
+     * 按某提供者的翻译约束校验语言对（选中提供者之后调用）。
+     *
+     * @param req 结构已校验的请求
+     * @param languages 该提供者支持的语言码
+     * @param sourceAuto 源语言可否为 [AUTO]
+     * @throws BridgeException BAD_PARAMS：tgt 不在 [languages]、src 不在 [languages] 且不是被允许的 [AUTO]
+     * @example `checkLanguages(req, LANGS, sourceAuto = true)`
+     */
+    fun checkLanguages(req: AiTranslateRequest, languages: List<String>, sourceAuto: Boolean) {
+        if (!(sourceAuto && req.src == AUTO)) requireLang("src", req.src, languages)
+        requireLang("tgt", req.tgt, languages)
+    }
+
+    /** 语言码不在清单里就报 BAD_PARAMS，message 列出可选值 */
+    private fun requireLang(key: String, v: String, languages: List<String>) {
+        if (v !in languages) throw bad("$key 不支持：$v，可选 ${languages.joinToString("/")}")
+    }
+
+    /** 取语言码参数：必须是非空字符串（是否支持由 [checkLanguages] 按提供者约束查） */
+    private fun lang(params: JSONObject, key: String): String {
         val v = params.opt(key) as? String ?: throw bad("$key 需要是字符串")
-        if (allowAuto && v == AUTO) return v
-        if (v !in LANGS) throw bad("$key 不支持：$v，可选 ${LANGS.joinToString("/")}")
+        if (v.isEmpty()) throw bad("$key 不能为空")
         return v
     }
 

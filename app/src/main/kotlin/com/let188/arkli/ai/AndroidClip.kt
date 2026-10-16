@@ -22,14 +22,20 @@ private const val CLIP_LOG_TAG = "ArkliClip"
  */
 const val ORT_LIB_NAME = "libonnxruntime.so"
 
+/**
+ * MNN 运行库名（识物默认后端）。**用裸名**：[MnnNative] 先 `System.loadLibrary("arkli-mnn")` 把它载入本应用命名空间，
+ * Rust 的 dlopen 再按同名命中已加载的那份（APK 内 so 不解压，没有可用的 nativeLibraryDir 绝对路径）。
+ */
+const val MNN_RUNTIME_LIB = "libarkli-mnn.so"
+
 /** Rust 算子线程数（骁龙 680 上 4 线程是甜点，见调研文档第 8 节） */
 private const val CLIP_THREADS = 4u
 
 /** 模型目录（相对 filesDir） */
-const val CLIP_MODEL_DIR = "models/siglip2-q4_half"
+const val CLIP_MODEL_DIR = "models/siglip2-mnn-w8"
 
 /** 模型文件名 */
-const val CLIP_MODEL_FILE = "q4_half.onnx"
+const val CLIP_MODEL_FILE = "model.mnn"
 
 /** 词表资源（assets 内路径） */
 private const val ASSET_VOCAB_JSON = "ai/garbage_vocab.json"
@@ -58,8 +64,11 @@ internal class AndroidClipEnv(context: Context) : ClipEnv {
  * 基于 UniFFI 的真实引擎。Rust 侧对调用加锁串行；这里把 Rust 的错误翻译成桥错误码。
  */
 internal class UniffiClipBackend : ClipBackend {
-    /** 加载 ORT 与模型 */
-    override fun load(modelPath: String) = guard { clipLoad(ORT_LIB_NAME, modelPath, CLIP_THREADS) }
+    /** 加载 MNN 运行库与模型（`.mnn` 在 Rust 侧自动选 MNN 后端；先确保 so 已载入） */
+    override fun load(modelPath: String) = guard {
+        MnnNative.ensureLoaded()
+        clipLoad(MNN_RUNTIME_LIB, modelPath, CLIP_THREADS)
+    }
 
     /** 释放模型会话 */
     override fun unload() = clipUnload()
@@ -101,13 +110,6 @@ internal object ClipRuntime {
     /** 单例，首次使用时创建 */
     @Volatile
     private var service: ClipService? = null
-
-    /**
-     * 只看不建：没创建过服务说明从没加载过模型。
-     *
-     * @return 已创建的服务，没有返回 null
-     */
-    fun peek(): ClipService? = service
 
     /**
      * 取识物服务。

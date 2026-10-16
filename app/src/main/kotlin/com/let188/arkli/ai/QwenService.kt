@@ -25,11 +25,13 @@ interface QwenBackend {
     /**
      * 单轮生成。
      *
+     * @param system system 角色提示词，空串表示不带
      * @param prompt 送给模型的用户内容
      * @param maxNewTokens 最多生成的 token 数
+     * @param sampling 本次采样设置；与上一次不同会让引擎重建会话（采样器只在加载时建一次），贪心默认
      * @return 模型原始输出
      */
-    fun generate(prompt: String, maxNewTokens: Int): String
+    fun generate(system: String, prompt: String, maxNewTokens: Int, sampling: Sampling = Sampling.GREEDY): String
 }
 
 /**
@@ -73,14 +75,34 @@ class QwenService(
      *
      * @param task 任务，必须是 [AiQwenPolicy.SUPPORTED_TASKS] 之一
      * @param input 用户输入
+     * @param opts 页面传的可选项：预设（缺省按任务）、prompt 预设的额外 system、采样参数（缺省按预设）
      * @return 清理后的模型输出
      * @throws BridgeException BAD_PARAMS（任务不支持）、NOT_READY（模型未就绪）、INTERNAL（加载或推理失败）
      */
-    suspend fun run(task: AiTask, input: String): String = AiHeavyGate.run {
-        val prompt = AiQwenPolicy.buildPrompt(task, input)
+    suspend fun run(task: AiTask, input: String, opts: AiGenOptions = AiGenOptions.NONE): String = AiHeavyGate.run {
+        val preset = opts.preset ?: AiQwenPolicy.presetOf(task)
+        val prompt = AiQwenPolicy.buildPrompt(preset, input)
+        val system = AiQwenPolicy.systemPrompt(preset, opts.system)
+        val sampling = AiQwenPolicy.samplingFor(preset, opts.sampling)
         val dir = requireReady()
         ensureLoaded(dir)
-        AiQwenPolicy.cleanOutput(backend.generate(prompt, AiQwenPolicy.MAX_NEW_TOKENS))
+        generateGuarded { backend.generate(system, prompt, AiQwenPolicy.MAX_NEW_TOKENS, sampling) }
+    }
+
+    /**
+     * 翻译：用翻译专用 system 提示，贪心解码，排在重任务闸门后。
+     *
+     * @param text 原文
+     * @param src 源语言码，可为 auto
+     * @param tgt 目标语言码
+     * @return 清理后的译文
+     * @throws BridgeException NOT_READY（模型未就绪）、INTERNAL（加载或推理失败）
+     */
+    suspend fun translate(text: String, src: String, tgt: String): String = AiHeavyGate.run {
+        val dir = requireReady()
+        ensureLoaded(dir)
+        val system = AiQwenPolicy.translateSystemPrompt(AiQwenPolicy.langName(src), AiQwenPolicy.langName(tgt))
+        generateGuarded { backend.generate(system, text, AiQwenPolicy.translateMaxTokens(text.length), Sampling.GREEDY) }
     }
 
     /**
@@ -121,6 +143,26 @@ class QwenService(
         return dir
     }
 
+    /**
+     * 跑一次生成并清理输出。引擎抛 INTERNAL（会话已失效、重建失败等）时卸掉会话并清掉指纹，下次调用会重新加载，
+     * 不让一个坏掉的会话卡死到被回收。注意：生成**不可取消**（引擎没有中断接口，真取消是统一协议第 7 步，未做）。
+     */
+    private fun generateGuarded(block: () -> String): String = try {
+        AiQwenPolicy.cleanOutput(block())
+    } catch (e: BridgeException) {
+        if (e.code == BridgeErrors.INTERNAL) discardSession()
+        throw e
+    }
+
+    /** 丢弃当前会话：卸载并忘掉指纹（卸载失败也要忘掉，保证下次重载） */
+    private fun discardSession() {
+        try {
+            backend.unload()
+        } finally {
+            loadedKey = null
+        }
+    }
+
     /** 确保模型已加载；指纹变化时先释放旧会话再加载 */
     private fun ensureLoaded(dir: File) {
         val key = fingerprint(dir)
@@ -156,7 +198,10 @@ class QwenService(
 }
 
 /**
- * 本地文本模型提供者（L2，Qwen3.5-0.8B MNN 4bit）：声明摘要、校对、改写、提示词问答四类文本任务。
+ * 本地文本模型提供者（L2，Qwen3.5-0.8B MNN 4bit）。
+ *
+ * 能力 = 经 `native.ai.run` 的四类文本任务（[AiQwenPolicy.SUPPORTED_TASKS]：摘要、校对、改写、提示词问答）
+ * ∪ 经 `native.ai.translate` 的翻译（实现了 [TextTranslator]，要语言对，所以 [run] 不收 translate）。
  *
  * 传入 [models] 时，可用性以“模型已安装且 sha256 校验通过”为准，并带出下载状态；不传则只看文件是否齐全。
  *
@@ -164,15 +209,26 @@ class QwenService(
  * @param models 模型状态来源，对应清单里的 [QwenService.MODEL_ID]
  */
 class LocalQwenProvider(private val service: QwenService, private val models: ModelStateSource? = null) :
-    AiProvider, AiSessionControl {
+    AiProvider, AiSessionControl, TextTranslator, TextGenerator {
     /** 固定 id */
     override val id: String = ID
 
     /** 展示名 */
     override val displayName: String = "本地文本模型（Qwen）"
 
-    /** 支持的任务 */
-    override fun capabilities(): Set<AiTask> = AiQwenPolicy.SUPPORTED_TASKS
+    /** 通用生成式 LLM，属 L2 */
+    override val layer: AiLayer = AiLayer.L2
+
+    /** 会话依赖文本模型，删除它前先卸载（MNN 会话约占 500MB，更要及时放） */
+    override val sessionModelId: String = QwenService.MODEL_ID
+
+    /** 按声明逐项报价：translate 带语言清单与更小的原文上限（[AiQwenPolicy.OFFER_TRANSLATE]），文本生成类带 [AiQwenPolicy.OFFER_GENERATE] */
+    override fun offers(): List<AiOffer> = AiTask.values().filter { it in CAPABILITIES }.map {
+        if (it == AiTask.TRANSLATE) AiOffer(it, AiQwenPolicy.OFFER_TRANSLATE) else AiOffer(it, AiQwenPolicy.OFFER_GENERATE)
+    }
+
+    /** 声明的任务：run 承接的四类 + 专用翻译端口 */
+    override fun capabilities(): Set<AiTask> = CAPABILITIES
 
     /** 有模型状态来源时看“已安装且校验过”，否则看文件齐不齐；不可用一律 not_installed */
     override fun availability(): AiAvailability {
@@ -185,8 +241,25 @@ class LocalQwenProvider(private val service: QwenService, private val models: Mo
         AiModelInfo(QwenService.MODEL_ID, it.installed, it.diskBytes, it.downloading)
     }
 
-    /** 转交服务，返回文本结果 */
-    override suspend fun run(task: AiTask, input: String): AiRunResult = AiRunResult.Text(service.run(task, input))
+    /** 转交服务，返回文本结果；translate 等不归 run 的任务直接报 BAD_PARAMS 并指明入口，不进闸门 */
+    override suspend fun run(task: AiTask, input: String): AiRunResult = generate(task, input, AiGenOptions.NONE)
+
+    /** 带预设 / system / 采样参数的生成；不归 run 的任务同样直接报 BAD_PARAMS */
+    override suspend fun generate(task: AiTask, input: String, opts: AiGenOptions): AiRunResult {
+        if (task !in AiQwenPolicy.SUPPORTED_TASKS) throw AiRouter.notRunnable(ID, task)
+        return AiRunResult.Text(service.run(task, input, opts))
+    }
+
+    /** 翻译：交给服务，译文带耗时；源语言为 auto 时不声称识别出了语言 */
+    override suspend fun translate(req: AiTranslateRequest): TranslateResult {
+        val t0 = System.nanoTime()
+        val text = service.translate(req.text, req.src, req.tgt)
+        val auto = req.src == AiTranslatePolicy.AUTO
+        return TranslateResult(
+            text, (System.nanoTime() - t0) / NANOS_PER_MS, QwenService.MODEL_ID, req.src, req.tgt,
+            detectedSrc = if (auto) emptyList() else listOf(req.src),
+        )
+    }
 
     /** 预热：加载模型会话 */
     override suspend fun warmup(): WarmupResult = service.warmup()
@@ -197,5 +270,11 @@ class LocalQwenProvider(private val service: QwenService, private val models: Mo
     companion object {
         /** 提供者 id 常量 */
         const val ID = "local-qwen"
+
+        /** 声明的全部任务：[AiQwenPolicy.SUPPORTED_TASKS] 加翻译 */
+        val CAPABILITIES: Set<AiTask> = AiQwenPolicy.SUPPORTED_TASKS + AiTask.TRANSLATE
+
+        /** 纳秒转毫秒 */
+        private const val NANOS_PER_MS = 1_000_000L
     }
 }

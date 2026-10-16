@@ -86,3 +86,16 @@ internal class ModelVerifyHandler(private val manager: ModelManager) : BridgeHan
         return ModelPolicy.snapshotJson(manager.verify(ModelPolicy.requireEntry(params, manager.manifest).id))
     }
 }
+
+/**
+ * `native.model.sources`：`{ id }` -> 下载来源（文件、大小、sha256、地址、release 页面）。只读，不改变下载行为。
+ *
+ * @param manager 模型管理器
+ */
+internal class ModelSourcesHandler(private val manager: ModelManager) : BridgeHandler {
+    /** 校验 id 后只从随包清单取来源，不走 debug 覆盖 */
+    override suspend fun handle(ctx: CallContext, params: JSONObject): Any? {
+        requireMainFrame(ctx)
+        return ModelPolicy.sourcesJson(ModelPolicy.requireEntry(params, manager.manifest))
+    }
+}

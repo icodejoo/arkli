@@ -7,13 +7,12 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
-/** 识物纯逻辑：参数校验、提供者选择、词表解析、像素转换、结果序列化 */
+/** 识物纯逻辑：参数校验、词表解析、像素转换、结果序列化（选提供者见 AiRouterTest） */
 class AiClassifyPolicyTest {
     /** 最小合法词表 JSON */
     private fun vocabJson(count: Int = 2, format: Int = 1, dtype: String = "f16le", category: String = "R") = """
@@ -27,27 +26,6 @@ class AiClassifyPolicyTest {
     private fun assertCode(code: String, block: () -> Unit) {
         val e = assertThrows(BridgeException::class.java) { block() }
         assertEquals(code, e.code)
-    }
-
-    /** 能识图的提供者替身 */
-    private class FakeClassifier(
-        override val id: String,
-        private val avail: AiAvailability = AiAvailability.AVAILABLE,
-    ) : AiProvider, ImageClassifier {
-        override val displayName = "假识图"
-        override fun capabilities() = setOf(AiTask.CLASSIFY_IMAGE)
-        override fun availability() = avail
-        override suspend fun run(task: AiTask, input: String): AiRunResult = AiRunResult.Text("")
-        override suspend fun classify(file: File, topK: Int): ClassifyResult = throw UnsupportedOperationException()
-    }
-
-    /** 只会文本的提供者替身 */
-    private class TextOnly : AiProvider {
-        override val id = "text"
-        override val displayName = "文本"
-        override fun capabilities() = setOf(AiTask.TRANSLATE)
-        override fun availability() = AiAvailability.AVAILABLE
-        override suspend fun run(task: AiTask, input: String): AiRunResult = AiRunResult.Text("")
     }
 
     @Test
@@ -80,24 +58,6 @@ class AiClassifyPolicyTest {
         ).forEach { js -> assertCode(BridgeErrors.BAD_PARAMS) { AiClassifyPolicy.parse(JSONObject(js)) } }
         val longPath = "a".repeat(AiClassifyPolicy.MAX_PATH + 1)
         assertCode(BridgeErrors.BAD_PARAMS) { AiClassifyPolicy.parse(JSONObject().put("path", longPath)) }
-    }
-
-    @Test
-    fun requireClassifier_picksFirstCapableWhenOmitted() {
-        val a = FakeClassifier("c1")
-        val picked = AiClassifyPolicy.requireClassifier(listOf(TextOnly(), a, FakeClassifier("c2")), null)
-        assertSame(a, picked)
-    }
-
-    @Test
-    fun requireClassifier_errors() {
-        assertCode(BridgeErrors.BAD_PARAMS) { AiClassifyPolicy.requireClassifier(listOf(TextOnly()), null) }
-        assertCode(BridgeErrors.BAD_PARAMS) { AiClassifyPolicy.requireClassifier(listOf(FakeClassifier("c")), "nope") }
-        assertCode(BridgeErrors.BAD_PARAMS) { AiClassifyPolicy.requireClassifier(listOf(TextOnly()), "text") }
-        val down = FakeClassifier("c", AiAvailability.unavailable(AiUnavailableReason.NOT_INSTALLED))
-        val e = assertThrows(BridgeException::class.java) { AiClassifyPolicy.requireClassifier(listOf(down), "c") }
-        assertEquals(BridgeErrors.NOT_READY, e.code)
-        assertTrue(e.message!!.contains("not_installed"))
     }
 
     @Test

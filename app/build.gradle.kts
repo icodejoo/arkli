@@ -223,19 +223,23 @@ dependencies {
 }
 
 // ---------------------------------------------------------------------------
-// MNN 本地文本模型运行库（Qwen3.5-0.8B 用）：libMNN.so + 我们的 JNI 封装 libarkli-mnn.so（arm64-v8a）。
-// 两个 so 由 native/mnn/build.sh 从钉死的 MNN 提交编出，已发布到 GitHub release mnn-478c10e-v1；
-// 这里构建时下载并校验 sha256，缓存在 <仓库>/.gradle/arkli-mnn/（已被 .gitignore 忽略）。
-// 改了 so 就要同步改下面的 sha256，并更新 docs/research/qwen35-mnn-model.md。
+// MNN 运行库（Qwen3.5 / 识物 / 翻译 / 语音共用）：libMNN.so + 我们的 JNI 封装 libarkli-mnn.so + sherpa-mnn 的 JNI（arm64-v8a）。
+// 两个 so 由 native/mnn/build.sh 从钉死的 MNN 提交编出；libMNN.so 已发布在 release mnn-478c10e-v1，
+// libarkli-mnn.so 在 M2 加了 C ABI（arkli_mnn_capi），新版放在 release mnn-478c10e-v2。
+// M7：语音识别改用 sherpa-mnn，它的 JNI（libsherpa-mnn-jni.so，由 native/mnn/build-sherpa-mnn.sh 编出）也并入 v2，
+// 所以 v2 release 要放三个文件：libMNN.so、libarkli-mnn.so、libsherpa-mnn-jni.so。
+// v2 release 由用户上传，上传前本地靠 .gradle 缓存构建（缓存文件名 <sha256>-<库名>，已被 .gitignore 忽略）。
+// 这里构建时按需下载并校验 sha256。改了 so 就要同步改下面的 sha256，并更新 docs/research/qwen35-mnn-model.md。
 // ---------------------------------------------------------------------------
 
 /** MNN 运行库 release 的下载前缀 */
-val mnnReleaseBase = "https://github.com/icodejoo/arkli/releases/download/mnn-478c10e-v1/"
+val mnnReleaseBase = "https://github.com/icodejoo/arkli/releases/download/mnn-478c10e-v2/"
 
 /** MNN 运行库的文件名与 sha256 */
 val mnnLibs = mapOf(
     "libMNN.so" to "9cc1ff8b8b039431913a37ad1853dfa51162b41ae8b90927507204397096a353",
-    "libarkli-mnn.so" to "a596c65c26d042e2d19b1fe37772945af5a924e47885c2f59bfca4c424bbf18f",
+    "libarkli-mnn.so" to "b4c9bf34e2d72867a8b265fcedd5f14435cf1d994a7ee2af0253445c88c09f40",
+    "libsherpa-mnn-jni.so" to "aa79262fa17431bf513c7c4ac9855df02d09c1fe364396c0d8032df652a0c339",
 )
 
 /** MNN 运行库缓存目录 */
@@ -246,7 +250,7 @@ val mnnOutDir = layout.buildDirectory.dir("generated/mnn/jniLibs")
 
 val fetchMnnRuntime = tasks.register("fetchMnnRuntime") {
     group = "arkli"
-    description = "取得并校验 libMNN.so / libarkli-mnn.so（MNN 提交 478c10e，arm64-v8a）"
+    description = "取得并校验 libMNN.so / libarkli-mnn.so / libsherpa-mnn-jni.so（MNN 提交 478c10e，arm64-v8a）"
     inputs.property("libSha256", mnnLibs.entries.joinToString(",") { "${it.key}=${it.value}" })
     outputs.dir(mnnOutDir)
     doLast {

@@ -14,12 +14,18 @@ import org.json.JSONObject
 data class WarmupResult(val provider: String, val elapsedMs: Long)
 
 /**
- * 持有本地模型会话、可以预热与卸载的提供者（`local-nllb`、`local-clip`）。
+ * 持有本地模型会话、可以预热与卸载的提供者（`local-nllb`、`local-clip`、`local-qwen`）。
  * 两个操作都排在 [AiHeavyGate] 后执行，不会打断正在进行的推理。
+ *
+ * **生命周期全由它派生**：提供者只要实现本接口并登记进 `AiModule.providers`，就会被 `native.ai.warmup/unload` 路由到、
+ * 被 [AiRecycle] 回收；给出 [sessionModelId] 的，删除该清单模型前还会先卸载会话（不用再改别处）。
  *
  * 使用示例：`(provider as AiSessionControl).warmup()`
  */
 interface AiSessionControl {
+    /** 会话依赖的清单模型 id（`native.model.*`）：删除该模型前要先卸载本会话；不依赖清单模型为 null */
+    val sessionModelId: String? get() = null
+
     /**
      * 只加载模型会话，不做推理。已加载则立刻返回；被取消时不会留下半加载状态（加载中被取消会在加载完后卸掉）。
      *
@@ -37,13 +43,13 @@ interface AiSessionControl {
 }
 
 /**
- * 预热/卸载的纯逻辑：参数校验、提供者判定、响应组装、批量卸载、系统内存回收判定。无 Android 依赖，可单测。
+ * 预热/卸载的纯逻辑（选提供者归 [AiRouter]）：参数校验、响应组装、批量卸载、系统内存回收判定。无 Android 依赖，可单测。
  *
  * 使用示例：`AiLifecyclePolicy.parseWarmup(JSONObject("""{"provider":"local-nllb"}"""))`
  */
 object AiLifecyclePolicy {
     /** 参数键：提供者 id */
-    private const val KEY_PROVIDER = "provider"
+    private const val KEY_PROVIDER = AiPolicy.KEY_PROVIDER
 
     /** 系统内存回收级别：前台但内存非常紧张（`TRIM_MEMORY_RUNNING_CRITICAL`） */
     const val TRIM_RUNNING_CRITICAL = 15
@@ -75,23 +81,7 @@ object AiLifecyclePolicy {
     }
 
     /**
-     * 选出要预热的提供者并检查可用性。
-     *
-     * @param providers 全部提供者
-     * @param id 请求的提供者 id
-     * @return 可预热的提供者及其会话控制
-     * @throws BridgeException BAD_PARAMS（不认识或不支持预热）、NOT_READY（模型未安装，message 带 not_installed）
-     */
-    fun requireWarmable(providers: List<AiProvider>, id: String): Pair<AiProvider, AiSessionControl> {
-        val provider = providers.firstOrNull { it.id == id } ?: throw bad("不认识的 provider：$id")
-        val control = provider as? AiSessionControl ?: throw bad("$id 不支持预热")
-        val a = provider.availability()
-        if (!a.available) throw BridgeException(BridgeErrors.NOT_READY, "$id 当前不可用：${a.reason?.wire}")
-        return provider to control
-    }
-
-    /**
-     * 选出要卸载的会话。
+     * 选出要卸载的会话（经 [AiRouter]，不看可用性：模型删了也要能卸）。
      *
      * @param providers 全部提供者
      * @param id 提供者 id；null 表示全部持有会话的提供者
@@ -99,11 +89,21 @@ object AiLifecyclePolicy {
      * @throws BridgeException BAD_PARAMS：指定的 id 不认识或不持有会话
      */
     fun selectSessions(providers: List<AiProvider>, id: String?): List<Pair<String, AiSessionControl>> {
-        if (id == null) return providers.filterIsInstance<AiSessionControl>().map { (it as AiProvider).id to it }
-        val provider = providers.firstOrNull { it.id == id } ?: throw bad("不认识的 provider：$id")
-        val control = provider as? AiSessionControl ?: throw bad("$id 没有可卸载的会话")
-        return listOf(id to control)
+        val routes = if (id == null) AiRouter.all(providers, AiPort.Session) else listOf(AiRouter.find(providers, AiPort.Session, id))
+        return routes.map { it.provider.id to it.port }
     }
+
+    /**
+     * 从提供者派生“删除某清单模型前要卸载哪些会话”：按 [AiSessionControl.sessionModelId] 分组，保持注册顺序。
+     *
+     * @param providers 全部提供者
+     * @return 清单模型 id → （提供者 id，会话控制）列表；不依赖清单模型的会话不在内
+     * @example `releaseHooks(all).forEach { (modelId, s) -> models.addReleaseHook(modelId) { unloadAll(s) } }`
+     */
+    fun releaseHooks(providers: List<AiProvider>): Map<String, List<Pair<String, AiSessionControl>>> =
+        selectSessions(providers, null)
+            .mapNotNull { s -> s.second.sessionModelId?.let { it to s } }
+            .groupBy({ it.first }, { it.second })
 
     /**
      * 依次卸载一批会话；某一个失败不影响其余，失败的不计入结果。

@@ -24,7 +24,7 @@ private const val MAX_MODELS = 64
 private val ID_REGEX = Regex("^[a-z0-9][a-z0-9._-]{0,63}$")
 
 /** 目录名与文件名：单段，不以点开头，不含路径分隔符 */
-private val SEGMENT_REGEX = Regex("^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$")
+internal val SEGMENT_REGEX = Regex("^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$")
 
 /** sha256 十六进制，小写 64 位 */
 private val SHA256_REGEX = Regex("^[0-9a-f]{64}$")
@@ -49,7 +49,7 @@ data class ModelFile(val name: String, val bytes: Long, val sha256: String, val 
  * @property id 稳定 id，也是桥方法的参数
  * @property displayName 给人看的名字
  * @property version 清单版本号，换版本会让旧的校验标记失效
- * @property dir 目标目录，相对 filesDir，如 `models/siglip2-q4_half`
+ * @property dir 目标目录，相对 filesDir，如 `models/siglip2-mnn-w8`
  * @property totalBytes 全部文件字节数之和
  * @property license 许可证标识，可空
  * @property files 文件列表
@@ -65,11 +65,20 @@ data class ModelEntry(
 )
 
 /**
+ * 已退役、设备上应当回收的旧模型。
+ *
+ * @property id 旧模型 id（仅作记录与日志）
+ * @property dir 旧目录，相对 filesDir，形如 `models/<单段名>`；是否安全由 [ModelPolicy.retiredDirsToDelete] 再把关
+ */
+data class RetiredModel(val id: String, val dir: String)
+
+/**
  * 随包清单：下载地址的唯一来源。页面只能传 id，不能传 URL。
  *
  * @property models 全部模型
+ * @property retired 已退役的旧模型，启动后台回收其目录；缺省为空
  */
-class ModelManifest(val models: List<ModelEntry>) {
+class ModelManifest(val models: List<ModelEntry>, val retired: List<RetiredModel> = emptyList()) {
     /**
      * 按 id 找模型。
      *
@@ -87,7 +96,7 @@ class ModelManifest(val models: List<ModelEntry>) {
 /**
  * 清单解析与校验，纯函数。任何一项不合法都整份拒绝（信任锚宁可不用也不能半信半疑）。
  *
- * 使用示例：`ModelManifestParser.parse(assetText).find("siglip2-q4_half")`
+ * 使用示例：`ModelManifestParser.parse(assetText).find("siglip2-mnn-w8")`
  */
 object ModelManifestParser {
     /**
@@ -107,9 +116,23 @@ object ModelManifestParser {
             val models = (0 until arr.length()).map { entry(arr.optJSONObject(it) ?: throw IllegalArgumentException("models[$it] 不是对象")) }
             require(models.map { it.id }.toSet().size == models.size) { "模型 id 重复" }
             require(models.map { it.dir }.toSet().size == models.size) { "模型目录重复" }
-            return ModelManifest(models)
+            return ModelManifest(models, retired(root.opt("retired")))
         } catch (e: JSONException) {
             throw IllegalArgumentException("清单不是合法 JSON：${e.message}")
+        }
+    }
+
+    /**
+     * 解析可选的 `retired`。退役回收只是尽力而为，所以这里宽松：不是数组视为空，
+     * 不合法的条目（非对象、id 或目录不合规）直接丢弃，不拖垮整份清单；超出 [MAX_MODELS] 的部分也丢弃。
+     */
+    private fun retired(raw: Any?): List<RetiredModel> {
+        val arr = raw as? JSONArray ?: return emptyList()
+        return (0 until minOf(arr.length(), MAX_MODELS)).mapNotNull { i ->
+            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            val id = o.optString("id")
+            val dir = o.optString("dir")
+            if (ID_REGEX.matches(id) && isSafeDir(dir)) RetiredModel(id, dir) else null
         }
     }
 
@@ -151,9 +174,5 @@ object ModelManifestParser {
         if (a == null) emptyList() else (0 until a.length()).map { a.opt(it) as? String ?: throw IllegalArgumentException("urls 含非字符串") }
 
     /** 目录必须是 `models/<单段>`，不能含 `..`、反斜杠或绝对路径 */
-    private fun isSafeDir(dir: String): Boolean {
-        if (!dir.startsWith(MODEL_DIR_PREFIX)) return false
-        val seg = dir.substring(MODEL_DIR_PREFIX.length)
-        return SEGMENT_REGEX.matches(seg) && seg != "." && seg != ".."
-    }
+    private fun isSafeDir(dir: String): Boolean = ModelPolicy.isSingleSegmentModelDir(dir)
 }

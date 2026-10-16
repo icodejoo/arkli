@@ -10,31 +10,34 @@ object SpeechConst {
     /** 引擎标识 */
     const val ENGINE = "local-zipformer"
 
+    /** 模型清单 id（models.json 里的条目，目录名与它相同） */
+    const val MODEL_ID = "asr-zipformer-zh-en-mnn-w8"
+
     /** 模型目录名（位于 filesDir/models/ 下） */
-    const val MODEL_DIR = "asr-zipformer-zh-en-int8"
+    const val MODEL_DIR = MODEL_ID
 
     /** 编码器文件名 */
-    const val FILE_ENCODER = "encoder.int8.onnx"
+    const val FILE_ENCODER = "encoder.mnn"
 
     /** 解码器文件名 */
-    const val FILE_DECODER = "decoder.onnx"
+    const val FILE_DECODER = "decoder.mnn"
 
     /** 连接器文件名 */
-    const val FILE_JOINER = "joiner.int8.onnx"
+    const val FILE_JOINER = "joiner.mnn"
 
     /** 词表文件名 */
     const val FILE_TOKENS = "tokens.txt"
 
-    /** 编码器最小字节数（实际约 155MB，低于此视为未传完） */
-    const val MIN_ENCODER_BYTES = 100_000_000L
+    /** 编码器最小字节数（MNN int8 仅权重，实际 155,527,912 B，低于此视为未传完） */
+    const val MIN_ENCODER_BYTES = 120_000_000L
 
-    /** 解码器最小字节数（实际约 11MB） */
-    const val MIN_DECODER_BYTES = 5_000_000L
+    /** 解码器最小字节数（实际 10,603,880 B） */
+    const val MIN_DECODER_BYTES = 8_000_000L
 
-    /** 连接器最小字节数（实际约 2.6MB） */
-    const val MIN_JOINER_BYTES = 1_000_000L
+    /** 连接器最小字节数（实际 2,623,028 B） */
+    const val MIN_JOINER_BYTES = 2_000_000L
 
-    /** 词表最小字节数（实际约 58KB） */
+    /** 词表最小字节数（实际 58,806 B） */
     const val MIN_TOKENS_BYTES = 10_000L
 
     /** 采样率（Hz） */
@@ -94,7 +97,7 @@ object SpeechConst {
 
 /**
  * 语音转文字策略纯逻辑：参数校验、模型齐全性检查、状态判定、事件载荷。
- * 不依赖 Android 与 sherpa，可 JVM 单测。
+ * 不依赖 Android 与 sherpa-mnn，可 JVM 单测。
  *
  * 使用示例：
  * ```
@@ -149,7 +152,7 @@ object SpeechPolicy {
      * 判定不可用的原因。
      *
      * @param missing 缺失文件列表
-     * @param libOk sherpa 库是否能加载
+     * @param libOk sherpa-mnn 库是否能加载
      * @return 不可用原因（中文）；可用返回 null
      */
     fun reasonOf(missing: List<String>, libOk: Boolean): String? = when {
@@ -162,7 +165,7 @@ object SpeechPolicy {
      * 组装 `native.speech.status` 返回。
      *
      * @param missing 缺失文件列表
-     * @param libOk sherpa 库是否能加载
+     * @param libOk sherpa-mnn 库是否能加载
      * @return `{ available, engine, modelReady, reason? }`
      */
     fun statusJson(missing: List<String>, libOk: Boolean): JSONObject {

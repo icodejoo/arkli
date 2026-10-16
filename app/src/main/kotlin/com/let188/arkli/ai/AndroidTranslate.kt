@@ -17,7 +17,7 @@ private const val TRANSLATE_LOG_TAG = "ArkliTranslate"
 private const val TRANSLATE_THREADS = 4u
 
 /** 模型目录（相对 filesDir），与 `assets/ai/models.json` 里 nllb 条目的 dir 一致 */
-const val TRANSLATE_MODEL_DIR = "models/nllb600m-un6-ccm-int4"
+const val TRANSLATE_MODEL_DIR = "models/nllb600m-un6-mnn-w6"
 
 /**
  * 安卓实现的文件环境：模型在 `filesDir/models/...`。
@@ -36,10 +36,11 @@ internal class AndroidTranslateEnv(context: Context) : TranslateEnv {
  * 基于 UniFFI 的真实引擎。Rust 侧对调用加锁串行；这里把 Rust 的错误翻译成桥错误码。
  */
 internal class UniffiTranslateBackend : TranslateBackend {
-    /** 加载 ORT 与模型，顺带记录加载耗时 */
+    /** 加载 MNN 运行库与模型（先确保 so 已载入，Rust 按裸名 dlopen；`model.json` 的 format 为 mnn-split），顺带记录加载耗时 */
     override fun load(modelDir: String): Unit = guard {
         val t0 = System.nanoTime()
-        translateLoad(ORT_LIB_NAME, modelDir, TRANSLATE_THREADS)
+        MnnNative.ensureLoaded()
+        translateLoad(MNN_RUNTIME_LIB, modelDir, TRANSLATE_THREADS)
         Log.i(TRANSLATE_LOG_TAG, "模型加载完成 ${(System.nanoTime() - t0) / NANOS_PER_MS} ms")
         Unit
     }
@@ -78,13 +79,6 @@ internal object TranslateRuntime {
     /** 单例，首次使用时创建 */
     @Volatile
     private var service: TranslateService? = null
-
-    /**
-     * 只看不建：没创建过服务说明从没加载过模型。
-     *
-     * @return 已创建的服务，没有返回 null
-     */
-    fun peek(): TranslateService? = service
 
     /**
      * 取翻译服务。

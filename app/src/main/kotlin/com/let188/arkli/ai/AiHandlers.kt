@@ -4,13 +4,10 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
-import com.let188.arkli.bridge.BridgeErrors
-import com.let188.arkli.bridge.BridgeException
 import com.let188.arkli.bridge.BridgeHandler
 import com.let188.arkli.bridge.CallContext
 import com.let188.arkli.files.ActivityHost
 import com.let188.arkli.files.requireMainFrame
-import com.let188.arkli.image.SourceResolver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -63,57 +60,73 @@ internal class AiProvidersHandler(private val registry: ProviderRegistry) : Brid
 }
 
 /**
- * `native.ai.run`：`{ provider, task, input }` -> `{ handoff, handled, text? }`。
+ * `native.ai.invoke`：统一入口 `{ task, input, provider?, entry?, options? }` -> 该任务端口的结果（与对应旧入口同形）。
+ * 端口由路由推导，分派见 [AiInvoker]。
  *
- * @param registry 提供者登记处
+ * @param invoker 分派器
  */
-internal class AiRunHandler(private val registry: ProviderRegistry) : BridgeHandler {
-    /** 校验后交给提供者执行 */
+internal class AiInvokeHandler(private val invoker: AiInvoker) : BridgeHandler {
+    /** 校验 -> 定端口 -> 分派 */
+    override suspend fun handle(ctx: CallContext, params: JSONObject): Any? {
+        requireMainFrame(ctx)
+        return invoker.invoke(params)
+    }
+}
+
+/**
+ * `native.ai.run`（`native.ai.invoke` 钉死 run 端口的别名）：`{ provider, task, input }` -> `{ handoff, handled, text? }`。
+ *
+ * @param invoker 分派器
+ */
+internal class AiRunHandler(private val invoker: AiInvoker) : BridgeHandler {
+    /** 按旧参数形状校验（provider 必填）后交给分派器 */
     override suspend fun handle(ctx: CallContext, params: JSONObject): Any? {
         requireMainFrame(ctx)
         val req = AiPolicy.parseRun(params)
-        val provider = AiPolicy.requireRunnable(registry.get(req.provider), req)
-        return AiPolicy.resultJson(provider.run(req.task, req.input))
+        return invoker.dispatch(AiCall.Run(req.task, req.provider, req.input))
     }
 }
 
 /**
- * `native.ai.classify`：`{ provider?, path, topK? }` -> 识别结果（见 [AiClassifyPolicy.resultJson]）。
+ * `native.ai.classify`（`native.ai.invoke` 钉死识图端口的别名）：`{ provider?, path, topK? }` -> 识别结果（见 [AiClassifyPolicy.resultJson]）。
  * 解码与推理在后台线程，同一时刻只跑一个（[AiHeavyGate]）。
  *
- * @param registry 提供者登记处
- * @param resolver 页面路径解析器，必须拒绝路径穿越
+ * @param invoker 分派器
  */
-internal class AiClassifyHandler(
-    private val registry: ProviderRegistry,
-    private val resolver: SourceResolver,
-) : BridgeHandler {
-    /** 校验 -> 选提供者 -> 解析路径 -> 识别 */
+internal class AiClassifyHandler(private val invoker: AiInvoker) : BridgeHandler {
+    /** 按旧参数形状校验后交给分派器 */
     override suspend fun handle(ctx: CallContext, params: JSONObject): Any? {
         requireMainFrame(ctx)
-        val req = AiClassifyPolicy.parse(params)
-        val classifier = AiClassifyPolicy.requireClassifier(registry.all(), req.provider)
-        val file = resolver.resolve(req.path)?.takeIf { it.isFile }
-            ?: throw BridgeException(BridgeErrors.BAD_PARAMS, "path 不是有效的缓存图片路径")
-        val result = withContext(Dispatchers.IO) { classifier.classify(file, req.topK) }
-        return AiClassifyPolicy.resultJson(result)
+        return invoker.dispatch(AiCall.Classify(AiClassifyPolicy.parse(params)))
     }
 }
 
 /**
- * `native.ai.translate`：`{ text, src(可为 auto), tgt, numBeams? }` -> `{ text, elapsedMs, modelId, src, tgt, detectedSrc, unrecognized }`。
- * 模型加载与推理在后台线程，同一时刻只跑一个 AI 重任务（[AiHeavyGate]，后来者排队）。
+ * `native.ai.ocr`（`native.ai.invoke` 钉死文字识别端口的别名）：`{ provider?, path }` -> 识别结果（见 [AiOcrPolicy.resultJson]）。
+ * 解码与推理在后台线程，同一时刻只跑一个（[AiHeavyGate]）；取消（`native.task.cancel`）会打断 Rust 里的识别。
  *
- * @param registry 提供者登记处
+ * @param invoker 分派器
  */
-internal class AiTranslateHandler(private val registry: ProviderRegistry) : BridgeHandler {
-    /** 校验 -> 选提供者 -> 翻译 */
+internal class AiOcrHandler(private val invoker: AiInvoker) : BridgeHandler {
+    /** 按参数形状校验后交给分派器 */
     override suspend fun handle(ctx: CallContext, params: JSONObject): Any? {
         requireMainFrame(ctx)
-        val req = AiTranslatePolicy.parse(params)
-        val translator = AiTranslatePolicy.requireTranslator(registry.all())
-        val result = withContext(Dispatchers.IO) { translator.translate(req) }
-        return AiTranslatePolicy.resultJson(result)
+        return invoker.dispatch(AiCall.Ocr(AiOcrPolicy.parse(params)))
+    }
+}
+
+/**
+ * `native.ai.translate`（`native.ai.invoke` 钉死翻译端口的别名）：`{ text, src(可为 auto), tgt, numBeams?, provider? }` ->
+ * `{ text, elapsedMs, modelId, src, tgt, detectedSrc, unrecognized }`。语言按选中提供者的报价约束校验。
+ * 模型加载与推理在后台线程，同一时刻只跑一个 AI 重任务（[AiHeavyGate]，后来者排队）。
+ *
+ * @param invoker 分派器
+ */
+internal class AiTranslateHandler(private val invoker: AiInvoker) : BridgeHandler {
+    /** 按旧参数形状校验后交给分派器 */
+    override suspend fun handle(ctx: CallContext, params: JSONObject): Any? {
+        requireMainFrame(ctx)
+        return invoker.dispatch(AiCall.Translate(AiTranslatePolicy.parse(params)))
     }
 }
 
@@ -128,7 +141,7 @@ internal class AiWarmupHandler(private val registry: ProviderRegistry) : BridgeH
     override suspend fun handle(ctx: CallContext, params: JSONObject): Any? {
         requireMainFrame(ctx)
         val id = AiLifecyclePolicy.parseWarmup(params)
-        val (_, control) = AiLifecyclePolicy.requireWarmable(registry.all(), id)
+        val control = AiRouter.resolveById(registry.all(), AiPort.Session, id).port
         return AiLifecyclePolicy.warmupJson(withContext(Dispatchers.IO) { control.warmup() })
     }
 }

@@ -27,11 +27,15 @@ class QwenServiceTest {
     private class FakeBackend(private val reply: String = "  回答  ") : QwenBackend {
         val calls = mutableListOf<String>()
         var lastPrompt = ""
+        var lastSystem = ""
         var lastMax = -1
+        var lastSampling: Sampling? = null
         override fun load(configPath: String) { calls += "load:${File(configPath).name}" }
         override fun unload() { calls += "unload" }
-        override fun generate(prompt: String, maxNewTokens: Int): String {
+        override fun generate(system: String, prompt: String, maxNewTokens: Int, sampling: Sampling): String {
+            lastSampling = sampling
             lastPrompt = prompt
+            lastSystem = system
             lastMax = maxNewTokens
             calls += "generate"
             return reply
@@ -85,6 +89,48 @@ class QwenServiceTest {
     }
 
     @Test
+    fun translate_maxTokens_followsInputLength() {
+        val dir = tmp.newFolder("m")
+        fillModel(dir)
+        val b = FakeBackend()
+        val s = QwenService(env(dir), b)
+        runBlocking { s.translate("hi", "en", "zh-CN") }
+        assertEquals(AiQwenPolicy.MIN_TRANSLATE_TOKENS, b.lastMax)
+        runBlocking { s.translate("x".repeat(100), "en", "zh-CN") }
+        assertEquals(200, b.lastMax)
+        runBlocking { s.translate("x".repeat(AiQwenPolicy.MAX_TRANSLATE_CHARS), "en", "zh-CN") }
+        assertEquals(AiQwenPolicy.MAX_TRANSLATE_TOKENS, b.lastMax)
+        assertEquals(AiQwenPolicy.MAX_TRANSLATE_TOKENS, AiQwenPolicy.translateMaxTokens(100_000))
+        assertEquals(AiQwenPolicy.MIN_TRANSLATE_TOKENS, AiQwenPolicy.translateMaxTokens(0))
+    }
+
+    @Test
+    fun generateInternalError_discardsSession_nextCallReloads() {
+        val dir = tmp.newFolder("m")
+        fillModel(dir)
+        val b = object : QwenBackend {
+            val calls = mutableListOf<String>()
+            var fail = true
+            override fun load(configPath: String) { calls += "load" }
+            override fun unload() { calls += "unload" }
+            override fun generate(system: String, prompt: String, maxNewTokens: Int, sampling: Sampling): String {
+                calls += "generate"
+                if (fail) {
+                    fail = false
+                    throw BridgeException(BridgeErrors.INTERNAL, "MNN 会话已失效，请重新加载")
+                }
+                return "好"
+            }
+        }
+        val s = QwenService(env(dir), b)
+        val e = assertThrows(BridgeException::class.java) { runBlocking { s.run(AiTask.SUMMARIZE, "x") } }
+        assertEquals(BridgeErrors.INTERNAL, e.code)
+        // 失败后会话被卸掉，下一次调用重新 load 再 generate
+        assertEquals("好", runBlocking { s.run(AiTask.SUMMARIZE, "x") })
+        assertEquals(listOf("load", "generate", "unload", "load", "generate"), b.calls)
+    }
+
+    @Test
     fun run_buildsPromptByTask() {
         val dir = tmp.newFolder("m")
         fillModel(dir)
@@ -92,6 +138,89 @@ class QwenServiceTest {
         val s = QwenService(env(dir), b)
         runBlocking { s.run(AiTask.SUMMARIZE, "长文") }
         assertEquals(AiQwenPolicy.buildPrompt(AiTask.SUMMARIZE, "长文"), b.lastPrompt)
+    }
+
+    @Test
+    fun run_defaultSampling_greedyForTextTools_sampledForPrompt() {
+        val dir = tmp.newFolder("m")
+        fillModel(dir)
+        val b = FakeBackend()
+        val s = QwenService(env(dir), b)
+        listOf(AiTask.SUMMARIZE, AiTask.PROOFREAD, AiTask.REWRITE).forEach {
+            runBlocking { s.run(it, "x") }
+            assertEquals("${it.wire} 默认贪心", Sampling.GREEDY, b.lastSampling)
+            assertTrue(b.lastSampling!!.isGreedy)
+        }
+        runBlocking { s.run(AiTask.PROMPT, "x") }
+        assertEquals(Sampling(0.7f, 20), b.lastSampling)
+        assertEquals(AiQwenPolicy.PROMPT_SAMPLING, b.lastSampling)
+        runBlocking { s.translate("hi", "en", "zh-CN") }
+        assertTrue("翻译固定贪心", b.lastSampling!!.isGreedy)
+    }
+
+    @Test
+    fun run_pageOptions_overridePresetAndSampling() {
+        val dir = tmp.newFolder("m")
+        fillModel(dir)
+        val b = FakeBackend()
+        val s = QwenService(env(dir), b)
+        // 摘要任务改用 rewrite 预设：指令、system 跟预设走
+        runBlocking { s.run(AiTask.SUMMARIZE, "x", AiGenOptions(preset = AiPreset.REWRITE)) }
+        assertEquals(AiQwenPolicy.buildPrompt(AiPreset.REWRITE, "x"), b.lastPrompt)
+        assertTrue(b.lastSystem.contains("只输出结果"))
+        // 贪心预设上只传 topK：仍贪心；传了温度则带上缺省 topK
+        runBlocking { s.run(AiTask.PROOFREAD, "x", AiGenOptions(sampling = AiSamplingParams(topK = 5))) }
+        assertTrue(b.lastSampling!!.isGreedy)
+        runBlocking { s.run(AiTask.PROOFREAD, "x", AiGenOptions(sampling = AiSamplingParams(temperature = 0.4f))) }
+        assertEquals(Sampling(0.4f, Sampling.DEFAULT_TOP_K), b.lastSampling)
+        // prompt 预设：温度 0 变贪心；额外 system 原样送给模型
+        runBlocking { s.run(AiTask.PROMPT, "x", AiGenOptions(system = "你是海盗", sampling = AiSamplingParams(temperature = 0f))) }
+        assertTrue(b.lastSampling!!.isGreedy)
+        assertEquals("你是海盗", b.lastSystem)
+        runBlocking { s.run(AiTask.PROMPT, "x", AiGenOptions(sampling = AiSamplingParams(topK = 50))) }
+        assertEquals(Sampling(0.7f, 50), b.lastSampling)
+        assertEquals("", b.lastSystem)
+    }
+
+    @Test
+    fun provider_generate_sameAsRunWhenNoOptions_andRejectsTranslate() {
+        val dir = tmp.newFolder("m")
+        fillModel(dir)
+        val b = FakeBackend("ok")
+        val p = LocalQwenProvider(QwenService(env(dir), b))
+        runBlocking { p.run(AiTask.PROMPT, "x") }
+        assertEquals(AiQwenPolicy.PROMPT_SAMPLING, b.lastSampling)
+        val e = assertThrows(BridgeException::class.java) { runBlocking { p.generate(AiTask.TRANSLATE, "x", AiGenOptions.NONE) } }
+        assertEquals(BridgeErrors.BAD_PARAMS, e.code)
+        // 文本任务都带生成约束，翻译带语言约束
+        p.offers().forEach {
+            if (it.task == AiTask.TRANSLATE) assertTrue(it.constraints is AiConstraints.Translate)
+            else assertEquals(AiQwenPolicy.OFFER_GENERATE, it.constraints)
+        }
+    }
+
+    @Test
+    fun translate_usesTranslateSystemPromptAndRawText() {
+        val dir = tmp.newFolder("m")
+        fillModel(dir)
+        val b = FakeBackend("Hello, world")
+        val s = QwenService(env(dir), b)
+        assertEquals("Hello, world", runBlocking { s.translate("你好世界", "zh-CN", "en") })
+        assertEquals("你好世界", b.lastPrompt)
+        assertEquals(AiQwenPolicy.translateSystemPrompt("中文", "英文"), b.lastSystem)
+    }
+
+    @Test
+    fun provider_translate_fillsResult_autoHasNoDetected() {
+        val dir = tmp.newFolder("m")
+        fillModel(dir)
+        val p = LocalQwenProvider(QwenService(env(dir), FakeBackend("ok")))
+        val r = runBlocking { p.translate(AiTranslateRequest("hi", "auto", "zh-CN", null, LocalQwenProvider.ID)) }
+        assertEquals("ok", r.text)
+        assertEquals(QwenService.MODEL_ID, r.modelId)
+        assertEquals(emptyList<String>(), r.detectedSrc)
+        val r2 = runBlocking { p.translate(AiTranslateRequest("hi", "en", "zh-CN", null)) }
+        assertEquals(listOf("en"), r2.detectedSrc)
     }
 
     @Test
@@ -157,8 +286,22 @@ class QwenServiceTest {
         fillModel(dir)
         val p = LocalQwenProvider(QwenService(env(dir), FakeBackend()))
         assertEquals("local-qwen", p.id)
-        assertEquals(AiQwenPolicy.SUPPORTED_TASKS, p.capabilities())
+        // 能力 = run 承接的四类 + 专用翻译端口；run 承接的恰好就是 SUPPORTED_TASKS
+        assertEquals(AiQwenPolicy.SUPPORTED_TASKS + AiTask.TRANSLATE, p.capabilities())
+        assertEquals(AiQwenPolicy.SUPPORTED_TASKS, AiRouter.runTasks(p))
         assertEquals(AiRunResult.Text("回答"), runBlocking { p.run(AiTask.REWRITE, "文") })
+    }
+
+    @Test
+    fun provider_runTranslate_isBadParamsPointingToTranslate_withoutLoading() {
+        val dir = tmp.newFolder("m")
+        fillModel(dir)
+        val b = FakeBackend()
+        val p = LocalQwenProvider(QwenService(env(dir), b))
+        val e = assertThrows(BridgeException::class.java) { runBlocking { p.run(AiTask.TRANSLATE, "hi") } }
+        assertEquals(BridgeErrors.BAD_PARAMS, e.code)
+        assertTrue(e.message!!.contains(AiModule.METHOD_TRANSLATE))
+        assertTrue(b.calls.isEmpty())
     }
 
     @Test
