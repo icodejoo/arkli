@@ -411,4 +411,53 @@ class AiInvokeTest {
             err { inv.invoke(params("classifyImage", JSONObject().put("path", "cache/../x.jpg"))) },
         )
     }
+
+    /** 对联替身：恒可用，记录收到的请求，回固定下联 */
+    private class CoupletOmni : AiProvider, CoupletEngine {
+        override val id = "couplet-omni"
+        var last: AiCoupletRequest? = null
+        override val displayName = "对联替身"
+        override val layer = AiLayer.L1
+        override fun capabilities() = setOf(AiTask.COUPLET)
+        override fun offers() = listOf(AiOffer(AiTask.COUPLET, AiCoupletPolicy.OFFER_CONSTRAINTS))
+        override fun availability() = AiAvailability.AVAILABLE
+        override suspend fun run(task: AiTask, input: String): AiRunResult = throw AiRouter.notRunnable(id, task)
+        override suspend fun generate(req: AiCoupletRequest): CoupletResult {
+            last = req
+            return CoupletResult("春满乾坤福满门", 9, "couplet-model")
+        }
+    }
+
+    @Test
+    fun couplet_invokeAndLegacyEntryAgree_resultShapeAndConstraints() {
+        val p = CoupletOmni()
+        val inv = invoker(listOf(p))
+        val input = JSONObject().put("text", "天增岁月人增寿")
+        // 缺省端口是对联专用端口，options 里的 temperature / topK / seed 进到强类型请求
+        assertEquals(AiPort.Couplet, inv.plan(params("couplet", input)).port)
+        val opts = JSONObject().put("temperature", 0).put("topK", 5).put("seed", 3)
+        val j = runBlocking { inv.invoke(params("couplet", input, options = opts)) }
+        assertEquals("春满乾坤福满门", j.getString("text"))
+        assertEquals("couplet-model", j.getString("modelId"))
+        assertEquals(AiCoupletRequest(null, "天增岁月人增寿", 0f, 5, 3L), p.last)
+        // 旧入口 native.ai.couplet 同一份结果
+        val flat = JSONObject().put("text", "天增岁月人增寿").put("temperature", 0).put("topK", 5).put("seed", 3)
+        assertEquals(j.toString(), runBlocking { inv.dispatch(AiCall.Couplet(AiCoupletPolicy.parse(flat))) }.toString())
+        // 超界参数：BAD_PARAMS，invoke 与旧入口一致
+        assertEquals(BridgeErrors.BAD_PARAMS, err { inv.invoke(params("couplet", input, options = JSONObject().put("topK", 0))) }.first)
+        assertEquals(BridgeErrors.BAD_PARAMS, err { inv.invoke(params("couplet", input, options = JSONObject().put("temperature", 3))) }.first)
+        // 对联不认 preset / system，也不走 run、translate 入口
+        assertEquals(BridgeErrors.BAD_PARAMS, err { inv.invoke(params("couplet", input, options = JSONObject().put("preset", "prompt"))) }.first)
+        assertEquals(BridgeErrors.BAD_PARAMS, err { inv.invoke(params("couplet", input, entry = AiModule.METHOD_RUN)) }.first)
+        // 空上联
+        assertEquals(BridgeErrors.BAD_PARAMS, err { inv.invoke(params("couplet", JSONObject().put("text", ""))) }.first)
+    }
+
+    @Test
+    fun couplet_notReadyWhenModelMissing_andOtherProvidersDontSupportIt() {
+        val inv = invoker(AiFixtures.registered(tmp))
+        val input = JSONObject().put("text", "春风")
+        assertEquals(BridgeErrors.NOT_READY to "local-couplet 当前不可用：not_installed", err { inv.invoke(params("couplet", input, provider = LocalCoupletProvider.ID)) })
+        assertEquals(BridgeErrors.BAD_PARAMS to "local-ocr 不支持 couplet", err { inv.invoke(params("couplet", input, provider = LocalOcrProvider.ID)) })
+    }
 }

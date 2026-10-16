@@ -104,7 +104,7 @@ class AiProviderContractTest {
     fun everyRegisteredProvider_keepsCapabilityPortContract() {
         val all = registered()
         assertEquals(
-            listOf(IntentHandoffProvider.ID, LocalClipProvider.ID, LocalOcrProvider.ID, LocalNllbProvider.ID, LocalQwenProvider.ID),
+            listOf(IntentHandoffProvider.ID, LocalClipProvider.ID, LocalOcrProvider.ID, LocalNllbProvider.ID, LocalQwenProvider.ID, LocalCoupletProvider.ID),
             all.map { it.id },
         )
         assertEquals("id 不能重复", all.size, all.map { it.id }.toSet().size)
@@ -139,6 +139,7 @@ class AiProviderContractTest {
                 LocalOcrProvider.ID to AiLayer.L1,
                 LocalNllbProvider.ID to AiLayer.L1,
                 LocalQwenProvider.ID to AiLayer.L2,
+                LocalCoupletProvider.ID to AiLayer.L1,
             ),
             registered().associate { it.id to it.layer },
         )
@@ -155,6 +156,7 @@ class AiProviderContractTest {
         assertEquals(AiModule.METHOD_RUN, entry(IntentHandoffProvider.ID, AiTask.TRANSLATE))
         assertEquals(AiModule.METHOD_CLASSIFY, entry(LocalClipProvider.ID, AiTask.CLASSIFY_IMAGE))
         assertEquals(AiModule.METHOD_OCR, entry(LocalOcrProvider.ID, AiTask.OCR))
+        assertEquals(AiModule.METHOD_COUPLET, entry(LocalCoupletProvider.ID, AiTask.COUPLET))
         /** 某提供者 translate 报价的约束 */
         fun tr(id: String) = byId.getValue(id).offers().first { it.task == AiTask.TRANSLATE }.constraints
         // 语言清单与 auto 规则相同；Qwen 的原文上限更小、不收 numBeams
@@ -171,6 +173,7 @@ class AiProviderContractTest {
     private fun sampleInput(entry: String): JSONObject = when (entry) {
         AiModule.METHOD_TRANSLATE -> JSONObject().put("text", "hi").put("src", "en").put("tgt", "fr")
         AiModule.METHOD_CLASSIFY, AiModule.METHOD_OCR -> JSONObject().put("path", "cache/pick/a.jpg")
+        AiModule.METHOD_COUPLET -> JSONObject().put("text", "春风送暖")
         else -> JSONObject().put("text", "hi")
     }
 
@@ -197,7 +200,7 @@ class AiProviderContractTest {
     fun sessionModelId_matchesModelInfo() {
         val all = AiFixtures.registered(tmp, ModelStateSource { ModelStateInfo(installed = false, diskBytes = 0, downloading = false) })
         val sessions = all.mapNotNull { p -> AiPort.Session.bind(p)?.let { p to it } }
-        assertEquals(listOf(LocalClipProvider.ID, LocalOcrProvider.ID, LocalNllbProvider.ID, LocalQwenProvider.ID), sessions.map { it.first.id })
+        assertEquals(listOf(LocalClipProvider.ID, LocalOcrProvider.ID, LocalNllbProvider.ID, LocalQwenProvider.ID, LocalCoupletProvider.ID), sessions.map { it.first.id })
         // 删模型前卸会话靠 sessionModelId，它必须就是 providers 里报给前端的 modelId
         sessions.forEach { (p, s) -> assertEquals("${p.id} 的会话模型", p.modelInfo()?.modelId, s.sessionModelId) }
     }
@@ -244,6 +247,18 @@ class AiProviderContractTest {
         override suspend fun run(task: AiTask, input: String): AiRunResult =
             if (task == AiTask.PROMPT) AiRunResult.Text("") else throw AiRouter.notRunnable(id, task)
         override suspend fun recognize(file: java.io.File): OcrResult = throw UnsupportedOperationException()
+    }
+
+    /** 说谎者 7：实现了 CoupletEngine，却没声明 couplet */
+    private class HiddenCouplet : AiProvider, CoupletEngine {
+        override val id = "liar-couplet"
+        override val displayName = "说谎"
+        override val layer = AiLayer.L1
+        override fun capabilities() = setOf(AiTask.PROMPT)
+        override fun availability() = AiAvailability.AVAILABLE
+        override suspend fun run(task: AiTask, input: String): AiRunResult =
+            if (task == AiTask.PROMPT) AiRunResult.Text("") else throw AiRouter.notRunnable(id, task)
+        override suspend fun generate(req: AiCoupletRequest): CoupletResult = throw UnsupportedOperationException()
     }
 
     /** 说谎者 2：实现了 TextTranslator，却没声明 translate */
@@ -321,6 +336,7 @@ class AiProviderContractTest {
         assertEquals(1, violations(OfferMissing()).size)
         assertEquals(1, violations(TranslatorWithoutLanguages()).size)
         assertEquals(1, violations(HiddenOcr()).size)
+        assertEquals(1, violations(HiddenCouplet()).size)
     }
 
     @Test
@@ -331,5 +347,16 @@ class AiProviderContractTest {
         assertEquals(emptySet<AiTask>(), AiRouter.runTasks(p))
         assertEquals(OcrService.MODEL_ID, (p as AiSessionControl).sessionModelId)
         assertTrue(runRejects(p, AiTask.OCR))
+    }
+
+    @Test
+    fun coupletProvider_isL1SessionBoundToItsModel_withOwnConstraints_andRunNeverAcceptsCouplet() {
+        val p = registered().first { it.id == LocalCoupletProvider.ID }
+        assertEquals(setOf(AiTask.COUPLET), p.capabilities())
+        assertEquals(setOf(AiTask.COUPLET), AiRouter.dedicatedTasks(p))
+        assertEquals(emptySet<AiTask>(), AiRouter.runTasks(p))
+        assertEquals(CoupletService.MODEL_ID, (p as AiSessionControl).sessionModelId)
+        assertEquals(AiCoupletPolicy.OFFER_CONSTRAINTS, p.offers().single().constraints)
+        assertTrue(runRejects(p, AiTask.COUPLET))
     }
 }

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "note": "随包信任锚：下载地址只能来自这里，页面不能传 URL。M9（2026-10-16）已把旧 ONNX 模型整体退役，目录登记在 retired，启动后台回收：siglip2-q4_half（旧识物）、nllb600m-un6-ccm-int4（旧翻译）、asr-zipformer-zh-en-int8（旧语音，此前靠手动放置）、ppocrv5-mnn-fp16（OCR v5，已被 v6 取代）；这些目录名不要再复用给新模型。siglip2-mnn-w8 的 release siglip2-mnn-v1 待用户上传（model.mnn），上传前下载会失败；上传后需核对 sha256 与清单一致。nllb600m-un6-mnn-w6 的 release nllb-mnn-v1 待用户上传（12 个文件，清单见 docs/research/onnx-to-mnn-migration.md M6c 一节），上传前下载会失败；上传后需逐个核对 sha256；该模型为 CC-BY-NC-4.0，仅限非商业使用，署名与授权说明见 docs/design/bridge-protocol.md。asr-zipformer-zh-en-mnn-w8（语音输入，原模型 X-ASR 480ms 流式 zipformer 中英，Apache-2.0）的 release asr-mnn-v1 待用户上传（4 个文件：encoder.mnn、decoder.mnn、joiner.mnn、tokens.txt），上传前下载会失败；上传后需逐个核对 sha256。ppocrv6-small-mnn-fp16（文字识别，PP-OCRv6 small 的 det/rec 来自官方 HF 仓库 PaddlePaddle/PP-OCRv6_small_{det,rec}_onnx，cls 沿用 PP-OCRv5 方向分类，MNN fp16 版，Apache-2.0，两个 HF 模型页均标 apache-2.0）的 release ocr-mnn-v2 待用户上传（6 个文件：det.mnn、rec.mnn、cls.mnn、ppocr_keys.txt、NOTICE.txt、LICENSE-Apache-2.0.txt），上传前下载会失败；上传后需逐个核对 sha256。",
+  "note": "随包信任锚：下载地址只能来自这里，页面不能传 URL。M9（2026-10-16）已把旧 ONNX 模型整体退役，目录登记在 retired，启动后台回收：siglip2-q4_half（旧识物）、nllb600m-un6-ccm-int4（旧翻译）、asr-zipformer-zh-en-int8（旧语音，此前靠手动放置）、ppocrv5-mnn-fp16（OCR v5，已被 v6 取代）；这些目录名不要再复用给新模型。siglip2-mnn-w8 的 release siglip2-mnn-v1 待用户上传（model.mnn），上传前下载会失败；上传后需核对 sha256 与清单一致。nllb600m-un6-mnn-w6 的 release nllb-mnn-v1 待用户上传（12 个文件，清单见 docs/research/onnx-to-mnn-migration.md M6c 一节），上传前下载会失败；上传后需逐个核对 sha256；该模型为 CC-BY-NC-4.0，仅限非商业使用，署名与授权说明见 docs/design/bridge-protocol.md。asr-zipformer-zh-en-mnn-w8（语音输入，原模型 X-ASR 480ms 流式 zipformer 中英，Apache-2.0）的 release asr-mnn-v1 待用户上传（4 个文件：encoder.mnn、decoder.mnn、joiner.mnn、tokens.txt），上传前下载会失败；上传后需逐个核对 sha256。ppocrv6-small-mnn-fp16（文字识别，PP-OCRv6 small 的 det/rec 来自官方 HF 仓库 PaddlePaddle/PP-OCRv6_small_{det,rec}_onnx，cls 沿用 PP-OCRv5 方向分类，MNN fp16 版，Apache-2.0，两个 HF 模型页均标 apache-2.0）的 release ocr-mnn-v2 待用户上传（6 个文件：det.mnn、rec.mnn、cls.mnn、ppocr_keys.txt、NOTICE.txt、LICENSE-Apache-2.0.txt），上传前下载会失败；上传后需逐个核对 sha256。couplet-gpt2-mnn-w6（对联，uer/gpt2-chinese-couplet 的 MNN 6-bit 版）的 release couplet-mnn-v1 待用户上传（7 个文件：model.mnn、model.mnn.weight、vocab.txt、model.json、NOTICE.txt、UER-py_LICENSE_Apache-2.0.txt、couplet-clean-dataset_LICENSE_MIT.txt），上传前下载会失败；上传后需逐个核对 sha256。该模型的许可证无法确认可再分发（HF 模型卡无 license 字段，训练数据上游为 AGPL-3.0 且授权链不明），license 字段如实标注，风险自负，两份 LICENSE 文件只作来源留痕，不代表对权重的授权，详见包内 NOTICE.txt。",
   "retired": [
     {
       "id": "siglip2-q4_half",
@@ -327,6 +327,79 @@
           "role": "aux",
           "urls": [
             "https://github.com/icodejoo/arkli/releases/download/ocr-mnn-v2/NOTICE.txt"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "couplet-gpt2-mnn-w6",
+      "displayName": "本地对联模型（GPT-2，MNN 版）",
+      "version": "1",
+      "dir": "models/couplet-gpt2-mnn-w6",
+      "totalBytes": 97149159,
+      "license": "无法确认可再分发，风险自负",
+      "files": [
+        {
+          "name": "NOTICE.txt",
+          "bytes": 3147,
+          "sha256": "ceaa7daf30e0dc6ccc2c91dab5aa98c9940c03cdb6e3ebdd191219a8e2e9f9ad",
+          "role": "aux",
+          "urls": [
+            "https://github.com/icodejoo/arkli/releases/download/couplet-mnn-v1/NOTICE.txt"
+          ]
+        },
+        {
+          "name": "UER-py_LICENSE_Apache-2.0.txt",
+          "bytes": 11357,
+          "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+          "role": "aux",
+          "urls": [
+            "https://github.com/icodejoo/arkli/releases/download/couplet-mnn-v1/UER-py_LICENSE_Apache-2.0.txt"
+          ]
+        },
+        {
+          "name": "couplet-clean-dataset_LICENSE_MIT.txt",
+          "bytes": 1068,
+          "sha256": "e5ba66a650e1701d75ba5706af41b6dfaca7297c97ae8c93d7458db9c90d1e05",
+          "role": "aux",
+          "urls": [
+            "https://github.com/icodejoo/arkli/releases/download/couplet-mnn-v1/couplet-clean-dataset_LICENSE_MIT.txt"
+          ]
+        },
+        {
+          "name": "model.json",
+          "bytes": 1449,
+          "sha256": "d9986046c4a906046f705256228eb4e440048fb3f08fdbc240c063f2a12202e2",
+          "role": "config",
+          "urls": [
+            "https://github.com/icodejoo/arkli/releases/download/couplet-mnn-v1/model.json"
+          ]
+        },
+        {
+          "name": "model.mnn",
+          "bytes": 289464,
+          "sha256": "57219ebd5bbed80140437396b8bbb85dba5991e7c5b20f0d39db4012ec29173e",
+          "role": "model",
+          "urls": [
+            "https://github.com/icodejoo/arkli/releases/download/couplet-mnn-v1/model.mnn"
+          ]
+        },
+        {
+          "name": "model.mnn.weight",
+          "bytes": 96733158,
+          "sha256": "93f3c05e50b9b8860cbf8c92c4b0b556578a04111e1a94bc6fba3b7e7cdddd71",
+          "role": "model",
+          "urls": [
+            "https://github.com/icodejoo/arkli/releases/download/couplet-mnn-v1/model.mnn.weight"
+          ]
+        },
+        {
+          "name": "vocab.txt",
+          "bytes": 109516,
+          "sha256": "3db3f345cf52a1102831aa1fe7ddeb031dd5f117412f91ad11645c4e71fc8f4b",
+          "role": "tokenizer",
+          "urls": [
+            "https://github.com/icodejoo/arkli/releases/download/couplet-mnn-v1/vocab.txt"
           ]
         }
       ]

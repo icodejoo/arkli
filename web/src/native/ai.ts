@@ -75,13 +75,13 @@ export interface UpscaleResult extends AiImageResult {
 
 /** 模型未就绪错误 */
 export class AiNotReadyError extends Error {
-  /** 需要的模型 */
-  readonly model: AiModel
+  /** 需要的模型（或任务名，如 `couplet`） */
+  readonly model: AiModel | AiTask
 
   /**
-   * @param model 需要的模型名
+   * @param model 需要的模型名或任务名
    */
-  constructor(model: AiModel) {
+  constructor(model: AiModel | AiTask) {
     super('模型未就绪')
     this.name = 'AiNotReadyError'
     this.model = model
@@ -164,6 +164,33 @@ export async function aiOcr(path: string, signal?: AbortSignal, call: Cancelable
     return await aiInvoke('ocr', { path }, { entry: AI_METHODS.ocr, signal }, call)
   } catch (e) {
     if (isNotReadyError(e)) throw new AiNotReadyError('ocr')
+    throw e
+  }
+}
+
+/**
+ * 对联（本地 GPT-2，上联进、等长下联出）。转调 `native.ai.invoke` 并钉住 `native.ai.couplet` 入口，模型状态由 AI 目录读取。
+ * 长调用不设超时，可用 signal 取消。
+ *
+ * @param text 上联，1~14 字，只含汉字与允许的标点
+ * @param options 采样选项（temperature / topK / seed），不传用默认
+ * @param signal 取消信号，触发后调用以 CANCELLED 拒绝
+ * @param call 原生调用函数，默认走 bridge（仅测试注入）
+ * @returns 下联与耗时
+ * @throws AiNotReadyError 无宿主、方法不存在或模型未就绪；BAD_PARAMS（上联不合法、参数超界）原样抛出
+ * @example const r = await aiCouplet('春风送暖入屠苏', { temperature: 0 }); // r.text 与上联等长
+ */
+export async function aiCouplet(
+  text: string,
+  options: AiCoupletOptions = {},
+  signal?: AbortSignal,
+  call: CancelableCallFn = bridgeCall,
+): Promise<CoupletResult> {
+  if (!isNativeAvailable()) throw new AiNotReadyError('couplet')
+  try {
+    return await aiInvoke('couplet', { text }, { entry: AI_METHODS.couplet, options, signal }, call)
+  } catch (e) {
+    if (isNotReadyError(e)) throw new AiNotReadyError('couplet')
     throw e
   }
 }
@@ -310,7 +337,7 @@ export async function fetchAiResult(path: string, fetchFn: typeof fetch = (...a)
 }
 
 /** AI 任务：页面只认任务，不认厂商 */
-export type AiTask = 'summarize' | 'proofread' | 'rewrite' | 'describeImage' | 'prompt' | 'translate' | 'classifyImage' | 'ocr'
+export type AiTask = 'summarize' | 'proofread' | 'rewrite' | 'describeImage' | 'prompt' | 'translate' | 'classifyImage' | 'ocr' | 'couplet'
 
 /** 提供者不可用的原因（未知值按字符串透传，页面不认识就当「不可用」） */
 export type AiUnavailableReason = 'no_handler' | 'unsupported_device' | 'not_installed' | 'not_configured' | (string & {})
@@ -318,8 +345,8 @@ export type AiUnavailableReason = 'no_handler' | 'unsupported_device' | 'not_ins
 /** AI 层（决策 0005）：L1 本地小模型 / L2 本地大模型 / L3 本机 AI / L4 远端 API */
 export type AiLayer = 'L1' | 'L2' | 'L3' | 'L4'
 
-/** 任务入口：执行该任务要调的桥方法，取 `AI_METHODS.run/translate/classify/ocr`（未知值按字符串透传） */
-export type AiEntry = (typeof AI_METHODS)['run' | 'translate' | 'classify' | 'ocr'] | (string & {})
+/** 任务入口：执行该任务要调的桥方法，取 `AI_METHODS.run/translate/classify/ocr/couplet`（未知值按字符串透传） */
+export type AiEntry = (typeof AI_METHODS)['run' | 'translate' | 'classify' | 'ocr' | 'couplet'] | (string & {})
 
 /** 一项任务的约束，由原生给出（前端不再自己写语言清单） */
 export interface AiOfferConstraints {
@@ -327,15 +354,15 @@ export interface AiOfferConstraints {
   languages?: string[]
   /** 翻译：源语言可否为 `auto` */
   sourceAuto?: boolean
-  /** 翻译：该提供者能译的原文字数上限（缺省时按入口上限 2000） */
+  /** 翻译：该提供者能译的原文字数上限（缺省时按入口上限 2000）；对联：上联字数上限（含标点） */
   maxChars?: number
   /** 翻译：是否接受束宽 `numBeams`；为 false 时传了会报 BAD_PARAMS */
   allowNumBeams?: boolean
   /** 文本生成：允许的预设 */
   presets?: AiPreset[]
-  /** 文本生成：温度范围（含端点），0 表示贪心 */
+  /** 文本生成与对联：温度范围（含端点），0 表示贪心 */
   temperature?: AiRange
-  /** 文本生成：topK 范围（含端点） */
+  /** 文本生成与对联：topK 范围（含端点） */
   topK?: AiRange
   /** 文本生成：是否允许额外传 `system`（即便允许，也只有 `prompt` 预设可传） */
   allowSystem?: boolean
@@ -555,6 +582,32 @@ export interface AiOcrInput {
   path: string
 }
 
+/** 对联的输入 */
+export interface AiCoupletInput {
+  /** 上联，1~14 字；只允许汉字与 `，。、；：！？,.;:!?`（标点在下联同位照抄），含英文字母、数字、括号报 BAD_PARAMS */
+  text: string
+}
+
+/** 对联的附加选项，不传的用默认；范围以提供者报价的 `constraints` 为准 */
+export interface AiCoupletOptions {
+  /** 采样温度 0~2，0 表示贪心，默认 0.8 */
+  temperature?: number
+  /** 温度采样的候选数 1~200，默认 40 */
+  topK?: number
+  /** 随机种子（非负整数，不超过 2^53-1），给定则结果可复现；缺省随机 */
+  seed?: number
+}
+
+/** 对联结果（`native.ai.couplet` / `native.ai.invoke` 的 `couplet` 任务） */
+export interface CoupletResult {
+  /** 下联，与上联等长，标点位与上联相同 */
+  text: string
+  /** 总耗时毫秒（含首次加载） */
+  elapsedMs: number
+  /** 模型标识，如 `couplet-gpt2-mnn-w6` */
+  modelId: string
+}
+
 /** 没有附加选项的任务 */
 type NoOptions = Record<string, never>
 
@@ -592,6 +645,8 @@ export interface AiTaskMap {
   classifyImage: { input: AiClassifyInput; options: { topK?: number }; output: ImageClassifyResult }
   /** 文字识别（ocr 端口） */
   ocr: { input: AiOcrInput; options: NoOptions; output: OcrResult }
+  /** 对联（couplet 专用端口，文本生成类但不走 run） */
+  couplet: { input: AiCoupletInput; options: AiCoupletOptions; output: CoupletResult }
 }
 
 /** {@link aiInvoke} 的调用选项 */
@@ -599,7 +654,7 @@ export interface AiInvokeOptions<T extends keyof AiTaskMap> {
   /** 指定提供者 id；缺省由原生取该任务缺省端口的第一个候选 */
   provider?: string
   /**
-   * 钉住入口（桥方法名，取 `AI_METHODS.run/translate/classify/ocr`）。不钉时：指定了 provider 就走它报价里的入口，
+   * 钉住入口（桥方法名，取 `AI_METHODS.run/translate/classify/ocr/couplet`）。不钉时：指定了 provider 就走它报价里的入口，
    * 否则走任务的缺省入口。**注意**：只点名交接类提供者（它的 translate 报价入口是 run）而不钉入口时，结果是 {@link AiRunResult}
    * 形状而不是 {@link TranslateResult}；需要确定形状就钉住入口（旧封装都钉了）。
    */

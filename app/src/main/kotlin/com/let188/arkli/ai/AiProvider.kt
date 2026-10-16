@@ -34,7 +34,10 @@ enum class AiTask(val wire: String, val isText: Boolean) {
     CLASSIFY_IMAGE("classifyImage", false),
 
     /** 文字识别（输入是图片，走 `native.ai.ocr`，不走 `native.ai.run`） */
-    OCR("ocr", false);
+    OCR("ocr", false),
+
+    /** 对联（文本生成类，但参数与结果强类型，走专用端口 `native.ai.couplet`，不走 `native.ai.run`） */
+    COUPLET("couplet", false);
 
     companion object {
         /**
@@ -209,6 +212,30 @@ sealed class AiConstraints {
 
         /** 造 BAD_PARAMS 异常 */
         private fun bad(msg: String) = BridgeException(BridgeErrors.BAD_PARAMS, msg)
+    }
+
+    /**
+     * 对联约束：上联最多几个字、温度与 topK 的范围。只挂在 `couplet` 任务上。
+     *
+     * @property maxChars 上联最多字数（含标点）
+     * @property temperature 温度范围（含端点），0 表示贪心
+     * @property topK topK 范围（含端点）
+     * @example `AiConstraints.Couplet(14, 0f..2f, 1..200)`
+     */
+    data class Couplet(
+        val maxChars: Int,
+        val temperature: ClosedFloatingPointRange<Float>,
+        val topK: IntRange,
+    ) : AiConstraints() {
+        /** `{ maxChars, temperature: {min,max}, topK: {min,max} }` */
+        override fun toJson(): JSONObject = JSONObject().put("maxChars", maxChars)
+            .put("temperature", AiGeneratePolicy.rangeJson(temperature.start, temperature.endInclusive))
+            .put("topK", AiGeneratePolicy.rangeJson(topK.first, topK.last))
+
+        /** 只查对联调用：字数、温度、topK 在范围内 */
+        override fun check(call: AiCall) {
+            if (call is AiCall.Couplet) AiCoupletPolicy.checkConstraints(call.req, this)
+        }
     }
 }
 

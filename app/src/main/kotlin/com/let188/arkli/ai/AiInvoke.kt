@@ -56,6 +56,13 @@ sealed class AiCall(val task: AiTask, val provider: String?, val port: AiPort<*>
      * @property req 已校验的请求
      */
     class Ocr(val req: AiOcrRequest) : AiCall(AiTask.OCR, req.provider, AiPort.Ocr)
+
+    /**
+     * 对联。
+     *
+     * @property req 已校验的请求
+     */
+    class Couplet(val req: AiCoupletRequest) : AiCall(AiTask.COUPLET, req.provider, AiPort.Couplet)
 }
 
 /**
@@ -142,6 +149,7 @@ object AiInvokePolicy {
             AiPort.Translate -> AiCall.Translate(AiTranslatePolicy.parse(flat))
             AiPort.Classify -> AiCall.Classify(AiClassifyPolicy.parse(flat))
             AiPort.Ocr -> AiCall.Ocr(AiOcrPolicy.parse(flat))
+            AiPort.Couplet -> AiCall.Couplet(AiCoupletPolicy.parse(flat))
             AiPort.Session -> throw bad("${port.entry} 不是任务入口")
         }
     }
@@ -152,7 +160,12 @@ object AiInvokePolicy {
      */
     private fun rejectGenOptions(port: AiPort<*>, flat: JSONObject) {
         if (port == AiPort.Run) return
-        val keys = if (port == AiPort.Classify) GEN_KEYS else GEN_KEYS + AiGeneratePolicy.KEY_TOP_K
+        val keys = when (port) {
+            AiPort.Classify -> GEN_KEYS
+            // 对联认 temperature 与 topK（自己的范围校验），不认 preset / system
+            AiPort.Couplet -> GEN_KEYS - AiGeneratePolicy.KEY_TEMPERATURE
+            else -> GEN_KEYS + AiGeneratePolicy.KEY_TOP_K
+        }
         val hit = keys.firstOrNull { flat.has(it) && flat.opt(it) != JSONObject.NULL } ?: return
         throw bad("${port.entry} 不支持 $hit，这是文本生成的选项")
     }
@@ -240,7 +253,7 @@ class AiInvoker(private val providers: () -> List<AiProvider>, private val resol
      * 分派一次已解析的调用。
      *
      * @param call 调用
-     * @return 结果 JSON：run 为 [AiPolicy.resultJson]，翻译为 [AiTranslatePolicy.resultJson]，识图为 [AiClassifyPolicy.resultJson]，文字识别为 [AiOcrPolicy.resultJson]
+     * @return 结果 JSON：run 为 [AiPolicy.resultJson]，翻译为 [AiTranslatePolicy.resultJson]，识图为 [AiClassifyPolicy.resultJson]，文字识别为 [AiOcrPolicy.resultJson]，对联为 [AiCoupletPolicy.resultJson]
      * @throws BridgeException BAD_PARAMS（路由失败、超出约束、路径无效）、NOT_READY、INTERNAL
      */
     suspend fun dispatch(call: AiCall): JSONObject = when (call) {
@@ -263,6 +276,10 @@ class AiInvoker(private val providers: () -> List<AiProvider>, private val resol
             val file = resolver.resolve(call.req.path)?.takeIf { it.isFile }
                 ?: throw BridgeException(BridgeErrors.BAD_PARAMS, BAD_IMAGE_PATH)
             AiOcrPolicy.resultJson(withContext(Dispatchers.IO) { o.recognize(file) })
+        }
+        is AiCall.Couplet -> {
+            val c = route(call, AiPort.Couplet).port
+            AiCoupletPolicy.resultJson(withContext(Dispatchers.IO) { c.generate(call.req) })
         }
     }
 

@@ -138,6 +138,29 @@ describe('适用性回归（registry 里的真实工具）', () => {
     expect(items[1]).toMatchObject({ layer: 'L2', constraints: TR_CONSTRAINTS })
     expect(items[2]).toMatchObject({ layer: 'L4', status: 'unsupported', selectable: false })
   })
+  it('对联：任务 couplet 的目录只有原生的 local-couplet（专用端口，不混进 Qwen、交接）', () => {
+    const couplet: AiProviderInfo = {
+      id: 'local-couplet',
+      displayName: '本地对联（GPT-2）',
+      layer: 'L1',
+      available: false,
+      reason: 'not_installed',
+      session: true,
+      tasks: ['couplet'],
+      offers: [{ task: 'couplet', entry: 'native.ai.couplet', constraints: { maxChars: 14, temperature: { min: 0, max: 2 }, topK: { min: 1, max: 200 } } }],
+      modelId: 'couplet-gpt2-mnn-w6',
+      downloaded: false,
+      sizeBytes: 0,
+      downloading: false,
+    }
+    const tasks: ToolAiTask[] = [{ task: 'couplet', entry: 'native.ai.couplet' }]
+    const items = catalogFor(tasks, [], [...nativeProviders(), couplet])
+    expect(items.map((i) => i.key)).toEqual(['local-couplet'])
+    expect(items[0]).toMatchObject({ layer: 'L1', status: 'missing', modelId: 'couplet-gpt2-mnn-w6', providerId: 'local-couplet', entries: { couplet: 'native.ai.couplet' }, session: true })
+    expect(items[0].constraints?.maxChars).toBe(14)
+    const installed = catalogFor(tasks, [], [...nativeProviders(), couplet], { 'couplet-gpt2-mnn-w6': st('couplet-gpt2-mnn-w6', 'installed') })
+    expect(installed[0].status).toBe('ready')
+  })
   it('所有没声明文本任务的 AI 工具都看不到 Qwen 与 L4 占位', () => {
     const textTasks: AiTask[] = ['summarize', 'proofread', 'rewrite', 'prompt', 'translate']
     const offenders = tools

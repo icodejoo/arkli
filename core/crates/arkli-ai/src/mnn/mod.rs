@@ -282,6 +282,15 @@ impl MnnRuntime {
         self.load_ocr_pipeline_with(dir, threads, OcrOptions::for_dict_len(dict_len))
     }
 
+    /// 加载对联引擎：模型目录里的 `model.mnn`（旁有 `.weight` 自动带上）、`vocab.txt`、`model.json`，memory=low。
+    ///
+    /// - `dir`：模型目录
+    /// - `threads`：线程数，0 视为默认 4
+    /// - 返回：可直接 `generate` 的引擎；清单或词表不合法返回 [`AiError::InvalidConfig`]
+    pub fn load_couplet(&self, dir: &Path, threads: u32) -> Result<crate::couplet::Couplet<MnnNet>> {
+        crate::couplet::load_couplet_dir(self, dir, threads)
+    }
+
     /// 同 [`Self::load_ocr_pipeline`]，但由调用方指定管线参数（对比实验、自定义阈值用）。
     ///
     /// - `dir`：模型目录

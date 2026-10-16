@@ -9,7 +9,7 @@ import java.io.File
 
 /**
  * AI 测试共用的替身：用它们调 [AiModule.providers]，得到与正式注册完全相同的提供者列表，不需要真模型。
- * 识物、文字识别、NLLB 的模型文件不放（不可用，NOT_READY）；Qwen 文件写齐、引擎回固定文本（可用，run/translate 能跑通）。
+ * 识物、文字识别、NLLB、对联的模型文件不放（不可用，NOT_READY）；Qwen 文件写齐、引擎回固定文本（可用，run/translate 能跑通）。
  */
 internal object AiFixtures {
     /** Qwen 替身引擎的固定输出 */
@@ -54,6 +54,14 @@ internal object AiFixtures {
         override fun translate(text: String, src: String, tgt: String, numBeams: Int): TranslateOutcome = error("不该翻译")
     }
 
+    /** 不该被调用的对联引擎（卸载除外） */
+    class NoCouplet : CoupletBackend {
+        override fun load(modelDir: String) = error("不该加载")
+        override fun unload() {}
+        override fun generate(req: AiCoupletRequest): CoupletOutcome = error("不该生成")
+        override fun cancel() {}
+    }
+
     /** 文本模型引擎替身：直接回 [QWEN_OUT] */
     class EchoQwen : QwenBackend {
         override fun load(configPath: String) {}
@@ -86,6 +94,8 @@ internal object AiFixtures {
         val qwenDir = tmp.newFolder()
         QwenService.REQUIRED_FILES.forEach { File(qwenDir, it).writeText("x") }
         val qwen = QwenService(object : QwenEnv { override fun modelDir() = qwenDir }, EchoQwen())
-        return AiModule.providers(OkHandoff(), clip, ocr, translate, qwen, models)
+        val coupletDir = tmp.newFolder()
+        val couplet = CoupletService(object : CoupletEnv { override fun modelDir() = coupletDir }, NoCouplet())
+        return AiModule.providers(OkHandoff(), clip, ocr, translate, qwen, couplet, models)
     }
 }

@@ -50,6 +50,12 @@ sealed class AiPort<T : Any>(val entry: String, val task: AiTask?) {
         override fun bind(provider: AiProvider): OcrEngine? = provider as? OcrEngine
     }
 
+    /** 对联 `native.ai.couplet` */
+    object Couplet : AiPort<CoupletEngine>(AiModule.METHOD_COUPLET, AiTask.COUPLET) {
+        /** 实现了 [CoupletEngine] 才算 */
+        override fun bind(provider: AiProvider): CoupletEngine? = provider as? CoupletEngine
+    }
+
     /** 模型会话的预热与卸载 `native.ai.warmup` / `native.ai.unload` */
     object Session : AiPort<AiSessionControl>(AiModule.METHOD_WARMUP, null) {
         /** 实现了 [AiSessionControl] 才算 */
@@ -58,7 +64,7 @@ sealed class AiPort<T : Any>(val entry: String, val task: AiTask?) {
 
     companion object {
         /** 专用任务端口；以后接文本生成等强类型任务时在这里登记（新增任务的步骤见 docs/design/ai-protocol.md） */
-        val DEDICATED: List<AiPort<*>> = listOf(Translate, Classify, Ocr)
+        val DEDICATED: List<AiPort<*>> = listOf(Translate, Classify, Ocr, Couplet)
 
         /** 能承接任务的全部端口（专用 + 通用 run），`native.ai.invoke` 的 `entry` 只能取它们的方法名 */
         val TASK_PORTS: List<AiPort<*>> = DEDICATED + Run

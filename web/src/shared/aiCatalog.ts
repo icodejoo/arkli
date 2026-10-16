@@ -33,6 +33,7 @@ export const TASK_LABELS: Record<AiTask, string> = {
   translate: '翻译',
   classifyImage: '识图',
   ocr: '文字识别',
+  couplet: '对联',
 }
 
 /**

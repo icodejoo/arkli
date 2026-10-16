@@ -2,7 +2,7 @@
 title: 统一 AI 协议
 status: active
 updated: 2026-10-16
-summary: 原生 AI 入口怎么选提供者（AiRouter）、统一入口 native.ai.invoke 的分派、能力声明与实现端口的不变量、提供者报价（offers：任务+入口+约束）与层、按约束校验输入、生命周期从提供者派生、文本生成的预设与按次采样（AiConstraints.Generate，第 6 步）、前端 AI 目录与 aiInvoke、OCR 作为第一个按新协议接入的任务与“新增一个 AI 任务的 checklist”，以及后续分步计划
+summary: 原生 AI 入口怎么选提供者（AiRouter）、统一入口 native.ai.invoke 的分派、能力声明与实现端口的不变量、提供者报价（offers：任务+入口+约束）与层、按约束校验输入、生命周期从提供者派生、文本生成的预设与按次采样（AiConstraints.Generate，第 6 步）、前端 AI 目录与 aiInvoke、OCR 作为第一个按新协议接入的任务与“新增一个 AI 任务的 checklist”，对联作为第二个按 checklist 接入的专用端口任务（`couplet`），以及后续分步计划
 ---
 
 ## TL;DR
@@ -16,7 +16,8 @@ summary: 原生 AI 入口怎么选提供者（AiRouter）、统一入口 native.
 - **生命周期从提供者派生**（第 4 步）：预热、卸载、删模型前释放、进程级回收都只看 `AiModule.providers` 里谁实现了 `AiSessionControl`；新接一个模型只登记一处。
 - **OCR 是第一个按新协议接入的任务**（M8，2026-10-16）：`AiTask.OCR` + `AiPort.Ocr`（`OcrEngine`）+ `AiCall.Ocr` + `LocalOcrProvider`（`local-ocr`，L1，PP-OCRv5 MNN fp16），契约测试与 invoke 分派自动覆盖。以后新增任务照本文“新增一个 AI 任务的 checklist”做。
 - **文本生成的预设与采样按次传入**（第 6 步）：invoke 的 `options` 可带 `{ preset?, system?, temperature?, topK? }`，原生 `AiCall.Run` 多出强类型字段 `preset` / `system` / `sampling`；范围与权限挂在报价约束 `AiConstraints.Generate` 上（`check(call)` 校验，分派流程不变）；`TextGenerator` 是可选端口，没实现它的提供者收到这些字段报 `BAD_PARAMS`。见下文“文本生成的预设与采样”。
-- 前端：`aiInvoke(task, input, opts)` 按 `AiTaskMap` 强类型；`aiTranslate` / `aiClassifyImage` / `aiRun` 签名不变、内部转调 invoke 并钉住原入口；`aiOcr` 同理（M8 起签名为 `aiOcr(path, signal?)`）。AI 目录（`buildCatalog` / `useAiCatalog`）选择值存提供者 id；预热只跟随 `session` 为真的提供者。
+- **对联是第二个按 checklist 接入的任务**（阶段 2a，2026-10-16）：`AiTask.COUPLET`（文本生成类，但参数与结果强类型，所以走**专用端口** `AiPort.Couplet` + `CoupletEngine`，`isText=false`，不进 run）+ `AiCall.Couplet` + `LocalCoupletProvider`（`local-couplet`，L1，GPT-2 MNN 6 位），报价约束是新子类 `AiConstraints.Couplet`（字数与温度、topK 范围）。契约测试与 invoke 分派自动覆盖；见下文“对联接入记录”。
+- 前端：`aiInvoke(task, input, opts)` 按 `AiTaskMap` 强类型；`aiTranslate` / `aiClassifyImage` / `aiRun` 签名不变、内部转调 invoke 并钉住原入口；`aiOcr` 同理（M8 起签名为 `aiOcr(path, signal?)`）；`aiCouplet(text, options?, signal?)` 钉 `native.ai.couplet`。AI 目录（`buildCatalog` / `useAiCatalog`）选择值存提供者 id；预热只跟随 `session` 为真的提供者。
 
 ## 概念
 
@@ -27,7 +28,7 @@ summary: 原生 AI 入口怎么选提供者（AiRouter）、统一入口 native.
 | 端口 | 提供者承接任务用的强类型接口，一个端口对应一个桥方法 | `AiPort` |
 | 路由 | 按（任务，端口，可选 provider id）选出提供者并查可用性 | `AiRouter` |
 
-端口现有五个：
+端口现有六个：
 
 | 端口 | 桥方法 | 绑定任务 | 接口 |
 |---|---|---|---|
@@ -35,9 +36,10 @@ summary: 原生 AI 入口怎么选提供者（AiRouter）、统一入口 native.
 | `Translate` | `native.ai.translate` | `translate` | `TextTranslator` |
 | `Classify` | `native.ai.classify` | `classifyImage` | `ImageClassifier` |
 | `Ocr` | `native.ai.ocr`（M8 新增） | `ocr` | `OcrEngine` |
+| `Couplet` | `native.ai.couplet`（阶段 2a 新增） | `couplet` | `CoupletEngine` |
 | `Session` | `native.ai.warmup` / `unload` | 不绑任务 | `AiSessionControl` |
 
-`Translate`、`Classify`、`Ocr` 是**专用端口**（`AiPort.DEDICATED`）。以后接带参数的文本生成等强类型任务，就新增一个专用端口和对应接口，在 `DEDICATED` 里登记，再给 `AiCall` 加一个子类（编译器会逼着 `AiInvokePolicy.toCall` 与 `AiInvoker.dispatch` 的 `when` 补全），完整步骤见下文 checklist。
+`Translate`、`Classify`、`Ocr`、`Couplet` 是**专用端口**（`AiPort.DEDICATED`）。以后接带参数的文本生成等强类型任务，就新增一个专用端口和对应接口，在 `DEDICATED` 里登记，再给 `AiCall` 加一个子类（编译器会逼着 `AiInvokePolicy.toCall` 与 `AiInvoker.dispatch` 的 `when` 补全），完整步骤见下文 checklist。
 
 ## 统一入口 `native.ai.invoke`（第 3 步）
 
@@ -49,9 +51,9 @@ summary: 原生 AI 入口怎么选提供者（AiRouter）、统一入口 native.
    - 传了 `entry` → `AiPort.byEntry(entry)`（只能是 `TASK_PORTS` = 专用端口 + run；`native.ai.warmup` 等不收）；等于直接调那个旧入口，错误与旧入口一致；
    - 只传了 `provider`，且它声明了该任务 → `AiRouter.portOf(provider, task)`，也就是 `offers` 里报给前端的 `entry`（`entryOf` 就是 `portOf(...).entry`，全项目只此一处）；
    - 都没传，或 provider 不认识 / 没声明该任务 → `AiPort.canonicalFor(task)`（有专用端口走专用端口，否则 run），再由路由报“未知的 provider”“不支持”，文案与旧入口相同。
-2. 按端口解析输入（`AiInvokePolicy.toCall`，对 sealed `AiPort` 的穷举 `when`）：把 `input` 与 `options` 拼成旧入口的扁平参数（重复键、`input` 里写 `provider` 都报 `BAD_PARAMS`），**直接复用旧入口的 parse**——translate 用 `AiTranslatePolicy.parse`、classify 用 `AiClassifyPolicy.parse`、ocr 用 `AiOcrPolicy.parse`、run 用 `AiPolicy.checkRunText(input.text)`。专用端口绑定的任务与 `task` 不符（如钉 `native.ai.translate` 却传 `summarize`）报 `BAD_PARAMS`。
+2. 按端口解析输入（`AiInvokePolicy.toCall`，对 sealed `AiPort` 的穷举 `when`）：把 `input` 与 `options` 拼成旧入口的扁平参数（重复键、`input` 里写 `provider` 都报 `BAD_PARAMS`），**直接复用旧入口的 parse**——translate 用 `AiTranslatePolicy.parse`、classify 用 `AiClassifyPolicy.parse`、ocr 用 `AiOcrPolicy.parse`、couplet 用 `AiCoupletPolicy.parse`、run 用 `AiPolicy.checkRunText(input.text)`。专用端口绑定的任务与 `task` 不符（如钉 `native.ai.translate` 却传 `summarize`）报 `BAD_PARAMS`。
 
-得到强类型的 `AiCall`（`Run` / `Translate` / `Classify` / `Ocr`），交给 `AiInvoker.dispatch`，流程固定：
+得到强类型的 `AiCall`（`Run` / `Translate` / `Classify` / `Ocr` / `Couplet`），交给 `AiInvoker.dispatch`，流程固定：
 
 ```
 select（AiRouter.select，不查可用性，BAD_PARAMS）
@@ -152,7 +154,7 @@ select（AiRouter.select，不查可用性，BAD_PARAMS）
 - 翻译页：`useAiCatalog('translate')`。工具声明 `{ task: 'translate', entry: 'native.ai.translate' }`，目录里只有 NLLB、Qwen（加 L4 占位），交接不会混进来；语言清单取 `current.constraints`（原生报价），`registry.ts` 不再写语言。还没探测到就先等一次 `refresh`；当前项没有提供者就提示“当前模型暂不能翻译”，不回落到别的模型。探测前不显示“无可用模型”提示。旧的 `findTranslateProvider` 已删除。极短输入改走 Qwen 时，页面用 `warmup.occupy('local-qwen')` 登记额外占用，离页（停用/卸载）时与当前所选提供者一起 `aiUnload`，避免 NLLB 与 Qwen 同时驻留；`translate` 的异步等待之后写结果前统一用 `isLatestRun(my, seq)` 守卫，取消或换模型后旧结果不会覆盖新状态；`BAD_PARAMS` 带中文 message（如超过 Qwen 的 300 字上限）时页面原样显示。
 - 就绪：`current.status === 'ready'`，status 来自模型 store（store 还没拿到时用提供者自带的 `downloaded`），不读 provider 的 `available`。
 - 预热：`useModelWarmup(sessionProviderOf(current), modelReady)` → `createProviderWarmup`。只跟随 `session` 为真的提供者（没有会话的交接、占位不会去调 warmup 换一个 `BAD_PARAMS`）。页面活跃且已安装时预热当前提供者；换提供者时先取消并卸载旧的，**等卸载请求结束再预热新的**，避免 NLLB 与 Qwen 同时驻留；停用/卸载时释放当前的；页面停用期间的状态变化不触发预热。
-- **`aiInvoke`**（第 3 步，`web/src/native/ai.ts`）：`aiInvoke<T extends keyof AiTaskMap>(task, input, { provider?, entry?, options?, signal? })`。`AiTaskMap` 按任务给强类型：文本四类 `{ text }` + `options: { preset?, system?, temperature?, topK? }`（第 6 步，`AiGenerateOptions`）→ `AiRunResult`；`translate` `{ text, src, tgt }` + `options.numBeams` → `TranslateResult`；`classifyImage` `{ path }` + `options.topK` → `ImageClassifyResult`；`ocr` `{ path }` → `OcrResult`（`describeImage` 没有端口，暂不收录）。只发有值的字段，空 `options` 省略。旧封装签名不变，内部转调并**钉住原入口**：`aiTranslate` 钉 `native.ai.translate`（点名交接时照旧 `BAD_PARAMS`，不会悄悄交接出去）、`aiClassifyImage` 钉 `native.ai.classify`、`aiOcr` 钉 `native.ai.ocr`、`aiRun` 钉 `native.ai.run`（它的 task 可以是交接的 translate，超出 `AiTaskMap`，走内部 `invokeRaw`）。
+- **`aiInvoke`**（第 3 步，`web/src/native/ai.ts`）：`aiInvoke<T extends keyof AiTaskMap>(task, input, { provider?, entry?, options?, signal? })`。`AiTaskMap` 按任务给强类型：文本四类 `{ text }` + `options: { preset?, system?, temperature?, topK? }`（第 6 步，`AiGenerateOptions`）→ `AiRunResult`；`translate` `{ text, src, tgt }` + `options.numBeams` → `TranslateResult`；`classifyImage` `{ path }` + `options.topK` → `ImageClassifyResult`；`ocr` `{ path }` → `OcrResult`；`couplet` `{ text }` + `options: { temperature?, topK?, seed? }` → `CoupletResult { text, elapsedMs, modelId }`（`describeImage` 没有端口，暂不收录）。只发有值的字段，空 `options` 省略。旧封装签名不变，内部转调并**钉住原入口**：`aiTranslate` 钉 `native.ai.translate`（点名交接时照旧 `BAD_PARAMS`，不会悄悄交接出去）、`aiClassifyImage` 钉 `native.ai.classify`、`aiOcr` 钉 `native.ai.ocr`、`aiRun` 钉 `native.ai.run`（它的 task 可以是交接的 translate，超出 `AiTaskMap`，走内部 `invokeRaw`）。
 - `aiInvoke` 的类型以任务的缺省端口为准：只点名交接类提供者做 translate、又不钉入口时，原生按它的报价走 run，返回的是 `AiRunResult` 形状，类型上看不出来；需要确定形状就钉 `entry`。
 
 ## 新增一个 AI 任务的 checklist（OCR 是第一个按它接入的）
@@ -187,6 +189,31 @@ select（AiRouter.select，不查可用性，BAD_PARAMS）
 OCR 实际改动量（作为参照）：原生新增 `OcrService.kt`、`AndroidOcr.kt`、`AiOcrPolicy.kt` 与 `AiTask` / `AiPort` / `AiCall` / `AiModule` / `AiHandlers` 各数行；前端 `ai.ts` / `aiCatalog.ts` / `registry.ts` 各数行加两个页面改读目录。**没碰** `AiRouter` 的路由逻辑、`AiInvoker.route`、`AiLifecyclePolicy`、`AiRecycle`、`AiPolicy.providersJson/offersJson`、`ModelPicker.vue`、`useAiCatalog.ts`、`buildCatalog`。
 
 **接入时发现的缺口**（如实记录）：契约测试里有四处手写的提供者列表（id / 层 / 会话 / sample 输入）要人工同步，新增提供者时漏一处不会指出漏的是哪一行；前端 `nativeProviders()` 夹具同理。可以以后让这些断言从 `AiModule.providers` 派生，本次没做。
+
+## 对联接入记录（第二个按 checklist 接入的任务，阶段 2a）
+
+只做推理引擎与协议接入，**不含前端页面**（`web/src/tools/couplet/` 下一阶段重做）。按上面 checklist 逐项，实际动了这些地方：
+
+| checklist | 对联的做法 |
+|---|---|
+| 1 `AiTask` | `COUPLET("couplet", isText = false)`：文本生成类，但**不走 run**（强类型参数 + 专用端口），所以 `isText=false`，交接类提供者的 `capabilities`（取 `isText`）因此不会声明它 |
+| 2 端口 | `AiModule.METHOD_COUPLET = "native.ai.couplet"`；`AiPort.Couplet`（`bind` = 是否实现 `CoupletEngine`）并进 `DEDICATED` |
+| 3 输入输出 | `AiCoupletPolicy.parse`（形状、`text` 1~14 字、`temperature` 0~2、`topK` 1~200 整数、`seed` 非负安全整数）、`checkConstraints`、`resultJson`（`{ text, elapsedMs, modelId }`）。**上联字符合法性由 Rust 校验**（见下） |
+| 4 `AiCall` | `AiCall.Couplet(req)`；补 `toCall`、`dispatch` 两处 `when`。另有一处：`rejectGenOptions` 原来对非 run 端口一律拒绝 `temperature` / `topK`，对联认这两个（自己的范围），所以按端口区分，对联只拒 `preset` / `system` |
+| 5 服务与提供者 | `CoupletService`（`AiHeavyGate`、懒加载、指纹重载、协程取消调 `couplet_cancel`）、`LocalCoupletProvider`（`local-couplet`，L1，实现 `CoupletEngine` + `AiSessionControl`）、`AndroidCouplet.kt`（UniFFI 桥） |
+| 6 登记 | `AiModule.providers(..., couplet, models)`（追加在 `local-qwen` 之后）与 `install` 里的 `CoupletRuntime.get`、`AiCoupletHandler` 注册；回收、预热、卸载、删模型前释放自动覆盖 |
+| 7 模型清单 | `models.json` 的 `couplet-gpt2-mnn-w6`（7 个文件，`CoupletService.REQUIRED_FILES` 与它逐一对应，`CoupletServiceTest` 对照） |
+| 8 测试 | 契约测试同步四处列表并加 `HiddenCouplet` 说谎者；`AiSessionDerivationTest` 两处；新增 `CoupletServiceTest`、`AiCoupletPolicyTest`；`AiInvokeTest` 加对联与旧入口一致、结果形状、NOT_READY |
+| 9 Rust | `arkli-ai::couplet`（引擎 + 纯逻辑）、`arkli-ffi::couplet`（`couplet_load/generate/cancel/unload`），`build-android.ps1` 重新生成绑定 |
+| 10~12 前端 | `AiTask`、`AiEntry`、`AiTaskMap.couplet`、`aiCouplet`、`AI_METHODS.couplet`、`TASK_LABELS.couplet`；**不动** `registry.ts` 与 `tools/couplet/`（下一阶段） |
+
+**约束与校验的分工**：
+
+- **Rust**：上联 1~14 字（按 char 计）、只允许汉字与 `，。、；：！？,.;:!?`、至少一个汉字、拒绝字母数字括号空白；`temperature` 0~2、`topK` 1~200。错误是 `AiError::InvalidConfig`，经 FFI 映射为 `InvalidInput`，Kotlin 翻成 `BAD_PARAMS`。
+- **Kotlin**：只管 JSON 形状与范围（同一份范围写进报价 `AiConstraints.Couplet`，前端读它，不再自己写一份）。上联非法字符不在 Kotlin 重复校验，避免两份规则漂移；代价是非法上联要等拿到闸门、加载模型后才报错（Rust 在生成入口校验）。若以后要“秒回”，再把同一规则搬到 Kotlin。
+- **等长约束与解码**：见 [对联 GPT-2 评估](../research/couplet-gpt2-onnx.md) 的“MNN 转换与接入”。
+
+**缺口（如实记录）**：契约测试里四处手写提供者列表这次又要人工同步（与 OCR 时发现的缺口相同，没解决）。
 
 ## 翻译页：超短输入处理
 

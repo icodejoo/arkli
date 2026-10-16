@@ -116,6 +116,21 @@ internal class AiOcrHandler(private val invoker: AiInvoker) : BridgeHandler {
 }
 
 /**
+ * `native.ai.couplet`（`native.ai.invoke` 钉死对联端口的别名）：`{ provider?, text, temperature?, topK?, seed? }` ->
+ * `{ text, elapsedMs, modelId }`（见 [AiCoupletPolicy.resultJson]）。推理在后台线程，同一时刻只跑一个（[AiHeavyGate]）；
+ * 取消（`native.task.cancel`）会打断 Rust 里的生成。
+ *
+ * @param invoker 分派器
+ */
+internal class AiCoupletHandler(private val invoker: AiInvoker) : BridgeHandler {
+    /** 按参数形状校验后交给分派器 */
+    override suspend fun handle(ctx: CallContext, params: JSONObject): Any? {
+        requireMainFrame(ctx)
+        return invoker.dispatch(AiCall.Couplet(AiCoupletPolicy.parse(params)))
+    }
+}
+
+/**
  * `native.ai.translate`（`native.ai.invoke` 钉死翻译端口的别名）：`{ text, src(可为 auto), tgt, numBeams?, provider? }` ->
  * `{ text, elapsedMs, modelId, src, tgt, detectedSrc, unrecognized }`。语言按选中提供者的报价约束校验。
  * 模型加载与推理在后台线程，同一时刻只跑一个 AI 重任务（[AiHeavyGate]，后来者排队）。

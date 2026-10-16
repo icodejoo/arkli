@@ -291,6 +291,56 @@ describe('aiOcr（本地文字识别，第一个按统一协议新增的任务�
   })
 })
 
+describe('aiCouplet（本地对联，专用端口）', () => {
+  const RESULT = { text: '春满乾坤福满门', elapsedMs: 180, modelId: 'couplet-gpt2-mnn-w6' }
+  /** 只回结果的 call */
+  const ok = () => vi.fn(async () => RESULT) as unknown as import('./ai').CancelableCallFn & ReturnType<typeof vi.fn>
+  /** 抛指定错误码的 call */
+  const fail = (code: string) =>
+    vi.fn(async () => {
+      throw { code, message: 'x' }
+    }) as unknown as import('./ai').CancelableCallFn
+
+  it('转调 native.ai.invoke 并钉住 couplet 入口，options 带采样参数，不设超时并透传 signal', async () => {
+    const m = await load(true)
+    const call = ok()
+    const ac = new AbortController()
+    expect(await m.aiCouplet('天增岁月人增寿', { temperature: 0, topK: 5, seed: 7 }, ac.signal, call)).toEqual(RESULT)
+    expect(call).toHaveBeenCalledWith(
+      'native.ai.invoke',
+      { task: 'couplet', input: { text: '天增岁月人增寿' }, entry: 'native.ai.couplet', options: { temperature: 0, topK: 5, seed: 7 } },
+      { timeoutMs: 0, signal: ac.signal },
+    )
+  })
+  it('不传 options 时请求里不带 options 字段', async () => {
+    const m = await load(true)
+    const call = ok()
+    await m.aiCouplet('春风', undefined, undefined, call)
+    expect(call).toHaveBeenCalledWith('native.ai.invoke', { task: 'couplet', input: { text: '春风' }, entry: 'native.ai.couplet' }, { timeoutMs: 0, signal: undefined })
+  })
+  it('无宿主：抛 AiNotReadyError 且不调原生', async () => {
+    const m = await load(false)
+    const call = ok()
+    await expect(m.aiCouplet('春风', {}, undefined, call)).rejects.toMatchObject({ name: 'AiNotReadyError', model: 'couplet' })
+    expect(call).not.toHaveBeenCalled()
+  })
+  it('NOT_READY / UNKNOWN_METHOD 统一成 AiNotReadyError，BAD_PARAMS 与 CANCELLED 照抛', async () => {
+    const m = await load(true)
+    await expect(m.aiCouplet('春风', {}, undefined, fail('NOT_READY'))).rejects.toBeInstanceOf(m.AiNotReadyError)
+    await expect(m.aiCouplet('春风', {}, undefined, fail('UNKNOWN_METHOD'))).rejects.toBeInstanceOf(m.AiNotReadyError)
+    await expect(m.aiCouplet('abc', {}, undefined, fail('BAD_PARAMS'))).rejects.toMatchObject({ code: 'BAD_PARAMS' })
+    await expect(m.aiCouplet('春风', {}, undefined, fail('CANCELLED'))).rejects.toMatchObject({ code: 'CANCELLED' })
+  })
+  it('aiInvoke 的 couplet 任务强类型：输入 text，结果 text / elapsedMs / modelId', async () => {
+    const m = await load(true)
+    const call = ok()
+    const r = await m.aiInvoke('couplet', { text: '春风' }, {}, call)
+    expect(r.text).toBe('春满乾坤福满门')
+    expect(r.modelId).toBe('couplet-gpt2-mnn-w6')
+    expect(call).toHaveBeenCalledWith('native.ai.invoke', { task: 'couplet', input: { text: '春风' } }, { timeoutMs: 0, signal: undefined })
+  })
+})
+
 describe('aiTranslate', () => {
   const RES = { text: '你好', elapsedMs: 1200, modelId: 'nllb600m-un6-mnn-w6', src: 'en', tgt: 'zh-CN', detectedSrc: ['en'], unrecognized: false }
   const okT = () => vi.fn(async () => RES) as unknown as import('./ai').CancelableCallFn & ReturnType<typeof vi.fn>

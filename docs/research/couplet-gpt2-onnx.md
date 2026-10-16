@@ -1,7 +1,7 @@
 ---
 title: 对联 GPT-2（uer/gpt2-chinese-couplet）ONNX 导出与评估
 status: draft
-updated: 2026-10-14
+updated: 2026-10-16
 summary: 对联专用小模型导出 fp32/int8/int4 三个 ONNX 的体积、速度、质量对比，诗词与成语支持度，许可证状态与 GitHub release 下载地址
 ---
 ## TL;DR
@@ -89,3 +89,47 @@ release `couplet-gpt2-v1`（<https://github.com/icodejoo/arkli/releases/tag/coup
 - PC 数据不代表手机；只在 x86 上验证，int8 的 u8s8 内核在 x86 上有饱和风险，ARM 上无此问题。
 - 待办：对联 int4 在 Android 真机上跑通（`MatMulNBits` 在 sherpa ORT 里存在，但图本身没单独跑过）并实测速度；与对联工具页的接入（下载、解码、长度限制）。
 - 产物（脚本、评测集、中间变体）在会话临时目录，不在仓库，可能被清理。
+
+## 9. MNN 转换与接入（2026-10-16，阶段 2a）
+
+ONNX 路线随 M9 退役，对联改走 MNN（`libarkli-mnn.so` + Rust `arkli-ai::couplet`）。转换脚本与评测见 `scripts/mnn/couplet_prepare.py`、`eval_couplet.py`、`recipes.json` 的 `couplet` 组。
+
+**默认发布 w6（6 位 HQQ，per-channel，含 lm_head；词嵌入表图内 int8 + 每行缩放）**，包名 `couplet-gpt2-mnn-w6`：
+
+| 变体 | 体积 | 对 fp32 困惑度 | 整句与 fp32 贪心一致 |
+|---|---|---|---|
+| **MNN w6（默认）** | 96.7MB（`model.mnn.weight`；整包 97.1MB） | +0.35% | 86.5% |
+| MNN w8 | 121.6MB | 未在此抄录 | 未在此抄录 |
+| ORT int4（旧 ONNX 发布版） | 88.4MB | +0.86% | 57.7% |
+
+选 w6 的理由：体积比 w8 小约 25MB（手机下载与磁盘更省）；困惑度只比 fp32 高 0.35%，整句一致率 86.5% 明显好于旧 ORT int4 的 57.7%（贪心路径一旦分叉后面整句都变，整句一致率只能作相对参考）；比旧 int4 包大约 8MB，但质量更稳。w8 留作备选，没有发布；w8 的困惑度与一致率以 `eval_couplet.py` 的输出为准，本文没有抄录。
+
+**接口事实**（桌面真库验证）：
+
+- 图：输入 `input_ids`、`position_ids`，都是 i32、`[1, seq]`；输出 `logits` f32 `[1, 1, 21128]`，**只含最后一个位置**。batch 固定 1，seq 动态；**无 KV cache，每生成一步整句重新前向**（序列最长约 30，够快）；`position_ids` 为 0..seq。
+- MNN 只支持 F32/I32 张量，所以位置 id 与词 id 都按 i32 传；外置权重 `model.mnn.weight` 由加载器按约定自动带上（缺文件 MNN 只打日志，到前向才报错）；memory=low、4 线程。
+- 序列 = `[CLS]`(101) + 上联逐字 + `-`(118)；**末尾不加 `[SEP]`**；`vocab.txt` 一行一个 token，行号即 id，按字查表，查不到记 `[UNK]`(100)。
+
+**解码约束（Rust 实现，`arkli-ai/src/couplet.rs`）**：
+
+1. 输入校验：上联 1~14 字（按 char 计，标点算字数），只允许汉字与 `，。、；：！？,.;:!?`，至少一个汉字；英文字母、数字、括号、空白一律拒绝（模型对它们给垃圾结果）。
+2. **等长约束**：采样前逐位加掩码。上联该位是标点 → 只放行同一标点（下联原样照抄）；否则只放行单个汉字 token（U+4E00–U+9FFF），屏蔽 `[UNK]`、`[SEP]`、标点、英文数字。生成到与上联等长即停，不等 `[SEP]`。标点位直接填入，不跑前向。
+3. 采样：top-k 40、温度 0.8；`temperature=0` 为贪心（并列取 id 小的）；可传 `seed` 复现（自写 xorshift64*，没有新增依赖）。每个字之前检查取消令牌。
+
+**桌面真库实测**（debug 构建，4 线程，w6，贪心，与 `eval_couplet.py` 的同一套约束逐步 argmax 的结果完全一致）：
+
+| 上联 | 下联 | 耗时 |
+|---|---|---|
+| 春风送暖入屠苏 | 旭日生辉照山川 | 187 ms |
+| 山清水秀，人杰地灵 | 柳绿桃红，物阜民康 | 231 ms |
+| 海内存知己，天涯若比邻 | 人间重晚晴，诗意不输真 | 301 ms |
+| 天增岁月人增寿 | 春满乾坤福满门 | 143 ms |
+| 一帆风顺吉星高照！ | 万事如意福星高照！ | 175 ms |
+| 爆竹声中一岁除 | 梅花香里两天开 | 158 ms |
+| 春风送暖入屠苏迎新年旭日东升（14 字） | 飞雪迎祥送乙未送旧岁红梅花开 | 509 ms |
+
+耗时随上联长度近似二次增长（每步整句重算）；桌面 MNN 是 MSVC 构建，缺 ARM 内核优化，**手机耗时没测**，待真机。
+
+**许可证**：沿用第 6 节的结论，**无法确认可再分发**。`models.json` 的 `license` 字段如实写“无法确认可再分发，风险自负”，没有写 Apache / MIT；包内 `NOTICE.txt` 写明来源、状态、改动与限制，两份 LICENSE 文件（UER-py 的 Apache-2.0、数据集的 MIT）只作来源留痕，不是对权重的授权。release `couplet-mnn-v1` 待用户上传，上传前下载会失败。
+
+**协议接入**：见 [统一 AI 协议](../design/ai-protocol.md) 的“对联接入记录”与 [桥协议](../design/bridge-protocol.md) 的 `native.ai.couplet`、`local-couplet`。页面（下一阶段）要点：上联前端先过滤字母数字括号并提示；14 字上限；结果与上联等长。

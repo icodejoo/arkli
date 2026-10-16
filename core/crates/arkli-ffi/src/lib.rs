@@ -4,6 +4,7 @@
 uniffi::setup_scaffolding!();
 
 pub mod clip;
+pub mod couplet;
 pub mod mem;
 pub mod ocr;
 pub mod translate;
