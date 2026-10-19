@@ -153,6 +153,22 @@ describe('vibrate', () => {
   })
 })
 
+describe('torch', () => {
+  it('有宿主：发 { on } 并规范化结果', async () => {
+    const { setTorch } = await load(true)
+    const call = fakeCall({ on: true, available: true })
+    expect(await setTorch(true, call)).toEqual({ on: true, available: true })
+    expect(call).toHaveBeenCalledWith('native.torch.set', { on: true })
+    expect(await setTorch(true, fakeCall({ on: false, available: false }))).toEqual({ on: false, available: false })
+  })
+  it('无宿主：抛 NativeUnavailableError', async () => {
+    const { setTorch, NativeUnavailableError } = await load(false)
+    const call = fakeCall({})
+    await expect(setTorch(true, call)).rejects.toBeInstanceOf(NativeUnavailableError)
+    expect(call).not.toHaveBeenCalled()
+  })
+})
+
 describe('screen', () => {
   it('有宿主：三个方法发对应参数', async () => {
     const { keepAwake, setBrightness, setImmersive, setOrientation } = await load(true)

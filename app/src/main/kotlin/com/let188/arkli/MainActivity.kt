@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.viewinterop.AndroidView
 import com.let188.arkli.ai.AiLifecyclePolicy
 import com.let188.arkli.ai.AiRecycle
+import com.let188.arkli.system.TorchSwitch
 import com.let188.arkli.bridge.ArkliBridge
 import com.let188.arkli.files.ActivityHost
 import com.let188.arkli.files.FileEnv
@@ -396,9 +397,10 @@ class MainActivity : ComponentActivity(), ActivityHost {
         page?.emit(ArkliBridge.EVENT_APP_RESUME)
     }
 
-    /** 不可见时趁空闲清一次缓存（有最小间隔，频繁切换不会重复扫） */
+    /** 不可见时关掉手电筒，并趁空闲清一次缓存（有最小间隔，频繁切换不会重复扫） */
     override fun onStop() {
         super.onStop()
+        TorchSwitch.turnOff(applicationContext)
         files.cleanup(startup = false)
     }
 

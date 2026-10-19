@@ -125,6 +125,13 @@ internal class AppRepository(context: Context) {
 private fun pkgParam(params: JSONObject): String =
     SystemParams.validated { AppsPolicy.requirePackage(SystemParams.string(params, "pkg")) }
 
+/** `pkg` 取此值表示本应用 */
+private const val SELF_PKG = "self"
+
+/** 取包名参数；传 `"self"` 时换成本应用包名 */
+private fun pkgOrSelf(params: JSONObject, selfPkg: String): String =
+    if (SystemParams.string(params, "pkg") == SELF_PKG) selfPkg else pkgParam(params)
+
 /** 应用不存在或不可见时抛 BAD_PARAMS */
 private fun missing(pkg: String): Nothing = throw BridgeException(BridgeErrors.BAD_PARAMS, "找不到应用或不可见：$pkg")
 
@@ -176,28 +183,32 @@ internal class AppsSettingsHandler(private val host: ActivityHost) : BridgeHandl
 }
 
 /**
- * `native.apps.exportApk`：`{ pkg }` -> `{ path, name, bytes }`。把 base APK 拷到缓存 `out/`，文件名 `<应用名>_<版本名>.apk`。
+ * `native.apps.exportApk`：`{ pkg, fileName? }` -> `{ path, name, bytes }`。`pkg` 传 `"self"` 表示本应用。把 base APK 拷到缓存 `out/`，文件名缺省 `<应用名>_<版本名>.apk`，给了 `fileName` 就用它。
  * 超过 300MB 返回 BAD_PARAMS；拷贝可被取消，失败或取消会清掉残留文件。分包安装（split APK）的应用只导出 base。
  *
  * @param repo 应用信息读取器
  * @param outDir 缓存 `out/` 目录
  * @param roots 目录根，用来把文件转成页面路径
+ * @param selfPkg 本应用包名，`pkg` 传 `"self"` 时替换成它
  */
 internal class AppsExportHandler(
     private val repo: AppRepository,
     private val outDir: File,
     private val roots: FileRoots,
+    private val selfPkg: String,
 ) : BridgeHandler {
     /** 分块拷贝安装包 */
     override suspend fun handle(ctx: CallContext, params: JSONObject): Any? {
         requireMainFrame(ctx)
-        val pkg = pkgParam(params)
+        val pkg = pkgOrSelf(params, selfPkg)
         val info = repo.info(pkg) ?: missing(pkg)
         val src = repo.apkFile(pkg) ?: missing(pkg)
         SystemParams.validated { AppsPolicy.requireApkSize(src.length()) }
         val file = withContext(Dispatchers.IO) {
             val dir = File(outDir, "apk-" + UUID.randomUUID().toString().take(DIR_ID_LENGTH)).apply { mkdirs() }
-            val target = FileNames.unique(dir, AppsPolicy.apkFileName(info.label, info.versionName, pkg))
+            val target = FileNames.unique(dir, AppsPolicy.exportFileName(
+                SystemParams.stringOrNull(params, "fileName"), AppsPolicy.apkFileName(info.label, info.versionName, pkg),
+            ))
             try {
                 FileInputStream(src).use { input ->
                     FileOutputStream(target).use { out -> StreamCopy.copy(input, out, AppsPolicy.MAX_APK_BYTES) { ensureActive() } }
@@ -218,22 +229,24 @@ internal class AppsExportHandler(
 }
 
 /**
- * `native.apps.icon`：`{ pkg, size?: 48~192 = 96 }` -> `{ path }`。把应用图标渲染成 PNG 放进缓存 `out/`，
+ * `native.apps.icon`：`{ pkg, size?: 48~192 = 96 }`（`pkg` 传 `"self"` 表示本应用） -> `{ path }`。把应用图标渲染成 PNG 放进缓存 `out/`，
  * 同包同尺寸且应用没更新过时复用已有文件。
  *
  * @param repo 应用信息读取器
  * @param iconDir 图标缓存目录（缓存 `out/` 下）
  * @param roots 目录根，用来把文件转成页面路径
+ * @param selfPkg 本应用包名，`pkg` 传 `"self"` 时替换成它
  */
 internal class AppsIconHandler(
     private val repo: AppRepository,
     private val iconDir: File,
     private val roots: FileRoots,
+    private val selfPkg: String,
 ) : BridgeHandler {
     /** 渲染或复用图标 */
     override suspend fun handle(ctx: CallContext, params: JSONObject): Any? {
         requireMainFrame(ctx)
-        val pkg = pkgParam(params)
+        val pkg = pkgOrSelf(params, selfPkg)
         val sizeValue = params.opt("size")
         val size = SystemParams.validated {
             AppsPolicy.iconSize(if (sizeValue == null || sizeValue == JSONObject.NULL) null else SystemParams.number(params, "size"))

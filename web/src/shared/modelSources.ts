@@ -117,3 +117,15 @@ export function footerOf(state: ModelStateName): { primary: FooterAction; verify
   if (state === 'unverified') return { primary: 'remove', verify: true }
   return { primary: 'download', verify: false }
 }
+
+/**
+ * 下载按钮上的文字：带百分号的进度。进度未知（总大小还没拿到）时只显示「下载中…」。
+ *
+ * @param progress 下载进度 0~1
+ * @returns 如 `下载中 37%`
+ * @example downloadingText(0.372) // '下载中 37%'
+ */
+export function downloadingText(progress: number): string {
+  if (!(progress > 0)) return '下载中…'
+  return `下载中 ${Math.floor(Math.min(1, progress) * 100)}%`
+}

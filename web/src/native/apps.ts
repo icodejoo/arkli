@@ -98,13 +98,19 @@ export async function openAppSettings(pkg: string, call: CallFn = bridgeCall): P
  * @param pkg 包名
  * @param signal 取消信号，可选
  * @param call 原生调用函数，默认走 bridge（仅测试注入）
+ * @param fileName 自定义文件名，可选；缺省 `<应用名>_<版本名>.apk`
  * @returns 产物路径、文件名与大小
  * @example const { path } = await exportApk('com.tencent.mm')
  */
-export async function exportApk(pkg: string, signal?: AbortSignal, call: CallFn = bridgeCall): Promise<ExportedApk> {
+export async function exportApk(
+  pkg: string,
+  signal?: AbortSignal,
+  call: CallFn = bridgeCall,
+  fileName?: string,
+): Promise<ExportedApk> {
   requireNative(APPS_METHODS.exportApk)
   const options = { timeoutMs: 0, signal } as { timeoutMs?: number }
-  return call<ExportedApk>(APPS_METHODS.exportApk, { pkg }, options)
+  return call<ExportedApk>(APPS_METHODS.exportApk, fileName ? { pkg, fileName } : { pkg }, options)
 }
 
 /**

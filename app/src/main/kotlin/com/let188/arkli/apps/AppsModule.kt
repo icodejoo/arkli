@@ -42,7 +42,7 @@ object AppsModule {
         bridge.register(METHOD_LIST, AppsListHandler(repo))
         bridge.register(METHOD_OPEN, AppsOpenHandler(repo, env.host))
         bridge.register(METHOD_SETTINGS, AppsSettingsHandler(env.host))
-        bridge.register(METHOD_EXPORT_APK, AppsExportHandler(repo, outDir, env.roots))
-        bridge.register(METHOD_ICON, AppsIconHandler(repo, File(outDir, ICON_DIR), env.roots))
+        bridge.register(METHOD_EXPORT_APK, AppsExportHandler(repo, outDir, env.roots, env.appContext.packageName))
+        bridge.register(METHOD_ICON, AppsIconHandler(repo, File(outDir, ICON_DIR), env.roots, env.appContext.packageName))
     }
 }

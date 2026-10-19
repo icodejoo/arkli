@@ -18,6 +18,11 @@ const keyword = ref('')
 const filtered = computed(() => filterTools(store.all, keyword.value))
 /** 最近使用（一行）；搜索时隐藏 */
 const recent = computed(() => (keyword.value.trim() ? [] : store.recent.slice(0, RECENT_SHOWN)))
+
+/** 强制刷新 WebView（重新加载整个页面） */
+function hardReload(): void {
+  window.location.reload()
+}
 </script>
 
 <template>
@@ -40,6 +45,11 @@ const recent = computed(() => (keyword.value.trim() ? [] : store.recent.slice(0,
       <tool-grid v-if="filtered.length" :tools="filtered" />
       <van-empty v-else description="没有匹配的工具" />
     </section>
+
+    <!-- 右下角悬浮按钮：强刷 WebView -->
+    <button class="home__reload" type="button" aria-label="强制刷新" @click="hardReload">
+      <van-icon name="replay" />
+    </button>
   </div>
 </template>
 
@@ -80,6 +90,25 @@ const recent = computed(() => (keyword.value.trim() ? [] : store.recent.slice(0,
   &__block {
     padding: 0 $space-4;
     margin-top: $space-2;
+  }
+
+  // 右下角强刷按钮：悬浮在底部标签栏之上
+  &__reload {
+    position: fixed;
+    right: $space-4;
+    bottom: calc(var(--tabbar-total) + #{$space-4});
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    font-size: 22px;
+    color: #fff;
+    background: var(--c-primary);
+    border: 0;
+    border-radius: 50%;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
   }
 
   &__label {

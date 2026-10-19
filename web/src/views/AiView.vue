@@ -44,6 +44,8 @@ const mnnSheetShow = ref(false)
 
 /** 面板当前模型的状态（读 store，下载进度、删除后会实时变化） */
 const sourcesState = computed(() => models.get(sourcesTarget.value.id)?.state ?? 'absent')
+/** 面板当前模型的下载进度 0~1（同样读 store，随推送实时变化） */
+const sourcesProgress = computed(() => models.get(sourcesTarget.value.id)?.progress ?? 0)
 
 /** 打开某模型的下载页面弹窗（下载地址、下载/删除按钮） */
 function showSources(id: string, name: string): void {
@@ -137,6 +139,7 @@ function onModelEntry(): void {
           :model-id="sourcesTarget.id"
           :model-name="sourcesTarget.name"
           :state="sourcesState"
+          :progress="sourcesProgress"
           @download="onDownload(sourcesTarget.id)"
           @verify="onVerify(sourcesTarget.id)"
           @remove="onRemove(sourcesTarget.id, sourcesTarget.name)"

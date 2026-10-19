@@ -31,6 +31,9 @@ object SystemModule {
     /** 方法名：震动 */
     const val METHOD_HAPTIC_VIBRATE = "native.haptic.vibrate"
 
+    /** 方法名：手电筒 */
+    const val METHOD_TORCH_SET = "native.torch.set"
+
     /** 方法名：屏幕常亮 */
     const val METHOD_SCREEN_KEEP_AWAKE = "native.screen.keepAwake"
 
@@ -76,6 +79,7 @@ object SystemModule {
         bridge.register(METHOD_INTENT_OPEN, IntentOpenHandler(host))
         bridge.register(METHOD_INTENT_PROCESS_TEXT, ProcessTextHandler(host))
         bridge.register(METHOD_HAPTIC_VIBRATE, HapticHandler(context))
+        bridge.register(METHOD_TORCH_SET, TorchHandler(context))
         bridge.register(METHOD_SCREEN_KEEP_AWAKE, KeepAwakeHandler(host))
         bridge.register(METHOD_SCREEN_BRIGHTNESS, BrightnessHandler(host))
         bridge.register(METHOD_SCREEN_IMMERSIVE, ImmersiveHandler(host))

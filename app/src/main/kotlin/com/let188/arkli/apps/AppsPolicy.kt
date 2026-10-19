@@ -101,6 +101,19 @@ internal object AppsPolicy {
     }
 
     /**
+     * 取导出文件名：页面指定了就用它（清洗并补 `.apk` 后缀），否则用缺省名。
+     *
+     * @param custom 页面指定的文件名，可空
+     * @param default 缺省文件名，见 [apkFileName]
+     * @return 可安全落盘的文件名
+     */
+    fun exportFileName(custom: String?, default: String): String {
+        val c = custom?.trim().orEmpty()
+        if (c.isEmpty()) return default
+        return FileNames.sanitize(if (c.endsWith(".apk", ignoreCase = true)) c else "$c.apk")
+    }
+
+    /**
      * 导出前的大小检查。
      *
      * @param bytes 安装包字节数

@@ -36,6 +36,7 @@ export const SYSTEM_METHODS = {
   intentOpen: 'native.intent.open',
   processText: 'native.intent.processText',
   vibrate: 'native.haptic.vibrate',
+  torch: 'native.torch.set',
   keepAwake: 'native.screen.keepAwake',
   brightness: 'native.screen.brightness',
   immersive: 'native.screen.immersive',
@@ -77,6 +78,8 @@ export interface ShareOptions {
   mime?: string
   /** 分享面板标题 */
   title?: string
+  /** 纯文字分享的预览缩略图（缓存相对路径，图片）；系统面板不一定显示 */
+  thumb?: string
 }
 
 /** 权限查询 / 申请结果 */
@@ -332,6 +335,28 @@ export async function cancelVibrate(call: CallFn = bridgeCall): Promise<void> {
     return
   }
   await call(SYSTEM_METHODS.vibrate, { cancel: true })
+}
+
+/** 手电筒设置结果 */
+export interface TorchResult {
+  /** 设置后的实际状态 */
+  on: boolean
+  /** 设备是否有后置闪光灯；false 时 `on` 恒为 false */
+  available: boolean
+}
+
+/**
+ * 开关手电筒（后置闪光灯）。无宿主时抛 {@link NativeUnavailableError}；退后台时原生会自动关灯，页面卸载时请主动关。
+ *
+ * @param on 是否点亮
+ * @param call 原生调用函数，默认走 bridge（仅测试注入）
+ * @returns 实际状态；设备没有闪光灯时 `available` 为 false
+ * @example const { available } = await setTorch(true)
+ */
+export async function setTorch(on: boolean, call: CallFn = bridgeCall): Promise<TorchResult> {
+  requireNative(SYSTEM_METHODS.torch)
+  const r = await call<TorchResult>(SYSTEM_METHODS.torch, { on })
+  return { on: r.on === true, available: r.available === true }
 }
 
 /**

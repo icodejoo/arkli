@@ -148,7 +148,7 @@ internal object ShareParams {
 }
 
 /**
- * `native.share`：`{ text?, path?, mime?, title? }` -> `{ started: boolean }`。
+ * `native.share`：`{ text?, path?, mime?, title?, thumb? }`（`thumb` 为缓存里的图片，作纯文字分享的预览缩略图）-> `{ started: boolean }`。
  * 文件走 FileProvider 发 `content://` URI，只有缓存 `arkli/out/` 下的文件可分享；`started` 为 false 表示没能拉起选择器。
  *
  * @param context 应用上下文
@@ -172,12 +172,17 @@ internal class ShareHandler(
         val send = Intent(Intent.ACTION_SEND).setType(spec.mime)
         spec.text?.let { send.putExtra(Intent.EXTRA_TEXT, it) }
         spec.path?.let { send.attachFile(it, context, resolver) }
+        // 纯文字分享时，缩略图只挂在 ClipData 上（不挂 EXTRA_STREAM，免得被当成图片分享）
+        val thumb = SystemParams.stringOrNull(params, "thumb")
+        if (thumb != null && spec.path == null) send.attachThumb(thumb, context, resolver)
+        // 分享面板预览（API 29+）优先显示 EXTRA_TITLE，不给就只显示文件名
+        spec.title?.let { send.putExtra(Intent.EXTRA_TITLE, it) }
         val chooser = Intent.createChooser(send, spec.title)
         return JSONObject().put("started", host.startIntent(chooser))
     }
 
-    /** 把缓存文件以 FileProvider URI 挂到分享 Intent 上，路径无效或不在可分享目录抛 BAD_PARAMS */
-    private fun Intent.attachFile(path: String, context: Context, resolver: SourceResolver) {
+    /** 把缓存文件转成 FileProvider URI，路径无效或不在可分享目录抛 BAD_PARAMS */
+    private fun uriOf(path: String, context: Context, resolver: SourceResolver): Pair<File, Uri> {
         val file = resolver.resolve(path)
         if (file == null || !file.isFile) throw BridgeException(BridgeErrors.BAD_PARAMS, "path 无效或文件不存在：$path")
         val uri: Uri = try {
@@ -185,7 +190,20 @@ internal class ShareHandler(
         } catch (e: IllegalArgumentException) {
             throw BridgeException(BridgeErrors.BAD_PARAMS, "该文件不在可分享目录：$path")
         }
+        return file to uri
+    }
+
+    /** 把缓存文件以 FileProvider URI 挂到分享 Intent 上 */
+    private fun Intent.attachFile(path: String, context: Context, resolver: SourceResolver) {
+        val (file, uri) = uriOf(path, context, resolver)
         putExtra(Intent.EXTRA_STREAM, uri)
+        clipData = ClipData.newRawUri(file.name, uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+
+    /** 把缓存里的图片挂成分享预览缩略图（仅 ClipData，API 29+ 的系统面板会读） */
+    private fun Intent.attachThumb(path: String, context: Context, resolver: SourceResolver) {
+        val (file, uri) = uriOf(path, context, resolver)
         clipData = ClipData.newRawUri(file.name, uri)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }

@@ -5,7 +5,7 @@ import { showToast } from 'vant'
 import { modelSources, type ModelSources } from '@/native/model'
 import { copyText } from './clipboard'
 import { formatBytes } from './image-calc'
-import { MANUAL_DIR_HINT, MANUAL_STEPS, MANUAL_STEPS_PACKAGE, allFirstUrls, fileCopyText, footerOf, isSinglePackage, manualDirText, openLink } from './modelSources'
+import { MANUAL_DIR_HINT, MANUAL_STEPS, MANUAL_STEPS_PACKAGE, allFirstUrls, downloadingText, fileCopyText, footerOf, isSinglePackage, manualDirText, openLink } from './modelSources'
 import type { ModelStateName } from '@/native/model'
 import { useAiProviders } from '@/native/useAiProviders'
 import ModelParamsPanel from './ModelParamsPanel.vue'
@@ -13,8 +13,8 @@ import { paramProvidersOf } from './modelParams'
 
 /** 面板是否显示（v-model） */
 const show = defineModel<boolean>({ required: true })
-/** 要看的模型 id、展示名与当前状态（决定底部按钮） */
-const props = defineProps<{ modelId: string; modelName: string; state: ModelStateName }>()
+/** 要看的模型 id、展示名、当前状态（决定底部按钮）与下载进度 0~1（只用于下载中的按钮文字） */
+const props = defineProps<{ modelId: string; modelName: string; state: ModelStateName; progress?: number }>()
 /** 底部按钮事件：下载、删除、校验（由 AI 中心页执行） */
 const emit = defineEmits<{ download: []; remove: []; verify: [] }>()
 
@@ -126,7 +126,7 @@ async function open(url: string): Promise<void> {
       <van-button v-if="footer.verify" class="src__btn" plain @click="emit('verify')">校验</van-button>
       <van-button v-if="footer.primary === 'download'" class="src__btn" type="primary" @click="emit('download')">下载</van-button>
       <van-button v-else-if="footer.primary === 'remove'" class="src__btn" type="danger" @click="emit('remove')">删除</van-button>
-      <van-button v-else class="src__btn" type="primary" disabled>下载中…</van-button>
+      <van-button v-else class="src__btn" type="primary" disabled>{{ downloadingText(props.progress ?? 0) }}</van-button>
     </div>
   </van-popup>
 </template>

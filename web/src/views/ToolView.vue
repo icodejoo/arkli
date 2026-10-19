@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 工具容器页：顶部导航栏 + 内容区（安全区内边距），按路由 id 异步加载工具组件
-import { computed, defineAsyncComponent, watchEffect, type Component } from 'vue'
+import { computed, defineAsyncComponent, ref, watchEffect, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { showToast } from 'vant'
 import CameraIcon from '~icons/cil/camera?width=1em&height=1em'
@@ -9,6 +9,7 @@ import { MODE_CAMERA, MODE_QUERY, findTool, hasAiChoices } from '@/tools/registr
 import ModelPicker from '@/shared/ModelPicker.vue'
 import { useToolsStore } from '@/stores/tools'
 import { useFavoritesStore } from '@/stores/favorites'
+import { shareApp, shareAppLink } from '@/shared/appShare'
 
 /** 同一个 ToolView 里最多同时保活几个工具：从取色器跳颜色助手再返回时，取色器的状态（选好的图片、主色、倍数）得以保留 */
 const KEEP_ALIVE_MAX = 3
@@ -68,6 +69,28 @@ function toggleStar(): void {
   showToast(favorites.toggle(props.id) ? '已收藏' : '已取消收藏')
 }
 
+/** 分享方式选择面板是否显示 */
+const shareSheet = ref(false)
+/** 分享方式：分享下载链接（纯文字）或分享安装包 */
+const shareActions = [
+  { name: '分享下载链接', key: 'link' },
+  { name: '分享安装包', key: 'apk' },
+]
+
+/**
+ * 选好分享方式后执行：链接直接发文字，安装包先导出再发。
+ *
+ * @param action 被选中的分享方式
+ */
+async function onSharePick(action: { key?: string }): Promise<void> {
+  try {
+    const ok = action.key === 'apk' ? await shareApp() : await shareAppLink()
+    if (!ok) showToast('没能拉起分享')
+  } catch {
+    showToast('分享失败')
+  }
+}
+
 /** 返回上一页；没有历史（如直接打开深链）时回首页 */
 function goBack(): void {
   if (window.history.length > 1) router.back()
@@ -103,14 +126,24 @@ watchEffect(() => {
           :aria-label="cameraOn ? '切回查询' : '拍照识别'"
           @click.stop="toggleCamera"
         />
-        <van-icon
-          :name="starred ? 'star' : 'star-o'"
-          :class="['shell__star', { 'shell__star--on': starred }]"
-          :aria-label="starred ? '取消收藏' : '收藏'"
-          @click.stop="toggleStar"
-        />
+        <!-- 小程序风格胶囊：左「…」唤起系统分享，右收藏 -->
+        <div class="shell__capsule">
+          <button type="button" class="shell__capsule-btn" aria-label="分享" @click.stop="shareSheet = true">
+            <van-icon name="ellipsis" />
+          </button>
+          <i class="shell__capsule-divider" />
+          <button
+            type="button"
+            :class="['shell__capsule-btn', { 'shell__star--on': starred }]"
+            :aria-label="starred ? '取消收藏' : '收藏'"
+            @click.stop="toggleStar"
+          >
+            <van-icon :name="starred ? 'star' : 'star-o'" />
+          </button>
+        </div>
       </template>
     </van-nav-bar>
+    <van-action-sheet v-model:show="shareSheet" :actions="shareActions" cancel-text="取消" close-on-click-action @select="onSharePick" />
     <main class="shell__body">
       <!-- keep-alive：工具之间互相跳转（如取色器 → 颜色助手）再返回时保留状态；离开工具页（回首页等）整个 ToolView 卸载，缓存随之释放 -->
       <keep-alive v-if="ToolComponent" :max="KEEP_ALIVE_MAX">
@@ -141,9 +174,53 @@ watchEffect(() => {
     align-items: center;
   }
 
-  // 摄像头按钮与星标之间留空
+  // 摄像头按钮与胶囊之间留空
   &__cam {
     margin-right: $space-3;
+  }
+
+  // vant 给整个右侧区域加了按下变淡，去掉，改由胶囊内各按钮自己反馈
+  &__nav :deep(.van-nav-bar__right:active) {
+    opacity: 1;
+  }
+
+  // 右侧胶囊按钮组
+  &__capsule {
+    display: inline-flex;
+    align-items: center;
+    height: 30px;
+    margin-left: $space-2;
+    border: 1px solid var(--c-border, rgba(127, 127, 127, 0.35));
+    border-radius: 15px;
+  }
+
+  // 胶囊内单个按钮
+  &__capsule-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 100%;
+    padding: 0;
+    font-size: 20px;
+    color: var(--c-text);
+    background: none;
+    border: 0;
+
+    &:active {
+      opacity: 0.5;
+    }
+
+    &.shell__star--on {
+      color: var(--c-primary);
+    }
+  }
+
+  // 胶囊中间分隔线
+  &__capsule-divider {
+    width: 1px;
+    height: 16px;
+    background: var(--c-border, rgba(127, 127, 127, 0.35));
   }
 
   &__body {

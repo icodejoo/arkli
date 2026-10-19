@@ -95,3 +95,18 @@ describe('footerOf 弹窗底部按钮', () => {
     expect(footerOf('downloading')).toEqual({ primary: 'downloading', verify: false })
   })
 })
+
+describe('downloadingText', () => {
+  it('带百分号向下取整，满格不超过 100%', async () => {
+    const { downloadingText } = await load()
+    expect(downloadingText(0.372)).toBe('下载中 37%')
+    expect(downloadingText(0.999)).toBe('下载中 99%')
+    expect(downloadingText(1)).toBe('下载中 100%')
+    expect(downloadingText(7)).toBe('下载中 100%')
+  })
+
+  it('进度未知（0、负数、NaN）只显示「下载中…」', async () => {
+    const { downloadingText } = await load()
+    for (const p of [0, -1, Number.NaN]) expect(downloadingText(p)).toBe('下载中…')
+  })
+})

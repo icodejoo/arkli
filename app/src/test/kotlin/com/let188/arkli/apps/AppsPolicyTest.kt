@@ -41,6 +41,15 @@ class AppsPolicyTest {
     }
 
     @Test
+    fun exportFileNameUsesCustomWhenGiven() {
+        assertEquals("def.apk", AppsPolicy.exportFileName(null, "def.apk"))
+        assertEquals("def.apk", AppsPolicy.exportFileName("  ", "def.apk"))
+        assertEquals("Arkli-简介.apk", AppsPolicy.exportFileName("Arkli-简介", "def.apk"))
+        assertEquals("a.APK", AppsPolicy.exportFileName("a.APK", "def.apk"))
+        assertEquals("a_b.apk", AppsPolicy.exportFileName("x/a_b", "def.apk"))
+    }
+
+    @Test
     fun iconSizeRange() {
         assertEquals(96, AppsPolicy.iconSize(null))
         assertEquals(48, AppsPolicy.iconSize(48.0))
