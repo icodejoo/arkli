@@ -2,6 +2,7 @@ package com.let188.arkli.model
 
 import com.let188.arkli.bridge.BridgeErrors
 import com.let188.arkli.bridge.BridgeException
+import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -10,10 +11,14 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
+
+/** 日志 tag */
+private const val MODEL_MGR_TAG = "ArkliModel"
 
 /** 纳秒转毫秒 */
 private const val NANOS_PER_MS = 1_000_000L
@@ -74,7 +79,15 @@ class ModelManager internal constructor(
     private val metered: () -> Boolean = { false },
     private val urlOverride: () -> List<String>? = { null },
     private val nowMs: () -> Long = { System.nanoTime() / NANOS_PER_MS },
+    private val freeSpace: (File) -> Long = { it.usableSpace },
 ) : ModelStateSource {
+    /** 外部导入根目录（`.../files/import`），null 表示不支持导入；由模块在启动时设置 */
+    @Volatile
+    var importRoot: File? = null
+
+    /** 导入任务的全局互斥：同一时刻只复制、安装一个模型 */
+    private val importLock = Mutex()
+
     /** 一个进行中的任务 */
     private class Task(val startBytes: Long, val startedAt: Long) {
         /** 协程任务，放进任务表之前赋值 */
@@ -158,12 +171,29 @@ class ModelManager internal constructor(
      * @param id 清单里的模型 id
      * @return 状态与是否新启动；失败原因通过之后的 [status] 的 error 字段读取
      */
-    fun ensure(id: String): EnsureResult {
-        val entry = require(id)
+    fun ensure(id: String): EnsureResult = launchTask(require(id), null)
+
+    /**
+     * 扫描导入目录，为每个有文件的清单模型启动一个导入任务（已安装或正在处理的跳过）。
+     * 导入先复制进私有目录，再走与下载相同的校验与解压，不跳过 sha256；成功后删导入目录，失败保留原样。
+     *
+     * @return 新启动导入的模型 id；未设置导入目录返回空
+     */
+    fun scanImports(): List<String> {
+        val rootDir = importRoot ?: return emptyList()
+        val r = ModelImporter.scan(rootDir, manifest)
+        r.ignored.forEach { Log.w(MODEL_MGR_TAG, "导入目录里的 $it 不在清单中，已忽略") }
+        // 本进程内导入失败过的不再自动重试（否则每次打开 AI 中心都重复复制），重启 App 再试
+        return r.found.filter { (entry, src) -> !errors.containsKey(entry.id) && launchTask(entry, src).started }.map { it.first.id }
+    }
+
+    /** 启动下载或导入任务；[importSrc] 非 null 为导入 */
+    private fun launchTask(entry: ModelEntry, importSrc: File?): EnsureResult {
+        val id = entry.id
         val before = snapshot(entry)
         if (before.state == ModelState.INSTALLED || before.state == ModelState.DOWNLOADING) return EnsureResult(before, false, false)
         val task = Task(before.downloadedBytes, nowMs())
-        task.job = scope.launch(Dispatchers.IO, start = CoroutineStart.LAZY) { run(entry, task) }
+        task.job = scope.launch(Dispatchers.IO, start = CoroutineStart.LAZY) { run(entry, task, importSrc) }
         if (tasks.putIfAbsent(id, task) != null) {
             task.job.cancel()
             return EnsureResult(snapshot(entry), false, false)
@@ -177,10 +207,21 @@ class ModelManager internal constructor(
     }
 
     /** 任务体：下载、写校验标记，失败记录错误；无论如何最后移出任务表 */
-    private suspend fun run(entry: ModelEntry, task: Task) {
+    private suspend fun run(entry: ModelEntry, task: Task, importSrc: File? = null) {
+        var copied: List<File> = emptyList()
+        var locked = false
         try {
+            if (importSrc != null) {
+                importLock.lock()
+                locked = true
+                val job = currentCoroutineContext()[Job]
+                task.phase = ModelPolicy.PHASE_VERIFY
+                notifyChange(entry)
+                copied = ModelImporter.copyInto(entry, importSrc, dir(entry), freeSpace, { job?.isActive != false })
+            }
             val override = urlOverride()
-            downloader.download(entry, dir(entry), { f -> override ?: f.urls }) { done, phase ->
+            // 导入只认已有文件、不联网：给空源，文件对不上时下载器会因无源而失败
+            downloader.download(entry, dir(entry), { f -> if (importSrc != null) emptyList() else override ?: f.urls }) { done, phase ->
                 task.progress.set(done)
                 val phaseChanged = task.phase != phase
                 task.phase = phase
@@ -189,13 +230,21 @@ class ModelManager internal constructor(
                 if ((phaseChanged || now - last >= PROGRESS_NOTIFY_MS) && task.lastNotifyAt.compareAndSet(last, now)) notifyChange(entry)
             }
             writeMarker(entry)
+            if (importSrc != null) runCatching { importSrc.deleteRecursively() }
         } catch (e: CancellationException) {
+            if (importSrc != null) ModelImporter.rollback(copied, dir(entry), ModelImporter.acceptedNames(entry))
             throw e
         } catch (e: ModelDownloadException) {
-            errors[entry.id] = e
+            val imported = importSrc != null
+            if (imported) ModelImporter.rollback(copied, dir(entry), ModelImporter.acceptedNames(entry))
+            // 导入时下载器报“没有可用的下载源”其实是文件没通过校验，换成更准的错误码
+            errors[entry.id] = if (imported && e.code == ModelErrorCode.INTERNAL && copied.isNotEmpty()) {
+                ModelDownloadException(ModelErrorCode.HASH_MISMATCH, "导入的文件校验未通过，已清掉复制的文件，导入目录原样保留")
+            } else e
         } catch (e: Exception) {
             errors[entry.id] = ModelDownloadException(ModelErrorCode.INTERNAL, e.message ?: e.javaClass.simpleName)
         } finally {
+            if (locked) importLock.unlock()
             tasks.remove(entry.id, task)
             notifyChange(entry)
         }

@@ -10,6 +10,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** 日志 tag */
@@ -124,6 +125,10 @@ object ModelModule {
         bridge.register(METHOD_VERIFY, ModelVerifyHandler(manager))
         bridge.register(METHOD_SOURCES, ModelSourcesHandler(manager))
         // 管理器是进程单例、桥是每会话一个：后装的桥接管推送，旧会话的事件本来就会被丢弃
+        // 导入目录由 App 自己创建（adb 先建的目录属主不同，App 读不到）
+        manager.importRoot = runCatching {
+            context.getExternalFilesDir(null)?.let { File(it, IMPORT_DIR_NAME).also { d -> d.mkdirs() } }
+        }.getOrNull()
         manager.setListener { bridge.emit(EVENT_CHANGED, ModelPolicy.snapshotJson(it)) }
         scheduleRetiredCleanup(manager.manifest, context.applicationContext.filesDir)
         scheduleResidueSweep(manager)
@@ -137,6 +142,8 @@ object ModelModule {
             try {
                 val removed = manager.sweepResidue()
                 if (removed.isNotEmpty()) Log.i(MODEL_LOG_TAG, "已清扫模型残留：$removed")
+                val imports = manager.scanImports()
+                if (imports.isNotEmpty()) Log.i(MODEL_LOG_TAG, "启动导入：$imports")
             } catch (e: Exception) {
                 Log.w(MODEL_LOG_TAG, "残留清扫异常", e)
             }

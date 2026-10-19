@@ -15,6 +15,7 @@ internal class ModelListHandler(private val manager: ModelManager) : BridgeHandl
     /** 汇总快照 */
     override suspend fun handle(ctx: CallContext, params: JSONObject): Any? {
         requireMainFrame(ctx)
+        manager.scanImports() // AI 中心打开时顺带看一眼导入目录，免得要重启
         val arr = JSONArray()
         manager.list().forEach { arr.put(ModelPolicy.snapshotJson(it)) }
         return JSONObject().put("models", arr)

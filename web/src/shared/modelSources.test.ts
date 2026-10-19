@@ -42,6 +42,11 @@ describe('文本拼装', () => {
     const { MANUAL_STEPS } = await load()
     expect(MANUAL_STEPS.length).toBeGreaterThan(0)
   })
+  it('目录提示同时说明 debug 的 run-as 与 release 的 import 目录', async () => {
+    const { MANUAL_DIR_HINT } = await load()
+    expect(MANUAL_DIR_HINT).toContain('run-as')
+    expect(MANUAL_DIR_HINT).toContain('files/import/')
+  })
 })
 
 describe('isSinglePackage', () => {

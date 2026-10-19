@@ -17,8 +17,9 @@ export const MANUAL_STEPS_PACKAGE: readonly string[] = [
   '回到本页点「下载」，App 会校验整包并自动解压，不会再联网。',
 ]
 
-/** 手动放置的目录提示（私有目录需要 adb 的 run-as 或 root，普通手机无法直接访问） */
-export const MANUAL_DIR_HINT = '该目录位于应用私有 files 目录内，普通文件管理器看不到，需要 adb（debug 包的 run-as）放入。'
+/** 手动放置的目录提示：私有目录走 run-as（debug），release 走外部 import 目录导入 */
+export const MANUAL_DIR_HINT =
+  '该目录在应用私有区，普通文件管理器看不到。debug 包可用 adb run-as 放入；release 包请先打开一次 App，再把文件放到 Android/data/<包名>/files/import/<模型id>/，重启 App 会自动校验并安装。'
 
 /** 可以触发下载的状态：未安装、未校验、文件损坏 */
 const DOWNLOADABLE: ReadonlySet<ModelStateName> = new Set(['absent', 'unverified', 'corrupt'])

@@ -1,8 +1,8 @@
 ---
 title: 本地模型下载管理
 status: active
-updated: 2026-10-15
-summary: native.model.* 的清单格式、下载器安全设计（白名单、逐跳重定向、sha256、路径）、状态机、验证结果与后续优化；先服务识物 SigLIP2，之后对联 GPT-2、Qwen 复用
+updated: 2026-10-19
+summary: native.model.* 的清单格式、下载器安全设计（白名单、逐跳重定向、sha256、路径）、状态机、外部目录导入（真机已验）、验证结果与后续优化；先服务识物 SigLIP2，之后对联 GPT-2、Qwen 复用
 ---
 ## TL;DR
 - 本地模型（决策 [0005](../decisions/0005-ai-four-layers.md)）一律**按需下载**，由原生 `ModelManager` 统一管：清单随包、下载在后台、断点续传、sha256 校验、用户可删除并看到占用空间。
@@ -63,6 +63,17 @@ summary: native.model.* 的清单格式、下载器安全设计（白名单、�
 - 打包：`scripts/mnn/pack.py <目录> --tag <tag> --zip <输出目录> --apply app/src/main/assets/ai/models.json`，zip 可复现（条目按名排序、时间戳固定）；deflate 收益 <3% 的条目用 stored（只有 NLLB 的 3 个小文件命中，权重 deflate 能省 3%~9%）。
 - 线上（release 新增资产，旧资产未动）：`siglip2-mnn-w8-1.zip` 86,502,640 B；`nllb600m-un6-mnn-w6-1.zip` 385,862,916 B；`asr-zipformer-zh-en-mnn-w8-1.zip` 155,227,742 B；`ppocrv6-small-mnn-fp16-1.zip` 13,102,305 B；`couplet-gpt2-mnn-w6-1.zip` 91,288,958 B；`matting-modnet-mnn-fp32-1.zip` 24,039,813 B；`matting-u2netp-mnn-f16-1.zip` 2,173,631 B（两个 matting release 为本次新建）。均用 aria2c 从线上重下，大小与 sha256 和清单一致。
 - 真机实测（STG-AL00，debug 包，真实 GitHub 链路）：OCR 总 2.2 s；对联总 10.1 s（下载 9.0、校验 0.2、解压 0.85），峰值 PSS 355MB；NLLB 续传 23.5 s + 校验 0.4 + 解压 1.5，峰值目录占用 749MB（zip + 解压后），峰值 PSS 494MB（基线 428MB）。取消后只留 `.zip.part`，续传到完成；解压中途 force-stop 后重启，不联网、2.3 s 完成；人造残留重启即清；伪造 300GB 包得到 `NO_SPACE`；旧布局的两个抠图模型仍 `installed` 且 provider `available`。
+
+## 外部目录导入（2026-10-19）
+
+release 包不可调试、没有 `run-as`，手机又常常没网，所以加一个不需要权限的外部入口：`/sdcard/Android/data/<包名>/files/import/<模型id>/`（即 `getExternalFilesDir(null)/import/<id>/`，adb 与部分文件管理器可直接写）。**先打开一次 App 再放**：该目录由 App 启动时自己创建（adb 先建的属主不同，App 读不到）。
+
+- 放什么：清单里该模型的文件，单包模型放 zip、多文件模型放各文件（或已解压文件）；清单外的文件不复制，目录名不在清单里的整个忽略并记日志。
+- 时机：App 启动时在后台 IO 线程扫一次（排在 `sweepResidue` 之后）；AI 中心打开（`native.model.list`）时若导入目录非空也扫一次，免重启。导入任务全局互斥（一次只处理一个模型），且与下载、删除、校验共用按模型的任务表，同一模型已在处理或已安装则跳过。
+- 动作（`ModelManager.scanImports`）：复制到 `files/models/<id>/`（先写 `.imp` 再原子改名，外部与内部是不同分区所以不用 rename；空间按 1.2 倍预检，不足报 `NO_SPACE`），随后走与下载同一套校验与解压（zip 整包 sha256 + 解压逐文件 sha256，已解压文件逐个 sha256）。**不跳过 sha 校验，导入全程不联网**。状态沿用 `downloading` 加 `verify`/`unpack` 阶段，Web 侧没有新状态。
+- 成功：写完成标记，删除 `import/<id>/`。失败（校验不过、空间不足、读写出错）：删掉已复制进私有目录的文件，导入目录原样保留，错误码按现有的推送（校验不过为 `HASH_MISMATCH`）；同一进程内不自动重试，改好文件后重启 App 再扫。
+- 脚本：`MODE=import PKG=com.let188.arkli scripts/device-push-models.sh [库目录] [模型 id ...]`，会先拉起 App、等 `import` 目录出现、推文件、重启 App 触发扫描。
+- **真机已验**：release 包（新签名，旧 10-17 release 已卸载重装）导入全部 9 个模型（asr、couplet-corpus、couplet-gpt2、matting×2、nllb、ppocrv6、qwen35、siglip2），约 10 秒内完成，AI 中心显示 installed（见 [状态](../status.md)）。
 
 ## 退役模型回收（`retired`）
 
