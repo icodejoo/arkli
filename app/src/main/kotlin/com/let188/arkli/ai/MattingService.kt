@@ -45,22 +45,37 @@ data class MattingResult(
 )
 
 /**
- * 边缘细化强度，与 Rust 侧 `MattingFfiRefine` 一一对应。页面暂未暴露滑块，原生一律用 [STANDARD]，给后续滑块留口。
+ * 边缘细化强度，与 Rust 侧 `MattingFfiRefine` 一一对应。页面四档分段控件选择，缺省 [DEFAULT]（强）。
  *
+ * @property wire 桥协议里的名字
  * 使用示例：`backend.matte(w, h, rgb, MattingRefine.STRONG)`
  */
-enum class MattingRefine {
+enum class MattingRefine(val wire: String) {
     /** 不细化：alpha 原样，前景色即原图像素 */
-    OFF,
+    OFF("off"),
 
     /** 轻 */
-    LIGHT,
+    LIGHT("light"),
 
-    /** 标准（缺省） */
-    STANDARD,
+    /** 标准 */
+    STANDARD("standard"),
 
-    /** 强：过渡更利落，细发丝可能被削弱 */
-    STRONG,
+    /** 强（缺省）：过渡更利落，极细发丝可能被削弱 */
+    STRONG("strong"),
+    ;
+
+    companion object {
+        /** 缺省档：强（2026-10-19 桌面对比 13 组样本后定的） */
+        val DEFAULT: MattingRefine = STRONG
+
+        /**
+         * 按桥协议名查细化强度。
+         *
+         * @param wire 协议名，如 `light`
+         * @return 对应强度，不认识返回 null
+         */
+        fun fromWire(wire: String?): MattingRefine? = values().firstOrNull { it.wire == wire }
+    }
 }
 
 /**
@@ -92,11 +107,12 @@ interface MattingEngine {
      * 对一张图抠图，成品 PNG 写进缓存的 `out/` 目录。
      *
      * @param file 图片文件
+     * @param refine 边缘细化强度，缺省 [MattingRefine.DEFAULT]
      * @return 抠图结果
      * @throws BridgeException NOT_READY（模型未就绪）、BAD_PARAMS/INTERNAL（解码失败、推理失败、内存不足）
      * @throws CancellationException 被取消（一次前向不可中途打断，最迟在前向结束后生效）
      */
-    suspend fun matte(file: File): MattingResult
+    suspend fun matte(file: File, refine: MattingRefine = MattingRefine.DEFAULT): MattingResult
 }
 
 /**
@@ -119,10 +135,10 @@ interface MattingBackend {
      * @param width 宽
      * @param height 高
      * @param rgb 行优先 RGB，长度 `width * height * 3`
-     * @param refine 边缘细化强度，缺省标准
+     * @param refine 边缘细化强度，缺省 [MattingRefine.DEFAULT]
      * @return 与图同尺寸的 alpha 与去污染前景色
      */
-    fun matte(width: Int, height: Int, rgb: ByteArray, refine: MattingRefine = MattingRefine.STANDARD): MattingOutcome
+    fun matte(width: Int, height: Int, rgb: ByteArray, refine: MattingRefine = MattingRefine.DEFAULT): MattingOutcome
 
     /** 打断正在进行的 [matte]，可在任意线程调用，没有抠图在跑时无副作用 */
     fun cancel()
@@ -193,11 +209,13 @@ class MattingService(
      * 抠图，排在重任务闸门后执行；协程被取消时尽快退出。
      *
      * @param file 图片文件
+     * @param refine 边缘细化强度，缺省 [MattingRefine.DEFAULT]
      * @return 抠图结果
      * @throws BridgeException NOT_READY（模型未就绪）、BAD_PARAMS/INTERNAL（解码失败、推理失败、内存不足）
      * @throws CancellationException 被取消
      */
-    suspend fun matte(file: File): MattingResult = AiHeavyGate.run { matteLocked(file) }
+    suspend fun matte(file: File, refine: MattingRefine = MattingRefine.DEFAULT): MattingResult =
+        AiHeavyGate.run { matteLocked(file, refine) }
 
     /**
      * 释放已加载的模型会话，排在重任务闸门后，不会打断正在进行的抠图。
@@ -234,7 +252,7 @@ class MattingService(
     }
 
     /** 闸门内的实际流程：加载（按需）-> 解码并收敛尺寸 -> 抠图（可被取消）-> 合成写盘 */
-    private suspend fun matteLocked(file: File): MattingResult {
+    private suspend fun matteLocked(file: File, refine: MattingRefine): MattingResult {
         val dir = env.modelDir()
         requireReady(dir)
         val t0 = now()
@@ -253,7 +271,7 @@ class MattingService(
             val rgb = AiClassifyPolicy.argbToRgb(argb)
             currentCoroutineContext().ensureActive()
             val t1 = now()
-            val outcome = matteCancellable(width, height, rgb)
+            val outcome = matteCancellable(width, height, rgb, refine)
             val t2 = now()
             // 后处理（合成与编码）前再看一眼：取消了就别白费这几百毫秒
             currentCoroutineContext().ensureActive()
@@ -306,7 +324,7 @@ class MattingService(
      * 在 IO 线程跑阻塞的抠图；外层协程被取消时立刻调 [MattingBackend.cancel]，让 Rust 在前向结束后的检查点返回。
      * 正常结束不会触发取消。
      */
-    private suspend fun matteCancellable(width: Int, height: Int, rgb: ByteArray): MattingOutcome = coroutineScope {
+    private suspend fun matteCancellable(width: Int, height: Int, rgb: ByteArray, refine: MattingRefine): MattingOutcome = coroutineScope {
         val finished = AtomicBoolean(false)
         val watcher = launch(start = CoroutineStart.UNDISPATCHED) {
             try {
@@ -316,7 +334,7 @@ class MattingService(
             }
         }
         try {
-            withContext(Dispatchers.IO) { backend.matte(width, height, rgb) }
+            withContext(Dispatchers.IO) { backend.matte(width, height, rgb, refine) }
         } finally {
             finished.set(true)
             watcher.cancel()
@@ -446,7 +464,7 @@ class LocalMattingProvider(private val service: MattingService, private val mode
     override suspend fun run(task: AiTask, input: String): AiRunResult = throw AiRouter.notRunnable(id, task)
 
     /** 转交服务 */
-    override suspend fun matte(file: File): MattingResult = service.matte(file)
+    override suspend fun matte(file: File, refine: MattingRefine): MattingResult = service.matte(file, refine)
 
     /** 预热：加载模型会话 */
     override suspend fun warmup(): WarmupResult = service.warmup()

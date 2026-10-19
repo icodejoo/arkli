@@ -203,14 +203,22 @@ export async function aiCouplet(
  * @param mode 模式：`portrait` 人像、`general` 通用
  * @param signal 取消信号，触发后调用以 CANCELLED 拒绝
  * @param call 原生调用函数，默认走 bridge（仅测试注入）
+ * @param refine 边缘细化强度；不传则不带该字段，原生按缺省（强）处理
  * @returns 带透明通道的 PNG 路径与尺寸、耗时
  * @throws AiNotReadyError 无宿主、方法不存在或该模式的模型未就绪；BAD_PARAMS 原样抛出
  * @example const r = await aiMatting('cache/pick/a.jpg', 'portrait'); // r.path 是透明 PNG
+ * @example await aiMatting('cache/pick/a.jpg', 'portrait', undefined, undefined, 'light') // 轻档细化
  */
-export async function aiMatting(path: string, mode: MattingMode, signal?: AbortSignal, call: CancelableCallFn = bridgeCall): Promise<MattingResult> {
+export async function aiMatting(
+  path: string,
+  mode: MattingMode,
+  signal?: AbortSignal,
+  call: CancelableCallFn = bridgeCall,
+  refine?: MattingRefine,
+): Promise<MattingResult> {
   if (!isNativeAvailable()) throw new AiNotReadyError('matting')
   try {
-    return await aiInvoke('matting', { path, mode }, { entry: AI_METHODS.matting, signal }, call)
+    return await aiInvoke('matting', refine ? { path, mode, refine } : { path, mode }, { entry: AI_METHODS.matting, signal }, call)
   } catch (e) {
     if (isNotReadyError(e)) throw new AiNotReadyError('matting')
     throw e
@@ -681,12 +689,17 @@ export interface CoupletResult {
 /** 抠图模式：人像（MODNet）/ 通用主体（U2Net-p），各对应一个本地模型 */
 export type MattingMode = 'portrait' | 'general'
 
+/** 边缘细化强度：关 / 轻 / 标准 / 强（原生缺省“强”） */
+export type MattingRefine = 'off' | 'light' | 'standard' | 'strong'
+
 /** 抠图的输入 */
 export interface AiMattingInput {
   /** 图片缓存相对路径，如 `cache/pick/a.jpg` */
   path: string
   /** 模式；原生据此选提供者（`local-matting-portrait` / `local-matting-general`） */
   mode: MattingMode
+  /** 边缘细化强度，可省，缺省 `strong` */
+  refine?: MattingRefine
 }
 
 /** 抠图结果（`native.ai.matting` / `native.ai.invoke` 的 `matting` 任务） */

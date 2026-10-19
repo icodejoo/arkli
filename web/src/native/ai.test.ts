@@ -226,6 +226,14 @@ describe('aiClassifyImage（本地识物）', () => {
       { timeoutMs: 0, signal: undefined },
     )
   })
+  it('带 refine 时写进 input，不带时 input 里没有 refine 字段', async () => {
+    const m = await load(true)
+    const call = ok()
+    await m.aiMatting('p', 'portrait', undefined, call, 'light')
+    expect(call).toHaveBeenLastCalledWith('native.ai.invoke', { task: 'matting', input: { path: 'p', mode: 'portrait', refine: 'light' }, entry: 'native.ai.matting' }, expect.anything())
+    await m.aiMatting('p', 'portrait', undefined, call)
+    expect(call).toHaveBeenLastCalledWith('native.ai.invoke', { task: 'matting', input: { path: 'p', mode: 'portrait' }, entry: 'native.ai.matting' }, expect.anything())
+  })
   it('无宿主：抛 AiNotReadyError 且不调原生', async () => {
     const m = await load(false)
     const call = ok()

@@ -266,7 +266,7 @@ class AiProviderContractTest {
         override fun availability() = AiAvailability.AVAILABLE
         override suspend fun run(task: AiTask, input: String): AiRunResult =
             if (task == AiTask.PROMPT) AiRunResult.Text("") else throw AiRouter.notRunnable(id, task)
-        override suspend fun matte(file: java.io.File): MattingResult = throw UnsupportedOperationException()
+        override suspend fun matte(file: java.io.File, refine: MattingRefine): MattingResult = throw UnsupportedOperationException()
     }
 
     /** 说谎者 7：实现了 CoupletEngine，却没声明 couplet */

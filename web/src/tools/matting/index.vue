@@ -6,7 +6,7 @@ import ModelMissingNotice from '@/shared/ModelMissingNotice.vue'
 import { computed, onBeforeUnmount, onDeactivated, ref, shallowRef } from 'vue'
 import { showToast } from 'vant'
 import { call } from '@/native/bridge'
-import { aiMatting, AiNotReadyError, fetchAiResult, isAiCancelled, type MattingResult } from '@/native/ai'
+import { aiMatting, AiNotReadyError, fetchAiResult, isAiCancelled, type MattingRefine, type MattingResult } from '@/native/ai'
 import { saveCachedFile } from '@/native/media'
 import { share } from '@/native/system'
 import { useAiCatalog } from '@/native/useAiCatalog'
@@ -23,10 +23,15 @@ import {
   MODE_HINTS,
   MODE_LABELS,
   PROVIDER_OF_MODE,
+  REFINE_HINT,
+  REFINE_OPTIONS,
   bgColorOf,
+  loadRefine,
   modeOfProvider,
   outputName,
   resultUrl,
+  saveRefine,
+  shouldRerunOnRefine,
   summaryOf,
   type BgKind,
 } from './logic'
@@ -54,6 +59,10 @@ const result = shallowRef<MattingResult | null>(null)
 const bgKind = ref<BgKind>('transparent')
 /** 自定义背景色 */
 const customHex = ref(DEFAULT_CUSTOM_HEX)
+/** 边缘细化档位（记在 localStorage，没有记录用默认“强”） */
+const refine = ref<MattingRefine>(loadRefine())
+/** 细化档位在分段控件里的下标 */
+const refineIndex = computed(() => REFINE_OPTIONS.findIndex((o) => o.value === refine.value))
 /** 当前抠图的取消控制器 */
 let controller: AbortController | null = null
 /** 运行序号：取消后用户立刻再点开始，旧调用的收尾不能覆盖新调用的状态 */
@@ -75,6 +84,22 @@ function onTab(index: number): void {
   if (!item || item.key === catalog.choice.value) return
   catalog.set(item.key)
   result.value = null
+}
+
+/**
+ * 切换边缘细化档位：先记住；已经出过图就自动重抠（正在抠的先取消再重跑），还没出图只记住。
+ *
+ * @param index 分段控件里被选中的下标
+ */
+function onRefine(index: number): void {
+  const next = REFINE_OPTIONS[index]?.value
+  if (!next) return
+  const prev = refine.value
+  refine.value = next
+  saveRefine(next)
+  if (!shouldRerunOnRefine(prev, next, result.value !== null) || !image.value) return
+  if (busy.value) cancel()
+  void run()
 }
 
 /** 采用新图：释放旧图，换图后清掉旧结果 */
@@ -109,7 +134,7 @@ async function run(): Promise<void> {
   const ctl = controller
   try {
     const path = await resolveImagePath(image.value)
-    const r = await aiMatting(path, mode.value, ctl.signal)
+    const r = await aiMatting(path, mode.value, ctl.signal, undefined, refine.value)
     if (my === runId) result.value = r
   } catch (e) {
     if (isAiCancelled(e) || my !== runId) return
@@ -208,6 +233,14 @@ onBeforeUnmount(cleanup)
       <van-tab v-for="m in MATTING_MODES" :key="m" :title="MODE_LABELS[m]" />
     </van-tabs>
     <p class="tool-hint">{{ modeHint }}</p>
+    <!-- 边缘细化：四档分段控件，出过图后切换会自动重抠 -->
+    <div class="mt-refine">
+      <span class="mt-refine__label">边缘细化</span>
+      <van-tabs :active="refineIndex" class="mt-refine__tabs" type="card" :swipeable="false" @change="onRefine">
+        <van-tab v-for="o in REFINE_OPTIONS" :key="o.value" :title="o.label" />
+      </van-tabs>
+    </div>
+    <p class="tool-hint">{{ REFINE_HINT }}</p>
 
     <model-missing-notice v-if="catalogReady && !modelReady" />
 
@@ -256,6 +289,24 @@ onBeforeUnmount(cleanup)
 /* 模式标签页：与上下内容留出间距 */
 .mt-tabs {
   margin-bottom: $space-2;
+}
+
+/* 边缘细化：标签在左，分段控件占剩余宽度 */
+.mt-refine {
+  display: flex;
+  align-items: center;
+  gap: $space-3;
+  margin-top: $space-2;
+
+  &__label {
+    flex: none;
+    font-size: 14px;
+  }
+
+  &__tabs {
+    flex: 1;
+    min-width: 0;
+  }
 }
 
 /* 原图：自适应宽度 */

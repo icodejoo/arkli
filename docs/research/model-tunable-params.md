@@ -179,7 +179,8 @@ C ABI（`native/mnn/arkli_mnn_capi.h:46-56`，`.cpp:182-196`）现在只暴露�
 
 ### 4.6 抠图：MODNet 人像 / U2Net-p 通用
 
-边缘细化参数由另一个子代理在做（`matting_refine.rs` 等未提交文件），**这里只留占位，待并入**：
+**边缘细化强度（`RefineStrength` 四档，默认强）放抠图页，不进 AI 中心（用户拍板，2026-10-19）**：页面分段控件经桥参数 `refine` 传给原生，见 [抠图](../design/tools/matting.md)「边缘细化」。其余参数仍按下方占位：
+
 
 > 待并入：参数名/含义/默认值/范围/归类按 4.1 的表头格式补；声明方式沿用第 5 节的参数定义，不另起一套。
 > 已知（引自 `ai-protocol.md` 抠图接入记录，不含未提交改动）：两个提供者各自一个模型/一个弹窗；输入尺寸由模型固定；取消只在阶段边界检查。
@@ -303,10 +304,10 @@ interface AiTunable {
 | 5 | C ABI：`power`（+可选 `little_core_rate`），`ARKLI_MNN_ABI` 升 2；Rust `MnnConfig::with_power`；FFI 新增 `mnn_set_runtime_options(power)`（precision 通道实测后已删）；Qwen 经包装 config 写 power；**真机测 Normal vs High 的 tok/s 与发热**，数据决定“性能模式”是否真上 | `arkli_mnn_capi.{h,cpp}`、`arkli_mnn_jni.cpp`、`core/crates/arkli-ai/src/mnn/{mod,ffi}.rs`、`arkli-ffi/src/lib.rs`、重新生成 uniffi 绑定、`build.gradle.kts` 的 sha256、`qwen35-mnn-model.md` 校验表 | L | **要**（`libarkli-mnn.so` + Rust，上传 release、改 sha） |
 | 6 | Qwen 新采样参数 topP/重复惩罚：`samplerConfig` 加字段、`AiSamplingParams` 扩字段、spec | `arkli_mnn_jni.cpp`、`AiGenerate.kt`、`AiQwenPolicy.kt`、`MnnQwenBackend` | M | 要（并入步 5 一起重编更省事） |
 | 7 | OCR / 识物按次选项（Rust 引擎 + FFI + Kotlin policy + spec） | `pipeline.rs`、`classify.rs`、`arkli-ffi/src/{ocr,clip}.rs`、`AiOcrPolicy.kt`、`AiClassifyPolicy.kt`、`AiCall`、`AndroidOcr/Clip.kt` | L | 要（Rust） |
-| 8 | 抠图细化参数并入（待另一子代理的成果合并后） | 待定 | S~M | 视情况 |
+| 8 | 抠图细化强度：放抠图页四档分段控件（桥参数 `refine`），不进 AI 中心（用户拍板）；已实现，真机待验 | `AiMattingPolicy.kt`、`MattingService.kt`、`web/src/tools/matting/` | S~M | 要（Rust 默认改强） |
 | 9 | 文档：`ai-protocol.md` 加“参数调整”小节与 checklist 一项、`bridge-protocol.md` 加三个方法、`model-picker.md` 与 `status.md` 同步，索引由主会话统一改 | docs | S | 否 |
 
-**实施进度**：步 1~3 已完成并真机验证（Qwen 温度因设备未装 Qwen 未实测）。步 9 的 `ai-protocol.md` / `bridge-protocol.md` / `model-picker.md` / `status.md` 已同步。步 4（MNN 基础参数入口 + 线程数）已实现，真机待验；步 5/6 已实现（2026-10-19，真机待验）：C ABI 升 2 加 `power`，Rust `mnn_set_runtime_options`，Qwen 的功耗/topP/惩罚走包装 config（读码确认 `power`、`precision` 键存在、topP/penalty 在 `load()` 里生效且不被 JNI `set_config` 覆盖，故不改 JNI；注意 LLM 引擎的 `precision` 默认是 `low`，所以 Qwen 的“普通”档沿用该默认、只在“高精度”时写键，此项随精度一并下线）。**实测收口（2026-10-19）**：真机实测（STG-AL00，4 大 4 小核，无 fp16，MNN_ARM82=OFF）：性能(High)对均衡(Normal)，Qwen 校对热态约 4.8 s 对 4.8 s、NLLB 约 0.93 s 对 0.94 s，无收益；省电(Low) Qwen 约 10.2 s、NLLB 约 2.1 s，且切回均衡后不恢复（约 9.0 s / 2.1 s），原因是 MNN 线程池全局、重载不重建，Low 把线程绑到小核（Cpus_allowed_list 0-3），Normal 不绑核所以沿用旧绑定，切到 High 会主动绑大核才能恢复；精度高对普通无差别（本构建无 fp16 内核）。用户拍板：性能模式只留均衡/性能，精度整项不开放，Rust/FFI/Kotlin 的 precision 通道已删（C ABI 字段保留恒传 0）；**步 7 已实现（2026-10-19，真机待验）**：OCR 开放检测灵敏度（宽松/标准/严格，标准=模型自带 box_thresh）、过滤低置信文字、检测图最长边三档，识物开放识别严格度（0.65/0.8/0.9）；`det_post.thresh`/`unclip_ratio` 默认依模型版本而不同，只开放 box_thresh 档位更简单不易出错，故不开放。步 8 未做，详见 [状态](../status.md)。
+**实施进度**：步 1~3 已完成并真机验证（Qwen 温度因设备未装 Qwen 未实测）。步 9 的 `ai-protocol.md` / `bridge-protocol.md` / `model-picker.md` / `status.md` 已同步。步 4（MNN 基础参数入口 + 线程数）已实现，真机待验；步 5/6 已实现（2026-10-19，真机待验）：C ABI 升 2 加 `power`，Rust `mnn_set_runtime_options`，Qwen 的功耗/topP/惩罚走包装 config（读码确认 `power`、`precision` 键存在、topP/penalty 在 `load()` 里生效且不被 JNI `set_config` 覆盖，故不改 JNI；注意 LLM 引擎的 `precision` 默认是 `low`，所以 Qwen 的“普通”档沿用该默认、只在“高精度”时写键，此项随精度一并下线）。**实测收口（2026-10-19）**：真机实测（STG-AL00，4 大 4 小核，无 fp16，MNN_ARM82=OFF）：性能(High)对均衡(Normal)，Qwen 校对热态约 4.8 s 对 4.8 s、NLLB 约 0.93 s 对 0.94 s，无收益；省电(Low) Qwen 约 10.2 s、NLLB 约 2.1 s，且切回均衡后不恢复（约 9.0 s / 2.1 s），原因是 MNN 线程池全局、重载不重建，Low 把线程绑到小核（Cpus_allowed_list 0-3），Normal 不绑核所以沿用旧绑定，切到 High 会主动绑大核才能恢复；精度高对普通无差别（本构建无 fp16 内核）。用户拍板：性能模式只留均衡/性能，精度整项不开放，Rust/FFI/Kotlin 的 precision 通道已删（C ABI 字段保留恒传 0）；**步 7 已实现（2026-10-19，真机待验）**：OCR 开放检测灵敏度（宽松/标准/严格，标准=模型自带 box_thresh）、过滤低置信文字、检测图最长边三档，识物开放识别严格度（0.65/0.8/0.9）；`det_post.thresh`/`unclip_ratio` 默认依模型版本而不同，只开放 box_thresh 档位更简单不易出错，故不开放。**步 8 已实现（2026-10-19，真机待验）：细化强度放抠图页，不进 AI 中心（用户拍板）**，详见 [状态](../status.md)。
 
 建议交付顺序：**1+2+3 先上线一版**（**已实现，2026-10-19，未提交、真机未验**）（Qwen/NLLB/对联/识物的开放参数，纯 Kotlin + Web，立即可见效果），再做 4（线程），5/6 合并重编一次，7 单独一批。
 

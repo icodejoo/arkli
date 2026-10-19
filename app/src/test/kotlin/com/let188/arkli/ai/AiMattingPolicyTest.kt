@@ -19,7 +19,7 @@ class AiMattingPolicyTest {
     @Test
     fun parse_fillsProviderFromMode() {
         val r = AiMattingPolicy.parse(JSONObject().put("path", "cache/pick/a.jpg").put("mode", "portrait"))
-        assertEquals(AiMattingRequest("local-matting-portrait", "cache/pick/a.jpg", MattingMode.PORTRAIT), r)
+        assertEquals(AiMattingRequest("local-matting-portrait", "cache/pick/a.jpg", MattingMode.PORTRAIT, MattingRefine.STRONG), r)
         assertEquals("local-matting-general", AiMattingPolicy.parse(JSONObject().put("path", "p").put("mode", "general")).provider)
     }
 
@@ -32,6 +32,31 @@ class AiMattingPolicyTest {
         assertEquals("local-matting-general", nul.provider)
         assertBad { AiMattingPolicy.parse(JSONObject().put("path", "p").put("mode", "general").put("provider", "local-matting-portrait")) }
         assertBad { AiMattingPolicy.parse(JSONObject().put("path", "p").put("mode", "general").put("provider", "local-ocr")) }
+    }
+
+    @Test
+    fun parse_refineDefaultsToStrong_andParsesAllTiers() {
+        fun req(refine: Any?) = JSONObject().put("path", "p").put("mode", "portrait").apply { if (refine != null) put("refine", refine) }
+        assertEquals(MattingRefine.STRONG, AiMattingPolicy.parse(req(null)).refine)
+        assertEquals(MattingRefine.STRONG, AiMattingPolicy.parse(req(JSONObject.NULL)).refine)
+        mapOf("off" to MattingRefine.OFF, "light" to MattingRefine.LIGHT, "standard" to MattingRefine.STANDARD, "strong" to MattingRefine.STRONG)
+            .forEach { (wire, want) -> assertEquals(want, AiMattingPolicy.parse(req(wire)).refine) }
+    }
+
+    @Test
+    fun parse_rejectsBadRefine() {
+        listOf<Any>("ultra", "", "Strong", 1, true).forEach { v ->
+            assertBad { AiMattingPolicy.parse(JSONObject().put("path", "p").put("mode", "portrait").put("refine", v)) }
+        }
+    }
+
+    @Test
+    fun refine_fromWire_roundTripsAndRejectsUnknown() {
+        MattingRefine.values().forEach { assertEquals(it, MattingRefine.fromWire(it.wire)) }
+        assertEquals(4, MattingRefine.values().map { it.wire }.toSet().size)
+        assertNull(MattingRefine.fromWire(null))
+        assertNull(MattingRefine.fromWire("unknown"))
+        assertEquals(MattingRefine.STRONG, MattingRefine.DEFAULT)
     }
 
     @Test

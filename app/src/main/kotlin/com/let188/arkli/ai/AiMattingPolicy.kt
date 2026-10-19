@@ -52,8 +52,14 @@ enum class MattingMode(
  * @property provider 提供者 id（总是与 [mode] 对应的那个）
  * @property path 页面缓存路径，如 `cache/pick/a.jpg`
  * @property mode 抠图模式
+ * @property refine 边缘细化强度，缺省 [MattingRefine.DEFAULT]（强）
  */
-data class AiMattingRequest(val provider: String, val path: String, val mode: MattingMode)
+data class AiMattingRequest(
+    val provider: String,
+    val path: String,
+    val mode: MattingMode,
+    val refine: MattingRefine = MattingRefine.DEFAULT,
+)
 
 /**
  * 抠图的纯逻辑：参数校验、尺寸收敛、结果序列化。无 Android 依赖，可单测。
@@ -64,16 +70,19 @@ object AiMattingPolicy {
     /** 参数键：模式 */
     const val KEY_MODE = "mode"
 
+    /** 参数键：边缘细化强度 */
+    const val KEY_REFINE = "refine"
+
     /** 解码后最长边上限（Rust 引擎上限是 4096）；留余量给 ARGB 与 RGB 两份像素缓冲，3072² 约 38MB + 28MB */
     const val MAX_EDGE = 3072
 
     /**
      * 解析并校验 `native.ai.matting` 的参数。`mode` 必填；`provider` 可省，给了就必须与 `mode` 对应
-     * （两个模式各是一个提供者，选哪个模型就是选哪个模式）。
+     * （两个模式各是一个提供者，选哪个模型就是选哪个模式）；`refine` 可选，缺省 strong。
      *
-     * @param params `{ provider?: string, path: string, mode: "portrait" | "general" }`
+     * @param params `{ provider?: string, path: string, mode: "portrait" | "general", refine?: "off" | "light" | "standard" | "strong" }`
      * @return 校验通过的请求，provider 已补成 mode 对应的提供者
-     * @throws BridgeException BAD_PARAMS：path 缺失或过长、mode 缺失或不认识、provider 与 mode 不符
+     * @throws BridgeException BAD_PARAMS：path 缺失或过长、mode 缺失或不认识、provider 与 mode 不符、refine 不合法
      */
     fun parse(params: JSONObject): AiMattingRequest {
         val path = AiPolicy.pagePath(params)
@@ -81,7 +90,12 @@ object AiMattingPolicy {
         val mode = MattingMode.fromWire(wire) ?: throw bad("mode 不认识：$wire（应为 portrait 或 general）")
         val given = AiPolicy.providerId(params.opt(AiPolicy.KEY_PROVIDER), required = false)
         if (given != null && given != mode.providerId) throw bad("provider $given 与 mode $wire 不符，应为 ${mode.providerId}")
-        return AiMattingRequest(mode.providerId, path, mode)
+        val refine = when (val raw = params.opt(KEY_REFINE)) {
+            null, JSONObject.NULL -> MattingRefine.DEFAULT
+            is String -> MattingRefine.fromWire(raw) ?: throw bad("refine 不认识：$raw（应为 off/light/standard/strong）")
+            else -> throw bad("refine 需要是字符串（off/light/standard/strong）")
+        }
+        return AiMattingRequest(mode.providerId, path, mode, refine)
     }
 
     /**

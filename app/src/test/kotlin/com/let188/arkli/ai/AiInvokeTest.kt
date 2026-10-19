@@ -416,13 +416,15 @@ class AiInvokeTest {
     private class MattingOmni(val mode: MattingMode) : AiProvider, MattingEngine {
         override val id = mode.providerId
         var last: File? = null
+        var lastRefine: MattingRefine? = null
         override val displayName = "抠图替身"
         override val layer = AiLayer.L1
         override fun capabilities() = setOf(AiTask.MATTING)
         override fun availability() = AiAvailability.AVAILABLE
         override suspend fun run(task: AiTask, input: String): AiRunResult = throw AiRouter.notRunnable(id, task)
-        override suspend fun matte(file: File): MattingResult {
+        override suspend fun matte(file: File, refine: MattingRefine): MattingResult {
             last = file
+            lastRefine = refine
             return MattingResult("cache/out/matting_${mode.wire}_x.png", 30, 20, mode, mode.modelId, 800, 600)
         }
     }
@@ -470,6 +472,18 @@ class AiInvokeTest {
         assertEquals(600L, j.getLong("inferMs"))
         assertEquals(f, portrait.last)
         assertEquals(null, general.last)
+    }
+
+    @Test
+    fun matting_refineParamReachesProvider_defaultStrong() {
+        val p = MattingOmni(MattingMode.PORTRAIT)
+        val inv = invoker(listOf(p), image())
+        val base = { JSONObject().put("path", "cache/pick/a.jpg").put("mode", "portrait") }
+        runBlocking { inv.invoke(params("matting", base())) }
+        assertEquals(MattingRefine.STRONG, p.lastRefine)
+        runBlocking { inv.invoke(params("matting", base().put("refine", "off"))) }
+        assertEquals(MattingRefine.OFF, p.lastRefine)
+        assertEquals(BridgeErrors.BAD_PARAMS, err { inv.invoke(params("matting", base().put("refine", "x"))) }.first)
     }
 
     /** 对联替身：恒可用，记录收到的请求，回固定下联 */

@@ -132,7 +132,7 @@ impl<G: GraphSession> Matter<G> {
     ///
     /// - `img`：原图，最长边不超过 [`MAX_INPUT_SIDE`]
     /// - `cancel`：取消令牌；预处理前、前向前、后处理前与后处理（放大、细化）分块时检查，命中返回 [`AiError::Cancelled`]
-    /// - `strength`：边缘细化强度，缺省用 [`RefineStrength::default`]（标准）；[`RefineStrength::Off`] 等同旧行为
+    /// - `strength`：边缘细化强度，缺省用 [`RefineStrength::default`]（强）；[`RefineStrength::Off`] 等同旧行为
     /// - 返回：与 `img` 同尺寸的 alpha 与前景色
     pub fn matte(&mut self, img: &RawImage, cancel: &CancelToken, strength: RefineStrength) -> Result<AlphaMatte> {
         if img.width.max(img.height) > MAX_INPUT_SIDE {

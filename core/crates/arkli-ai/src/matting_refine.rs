@@ -50,11 +50,11 @@ const FG_RADIUS_MIN: usize = 8;
 /// 前景色模糊半径上限（原图像素）。
 const FG_RADIUS_MAX: usize = 96;
 
-/// 细化强度。给页面滑块预留；缺省 [`RefineStrength::Standard`]。
+/// 细化强度。页面四档分段控件选择；缺省 [`RefineStrength::Strong`]。
 ///
 /// ```
 /// use arkli_ai::matting_refine::RefineStrength;
-/// assert_eq!(RefineStrength::default(), RefineStrength::Standard);
+/// assert_eq!(RefineStrength::default(), RefineStrength::Strong);
 /// assert!(RefineStrength::Off.params(100, 100).is_none());
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -63,10 +63,10 @@ pub enum RefineStrength {
     Off,
     /// 轻：只轻微收紧，最保守
     Light,
-    /// 标准（缺省）
-    #[default]
+    /// 标准
     Standard,
-    /// 强：过渡更利落，细发丝可能被削弱
+    /// 强（缺省）：过渡更利落，极细发丝可能被削弱
+    #[default]
     Strong,
 }
 
@@ -678,7 +678,7 @@ mod tests {
         );
         assert!(l.curve_lo < s.curve_lo && s.curve_lo < g.curve_lo);
         assert!(l.gf_eps > s.gf_eps && s.gf_eps > g.gf_eps);
-        assert_eq!(RefineStrength::default(), RefineStrength::Standard);
+        assert_eq!(RefineStrength::default(), RefineStrength::Strong);
     }
 
     #[test]

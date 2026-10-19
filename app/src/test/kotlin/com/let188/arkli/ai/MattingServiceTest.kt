@@ -229,11 +229,21 @@ class MattingServiceTest {
     }
 
     @Test
-    fun refineStrength_defaultsToStandard_andRefineMsIsReported() {
+    fun refineStrength_defaultsToStrong_andRefineMsIsReported() {
         val b = FakeBackend()
         val r = runBlocking { service(fullDir(), b).matte(File("a.jpg")) }
-        assertEquals(MattingRefine.STANDARD, b.lastRefine)
+        assertEquals(MattingRefine.STRONG, b.lastRefine)
         assertEquals(7L, r.refineMs)
+    }
+
+    @Test
+    fun refineStrength_allTiersReachBackend() {
+        val b = FakeBackend()
+        val svc = service(fullDir(), b)
+        MattingRefine.values().forEach { refine ->
+            runBlocking { svc.matte(File("a.jpg"), refine) }
+            assertEquals(refine, b.lastRefine)
+        }
     }
 
     @Test

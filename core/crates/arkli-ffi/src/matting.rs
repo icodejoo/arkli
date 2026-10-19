@@ -188,7 +188,7 @@ pub fn matting_load(runtime_lib: String, mode: MattingFfiMode, model_path: Strin
 /// - `mode`：抠图模式（该模式须已 `matting_load`）
 /// - `width`、`height`：像素宽高（最长边不得超过 4096，更大的图由原生侧先降采样）
 /// - `rgb`：行优先 RGB，长度 `width * height * 3`（原生已解码并摆正方向）
-/// - `refine`：边缘细化强度，原生缺省传 `Standard`；`Off` 等同旧行为
+/// - `refine`：边缘细化强度，原生缺省传 `Strong`；`Off` 等同旧行为
 ///
 /// 返回：8 位 alpha（0 透明 255 不透明）、去污染前景色 RGB 与分段耗时。
 ///
@@ -294,7 +294,8 @@ mod tests {
     fn 细化强度映射到引擎层() {
         assert_eq!(MattingFfiRefine::Off.engine(), RefineStrength::Off);
         assert_eq!(MattingFfiRefine::Light.engine(), RefineStrength::Light);
-        assert_eq!(MattingFfiRefine::Standard.engine(), RefineStrength::default());
+        assert_eq!(MattingFfiRefine::Standard.engine(), RefineStrength::Standard);
+        assert_eq!(MattingFfiRefine::Strong.engine(), RefineStrength::default());
         assert_eq!(MattingFfiRefine::Strong.engine(), RefineStrength::Strong);
     }
 

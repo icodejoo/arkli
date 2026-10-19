@@ -311,7 +311,7 @@ class AiInvoker(
             val m = route(call, AiPort.Matting).first.port
             val file = resolver.resolve(call.req.path)?.takeIf { it.isFile }
                 ?: throw BridgeException(BridgeErrors.BAD_PARAMS, BAD_IMAGE_PATH)
-            AiMattingPolicy.resultJson(withContext(Dispatchers.IO) { m.matte(file) })
+            AiMattingPolicy.resultJson(withContext(Dispatchers.IO) { m.matte(file, call.req.refine) })
         }
     }
 

@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { BG_OPTIONS, MATTING_MODES, MODE_HINTS, MODE_LABELS, PROVIDER_OF_MODE, bgColorOf, modeOfProvider, outputName, resultUrl, summaryOf } from './logic'
+import {
+  BG_OPTIONS,
+  DEFAULT_REFINE,
+  REFINE_OPTIONS,
+  REFINE_STORAGE_KEY,
+  loadRefine,
+  normalizeRefine,
+  saveRefine,
+  shouldRerunOnRefine,
+  MATTING_MODES, MODE_HINTS, MODE_LABELS, PROVIDER_OF_MODE, bgColorOf, modeOfProvider, outputName, resultUrl, summaryOf,
+} from './logic'
+import indexSource from './index.vue?raw'
 
 describe('模式与提供者', () => {
   it('两个模式各对应一个提供者，互不相同', () => {
@@ -45,5 +56,60 @@ describe('文件名与地址', () => {
   })
   it('摘要文案含尺寸、总耗时与推理耗时', () => {
     expect(summaryOf({ width: 1024, height: 768, elapsedMs: 812, inferMs: 640 })).toBe('1024×768 · 用时 812 ms（推理 640 ms）')
+  })
+})
+
+describe('边缘细化档位', () => {
+  /** 内存存储替身 */
+  const memory = (init?: string) => {
+    const m = new Map<string, string>(init ? [[REFINE_STORAGE_KEY, init]] : [])
+    return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v) }
+  }
+  it('四档按 关/轻/标准/强 排列，默认强', () => {
+    expect(REFINE_OPTIONS.map((o) => o.label)).toEqual(['关', '轻', '标准', '强'])
+    expect(REFINE_OPTIONS.map((o) => o.value)).toEqual(['off', 'light', 'standard', 'strong'])
+    expect(DEFAULT_REFINE).toBe('strong')
+  })
+  it('normalizeRefine：合法原样，其余回落默认', () => {
+    expect(normalizeRefine('light')).toBe('light')
+    expect(normalizeRefine('x')).toBe('strong')
+    expect(normalizeRefine(null)).toBe('strong')
+    expect(normalizeRefine(3)).toBe('strong')
+  })
+  it('没有记录用默认；有记录读出；脏数据回落；存储抛错也不崩', () => {
+    expect(loadRefine(memory())).toBe('strong')
+    expect(loadRefine(memory('off'))).toBe('off')
+    expect(loadRefine(memory('bogus'))).toBe('strong')
+    const boom = {
+      getItem: () => {
+        throw new Error('blocked')
+      },
+      setItem: () => {
+        throw new Error('blocked')
+      },
+    }
+    expect(loadRefine(boom)).toBe('strong')
+    expect(() => saveRefine('light', boom)).not.toThrow()
+  })
+  it('saveRefine 写入后能读回', () => {
+    const st = memory()
+    saveRefine('standard', st)
+    expect(loadRefine(st)).toBe('standard')
+  })
+  it('切换档位：有结果且档位变了才重跑；没出图或没变只记住', () => {
+    expect(shouldRerunOnRefine('strong', 'light', true)).toBe(true)
+    expect(shouldRerunOnRefine('strong', 'light', false)).toBe(false)
+    expect(shouldRerunOnRefine('strong', 'strong', true)).toBe(false)
+  })
+})
+
+describe('抠图页接线（无 DOM 环境，按源码守卫）', () => {
+  it('渲染四档分段控件与说明，切换走 onRefine，抠图调用带上 refine', () => {
+    expect(indexSource).toContain('REFINE_OPTIONS')
+    expect(indexSource).toContain('REFINE_HINT')
+    expect(indexSource).toContain('边缘细化')
+    expect(indexSource).toContain('@change="onRefine"')
+    expect(indexSource).toMatch(/aiMatting\(path, mode\.value, ctl\.signal, undefined, refine\.value\)/)
+    expect(indexSource).toContain('shouldRerunOnRefine(')
   })
 })
