@@ -14,8 +14,14 @@ import kotlin.math.roundToLong
  * @property provider 指定的提供者 id；null 表示用第一个支持识图的
  * @property path 页面缓存路径，如 `cache/pick/a.jpg`
  * @property topK 物品数；null 表示页面没传，由用户设置或 [AiClassifyPolicy.DEFAULT_TOP_K] 兜底
+ * @property strictness 判定严格度：0 宽松、1 标准、2 严格；null 表示缺省
  */
-data class AiClassifyRequest(val provider: String?, val path: String, val topK: Int? = null)
+data class AiClassifyRequest(
+    val provider: String?,
+    val path: String,
+    val topK: Int? = null,
+    val strictness: Int? = null,
+)
 
 /**
  * 识物的纯逻辑（选提供者归 [AiRouter]）：参数校验、词表解析、像素转换、结果序列化。无 Android 依赖，可单测。
@@ -32,8 +38,20 @@ object AiClassifyPolicy {
     /** topK 步进 */
     const val TOP_K_STEP = 1.0
 
+    /** 参数键：识别严格度（select，0 松、1 标准、2 严） */
+    const val KEY_CLIP_STRICTNESS = "clipStrictness"
+
+    /** 默认识别严格度：1（标准） */
+    const val DEFAULT_CLIP_STRICTNESS = 1
+
+    /** 识别严格度档位标签 */
+    val CLIP_STRICTNESS_OPTIONS: List<String> = listOf("松", "标准", "严")
+
+    /** 识别严格度档位对应值 */
+    val CLIP_STRICTNESS_VALUES: List<Double> = listOf(0.0, 1.0, 2.0)
+
     /**
-     * 识物的可调参数：返回物品数（高级）。范围引用本对象常量。
+     * 识物的可调参数：返回物品数（高级）与识别严格度。范围引用本对象常量。
      */
     val PARAM_SPECS: List<AiParamSpec> = listOf(
         AiParamSpec(
@@ -46,6 +64,19 @@ object AiClassifyPolicy {
             max = MAX_TOP_K.toDouble(),
             step = TOP_K_STEP,
             advanced = true,
+            applyTo = listOf(AiTask.CLASSIFY_IMAGE),
+        ),
+        AiParamSpec(
+            key = KEY_CLIP_STRICTNESS,
+            label = "识别严格度",
+            desc = "只影响“拿不准”提示的松紧，不改变排序",
+            kind = AiParamKind.SELECT,
+            default = DEFAULT_CLIP_STRICTNESS.toDouble(),
+            min = CLIP_STRICTNESS_VALUES.min(),
+            max = CLIP_STRICTNESS_VALUES.max(),
+            step = 1.0,
+            options = CLIP_STRICTNESS_OPTIONS,
+            optionValues = CLIP_STRICTNESS_VALUES,
             applyTo = listOf(AiTask.CLASSIFY_IMAGE),
         ),
     )

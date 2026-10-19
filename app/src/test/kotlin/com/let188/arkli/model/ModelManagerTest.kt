@@ -7,6 +7,7 @@ import com.let188.arkli.ai.ClipService
 import com.let188.arkli.ai.ClipBackend
 import com.let188.arkli.ai.ClipVocabMeta
 import com.let188.arkli.ai.ClassifyOutcome
+import com.let188.arkli.ai.ClassifyRunParams
 import com.let188.arkli.ai.ClipEnv
 import com.let188.arkli.ai.LocalClipProvider
 import com.let188.arkli.bridge.BridgeErrors
@@ -348,7 +349,7 @@ class ModelManagerTest {
             override fun load(modelPath: String) {}
             override fun unload() {}
             override fun setVocab(meta: ClipVocabMeta, vectorsF16le: ByteArray) {}
-            override fun classify(width: Int, height: Int, rgb: ByteArray, topK: Int): ClassifyOutcome = throw UnsupportedOperationException()
+            override fun classify(width: Int, height: Int, rgb: ByteArray, topK: Int, params: ClassifyRunParams?): ClassifyOutcome = throw UnsupportedOperationException()
         }
         val codec = object : ImageCodec {
             override fun decode(file: File, maxEdge: Int?): CodecImage = throw UnsupportedOperationException()

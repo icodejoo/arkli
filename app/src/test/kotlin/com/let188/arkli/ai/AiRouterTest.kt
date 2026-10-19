@@ -59,7 +59,7 @@ class AiRouterTest {
         override fun capabilities() = setOf(AiTask.CLASSIFY_IMAGE)
         override fun availability() = avail
         override suspend fun run(task: AiTask, input: String): AiRunResult = AiRunResult.Text("")
-        override suspend fun classify(file: File, topK: Int): ClassifyResult = throw UnsupportedOperationException()
+        override suspend fun classify(file: File, topK: Int, params: ClassifyRunParams?): ClassifyResult = throw UnsupportedOperationException()
     }
 
     /** 持有会话的替身 */

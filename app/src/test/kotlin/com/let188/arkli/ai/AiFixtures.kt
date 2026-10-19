@@ -29,14 +29,14 @@ internal object AiFixtures {
         override fun load(modelPath: String) = error("不该加载")
         override fun unload() {}
         override fun setVocab(meta: ClipVocabMeta, vectorsF16le: ByteArray) = error("不该设词表")
-        override fun classify(width: Int, height: Int, rgb: ByteArray, topK: Int): ClassifyOutcome = error("不该识别")
+        override fun classify(width: Int, height: Int, rgb: ByteArray, topK: Int, params: ClassifyRunParams?): ClassifyOutcome = error("不该识别")
     }
 
     /** 不该被调用的文字识别引擎（卸载除外） */
     class NoOcr : OcrBackend {
         override fun load(modelDir: String) = error("不该加载")
         override fun unload() {}
-        override fun recognize(width: Int, height: Int, rgb: ByteArray): OcrOutcome = error("不该识别")
+        override fun recognize(width: Int, height: Int, rgb: ByteArray, params: OcrRunParams?): OcrOutcome = error("不该识别")
         override fun cancel() {}
     }
 

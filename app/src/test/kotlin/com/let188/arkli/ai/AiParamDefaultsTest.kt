@@ -162,4 +162,48 @@ class AiParamDefaultsTest {
         store.put(q, AiGeneratePolicy.KEY_TEMPERATURE, 0.2)
         assertEquals(1.0f, filled.sampling!!.temperature)
     }
+
+    @Test
+    fun classify_fillsStrictnessOnlyWhenNotPassed_andKeepsExplicit() {
+        val c = provider(LocalClipProvider.ID)
+        val store = InMemoryAiParamStore().also {
+            it.put(c, AiClassifyPolicy.KEY_CLIP_STRICTNESS, 2.0)
+        }
+        val emptyReq = AiClassifyRequest(null, "cache/pick/a.jpg")
+        val filled = AiParamDefaults.fill(AiCall.Classify(emptyReq), c, store).req
+        assertEquals(2, filled.strictness)
+
+        val explicitReq = AiClassifyRequest(null, "cache/pick/a.jpg", strictness = 0)
+        val kept = AiParamDefaults.fill(AiCall.Classify(explicitReq), c, store).req
+        assertEquals(0, kept.strictness)
+
+        val unmod = AiParamDefaults.fill(AiCall.Classify(emptyReq), c, InMemoryAiParamStore()).req
+        assertNull(unmod.strictness)
+    }
+
+    @Test
+    fun ocr_fillsUserCustomValues_andKeepsExplicit_andLeavesUntouchedWhenUnmodified() {
+        val ocr = provider(LocalOcrProvider.ID)
+        val store = InMemoryAiParamStore().also {
+            it.put(ocr, AiOcrPolicy.KEY_OCR_SENSITIVITY, 0.0)
+            it.put(ocr, AiOcrPolicy.KEY_OCR_DROP_SCORE, 0.2)
+            it.put(ocr, AiOcrPolicy.KEY_OCR_MAX_SIDE, 1280.0)
+        }
+        val emptyReq = AiOcrRequest(null, "cache/pick/a.jpg")
+        val filled = AiParamDefaults.fill(AiCall.Ocr(emptyReq), ocr, store).req
+        assertEquals(0, filled.sensitivity)
+        assertEquals(0.2f, filled.dropScore!!, 1e-4f)
+        assertEquals(1280, filled.maxSide)
+
+        val explicitReq = AiOcrRequest(null, "cache/pick/a.jpg", sensitivity = 2, dropScore = 0.7f, maxSide = 640)
+        val kept = AiParamDefaults.fill(AiCall.Ocr(explicitReq), ocr, store).req
+        assertEquals(2, kept.sensitivity)
+        assertEquals(0.7f, kept.dropScore!!, 1e-4f)
+        assertEquals(640, kept.maxSide)
+
+        val unmod = AiParamDefaults.fill(AiCall.Ocr(emptyReq), ocr, InMemoryAiParamStore()).req
+        assertNull(unmod.sensitivity)
+        assertNull(unmod.dropScore)
+        assertNull(unmod.maxSide)
+    }
 }

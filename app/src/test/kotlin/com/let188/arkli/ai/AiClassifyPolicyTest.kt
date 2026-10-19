@@ -139,4 +139,19 @@ class AiClassifyPolicyTest {
         assertEquals(1000L, j.getLong("inferMs"))
         assertEquals("m", j.getString("modelId"))
     }
+
+    @Test
+    fun paramSpecs_legality() {
+        val specs = AiClassifyPolicy.PARAM_SPECS
+        assertEquals(2, specs.size)
+        specs.forEach { sp ->
+            assertTrue(sp.key.isNotEmpty())
+            assertTrue(sp.default in sp.min..sp.max)
+            assertTrue(sp.step > 0)
+            if (sp.kind == AiParamKind.SELECT) {
+                assertEquals(sp.options.size, sp.optionValues.size)
+                assertTrue(sp.default in sp.optionValues)
+            }
+        }
+    }
 }

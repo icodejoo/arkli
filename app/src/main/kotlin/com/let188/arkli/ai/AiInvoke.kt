@@ -284,13 +284,24 @@ class AiInvoker(
             val (r, c) = route(call, AiPort.Classify)
             val file = resolver.resolve(c.req.path)?.takeIf { it.isFile }
                 ?: throw BridgeException(BridgeErrors.BAD_PARAMS, BAD_IMAGE_PATH)
-            AiClassifyPolicy.resultJson(withContext(Dispatchers.IO) { r.port.classify(file, c.req.topK ?: AiClassifyPolicy.DEFAULT_TOP_K) })
+            AiClassifyPolicy.resultJson(withContext(Dispatchers.IO) {
+                r.port.classify(
+                    file,
+                    c.req.topK ?: AiClassifyPolicy.DEFAULT_TOP_K,
+                    ClassifyRunParams(c.req.strictness),
+                )
+            })
         }
         is AiCall.Ocr -> {
-            val o = route(call, AiPort.Ocr).first.port
-            val file = resolver.resolve(call.req.path)?.takeIf { it.isFile }
+            val (r, c) = route(call, AiPort.Ocr)
+            val file = resolver.resolve(c.req.path)?.takeIf { it.isFile }
                 ?: throw BridgeException(BridgeErrors.BAD_PARAMS, BAD_IMAGE_PATH)
-            AiOcrPolicy.resultJson(withContext(Dispatchers.IO) { o.recognize(file) })
+            AiOcrPolicy.resultJson(withContext(Dispatchers.IO) {
+                r.port.recognize(
+                    file,
+                    OcrRunParams(c.req.sensitivity, c.req.dropScore, c.req.maxSide),
+                )
+            })
         }
         is AiCall.Couplet -> {
             val (r, c) = route(call, AiPort.Couplet)

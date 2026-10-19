@@ -6,6 +6,7 @@ import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** 文字识别的纯逻辑：参数校验、尺寸收敛、结果序列化 */
@@ -64,5 +65,20 @@ class AiOcrPolicyTest {
     fun resultJson_emptyLinesGivesEmptyBlocks() {
         val j = AiOcrPolicy.resultJson(OcrResult(OcrOutcome(10, 10, emptyList(), 0), "m", 1, 0))
         assertEquals(0, j.getJSONArray("blocks").length())
+    }
+
+    @Test
+    fun paramSpecs_legality() {
+        val specs = AiOcrPolicy.PARAM_SPECS
+        assertEquals(3, specs.size)
+        specs.forEach { sp ->
+            assertTrue(sp.key.isNotEmpty())
+            assertTrue(sp.default in sp.min..sp.max)
+            assertTrue(sp.step > 0)
+            if (sp.kind == AiParamKind.SELECT) {
+                assertEquals(sp.options.size, sp.optionValues.size)
+                assertTrue(sp.default in sp.optionValues)
+            }
+        }
     }
 }

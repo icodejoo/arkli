@@ -70,10 +70,12 @@ class ClipService(
      *
      * @param file 图片文件
      * @param topK 物品数
+     * @param params 运行期可调参数；null 表示缺省
      * @return 识别结果
      * @throws BridgeException NOT_READY（模型未就绪）、BAD_PARAMS/INTERNAL（解码失败、推理失败）
      */
-    suspend fun classify(file: File, topK: Int): ClassifyResult = AiHeavyGate.run { classifyLocked(file, topK) }
+    suspend fun classify(file: File, topK: Int, params: ClassifyRunParams? = null): ClassifyResult =
+        AiHeavyGate.run { classifyLocked(file, topK, params) }
 
     /**
      * 释放已加载的模型会话（词表保留），排在重任务闸门后，不会打断正在进行的识别。
@@ -112,7 +114,7 @@ class ClipService(
     }
 
     /** 闸门内的实际流程 */
-    private fun classifyLocked(file: File, topK: Int): ClassifyResult {
+    private fun classifyLocked(file: File, topK: Int, params: ClassifyRunParams?): ClassifyResult {
         val model = env.modelFile()
         if (!isModelReady()) {
             throw BridgeException(BridgeErrors.NOT_READY, "识物模型未就绪：${model.path} 不存在，请先下载或放置模型")
@@ -128,7 +130,7 @@ class ClipService(
             rgb = AiClassifyPolicy.argbToRgb(img.toArgb())
         }
         val t1 = now()
-        val outcome = backend.classify(width, height, rgb, topK)
+        val outcome = backend.classify(width, height, rgb, topK, params)
         val t2 = now()
         return ClassifyResult(meta, outcome, MODEL_ID, elapsedMs = t2 - t0, inferMs = t2 - t1)
     }
@@ -219,7 +221,8 @@ class LocalClipProvider(private val service: ClipService, private val models: Mo
     override suspend fun run(task: AiTask, input: String): AiRunResult = throw AiRouter.notRunnable(ID, task)
 
     /** 转交服务 */
-    override suspend fun classify(file: File, topK: Int): ClassifyResult = service.classify(file, topK)
+    override suspend fun classify(file: File, topK: Int, params: ClassifyRunParams?): ClassifyResult =
+        service.classify(file, topK, params)
 
     /** 预热：加载词表与模型会话 */
     override suspend fun warmup(): WarmupResult = service.warmup()

@@ -6,6 +6,7 @@ import com.let188.arkli.bridge.BridgeErrors
 import com.let188.arkli.bridge.BridgeException
 import com.let188.arkli.image.AndroidImageCodec
 import uniffi.arkli_ffi.ClipFfiException
+import uniffi.arkli_ffi.ClipRunOptions
 import uniffi.arkli_ffi.ClipVocabEntry
 import uniffi.arkli_ffi.clipClassify
 import uniffi.arkli_ffi.clipLoad
@@ -74,8 +75,13 @@ internal class UniffiClipBackend(private val store: AiParamStore) : ClipBackend 
     }
 
     /** 分类 */
-    override fun classify(width: Int, height: Int, rgb: ByteArray, topK: Int): ClassifyOutcome = guard {
-        val r = clipClassify(width.toUInt(), height.toUInt(), rgb, topK.toUInt())
+    override fun classify(width: Int, height: Int, rgb: ByteArray, topK: Int, params: ClassifyRunParams?): ClassifyOutcome = guard {
+        val options = if (params?.strictness == null) {
+            null
+        } else {
+            ClipRunOptions(strictness = params.strictness.toUInt())
+        }
+        val r = clipClassify(width.toUInt(), height.toUInt(), rgb, topK.toUInt(), options)
         ClassifyOutcome(
             r.items.map { ClassifyHit(it.index.toInt(), it.score) },
             r.categories.map { CategoryProb(it.category, it.prob) },

@@ -37,12 +37,14 @@ class ClipServiceTest {
         val calls = mutableListOf<String>()
         var lastSize: Pair<Int, Int>? = null
         var lastRgbLen = 0
+        var lastParams: ClassifyRunParams? = null
         override fun load(modelPath: String) { calls += "load:${File(modelPath).name}" }
         override fun unload() { calls += "unload" }
         override fun setVocab(meta: ClipVocabMeta, vectorsF16le: ByteArray) { calls += "vocab:${meta.items.size}" }
-        override fun classify(width: Int, height: Int, rgb: ByteArray, topK: Int): ClassifyOutcome {
+        override fun classify(width: Int, height: Int, rgb: ByteArray, topK: Int, params: ClassifyRunParams?): ClassifyOutcome {
             lastSize = width to height
             lastRgbLen = rgb.size
+            lastParams = params
             calls += "classify:$topK"
             return ClassifyOutcome(listOf(ClassifyHit(0, 0.5f)), listOf(CategoryProb("R", 1f)), 1f, false)
         }
@@ -196,5 +198,15 @@ class ClipServiceTest {
         m.writeText("x")
         val up = AiPolicy.providersJson(listOf(p))
         assertEquals("classifyImage", up.getJSONArray("capabilities").getString(0))
+    }
+
+    @Test
+    fun classify_passesParamsToBackend() {
+        val m = File(tmp.root, "model.mnn").apply { writeText("x") }
+        val backend = FakeBackend()
+        val s = ClipService(env(m), backend, FakeCodec())
+        val img = File(tmp.root, "img.jpg").apply { writeText("x") }
+        runBlocking { s.classify(img, 5, ClassifyRunParams(strictness = 2)) }
+        assertEquals(ClassifyRunParams(strictness = 2), backend.lastParams)
     }
 }

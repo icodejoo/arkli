@@ -55,7 +55,7 @@ class AiInvokeTest {
             return TranslateResult("tr:${req.text}", 1, "omni-model", req.src, req.tgt)
         }
 
-        override suspend fun classify(file: File, topK: Int): ClassifyResult {
+        override suspend fun classify(file: File, topK: Int, params: ClassifyRunParams?): ClassifyResult {
             hits += AiModule.METHOD_CLASSIFY
             lastTopK = topK
             val vocab = ClipVocabMeta(1, listOf(ClipVocabItem("cup", "杯子", "cup", "R")), mapOf("R" to "可回收物"), "")
@@ -367,7 +367,7 @@ class AiInvokeTest {
         override fun capabilities() = setOf(AiTask.OCR)
         override fun availability() = AiAvailability.AVAILABLE
         override suspend fun run(task: AiTask, input: String): AiRunResult = throw AiRouter.notRunnable(id, task)
-        override suspend fun recognize(file: File): OcrResult = OcrResult(
+        override suspend fun recognize(file: File, params: OcrRunParams?): OcrResult = OcrResult(
             OcrOutcome(100, 50, listOf(OcrLine(listOf(OcrPoint(1f, 2f), OcrPoint(9f, 2f), OcrPoint(9f, 8f), OcrPoint(1f, 8f)), "你好", 0.98767f)), 7),
             "ocr-model", 12, 7,
         )

@@ -54,6 +54,19 @@ data class OcrOutcome(val width: Int, val height: Int, val lines: List<OcrLine>,
 data class OcrResult(val outcome: OcrOutcome, val modelId: String, val elapsedMs: Long, val inferMs: Long)
 
 /**
+ * 文字识别运行期可调参数（调用级）。
+ *
+ * @property sensitivity 检测灵敏度：0 宽松、1 标准、2 严格；null 表示缺省
+ * @property dropScore 识别最低得分阈值（0.0..=0.8）；null 表示缺省
+ * @property maxSide 检测图最长边上限（只允许 640/960/1280）；null 表示缺省
+ */
+data class OcrRunParams(
+    val sensitivity: Int? = null,
+    val dropScore: Float? = null,
+    val maxSide: Int? = null,
+)
+
+/**
  * 能识别图片文字的提供者端口（`ocr` 任务）。与文本类的 [AiProvider.run] 分开，因为输入是文件。
  *
  * 使用示例：`(registry.get("local-ocr") as OcrEngine).recognize(file)`
@@ -63,10 +76,11 @@ interface OcrEngine {
      * 识别一张图里的文字。
      *
      * @param file 图片文件
+     * @param params 运行期可调参数；null 表示缺省
      * @return 识别结果
      * @throws BridgeException NOT_READY（模型未就绪）、INTERNAL（解码或推理失败）
      */
-    suspend fun recognize(file: File): OcrResult
+    suspend fun recognize(file: File, params: OcrRunParams? = null): OcrResult
 }
 
 /**
@@ -89,9 +103,10 @@ interface OcrBackend {
      * @param width 宽
      * @param height 高
      * @param rgb 行优先 RGB，长度 `width * height * 3`
+     * @param params 运行期可调参数；null 表示缺省
      * @return 识别结果
      */
-    fun recognize(width: Int, height: Int, rgb: ByteArray): OcrOutcome
+    fun recognize(width: Int, height: Int, rgb: ByteArray, params: OcrRunParams? = null): OcrOutcome
 
     /** 打断正在进行的 [recognize]，可在任意线程调用，没有识别在跑时无副作用 */
     fun cancel()
@@ -143,11 +158,13 @@ class OcrService(
      * 识别一张图，排在重任务闸门后执行；协程被取消时打断识别。
      *
      * @param file 图片文件
+     * @param params 运行期可调参数；null 表示缺省
      * @return 识别结果
      * @throws BridgeException NOT_READY（模型未就绪）、BAD_PARAMS/INTERNAL（解码失败、推理失败）
      * @throws CancellationException 被取消
      */
-    suspend fun recognize(file: File): OcrResult = AiHeavyGate.run { recognizeLocked(file) }
+    suspend fun recognize(file: File, params: OcrRunParams? = null): OcrResult =
+        AiHeavyGate.run { recognizeLocked(file, params) }
 
     /**
      * 释放已加载的模型会话，排在重任务闸门后，不会打断正在进行的识别。
@@ -184,7 +201,7 @@ class OcrService(
     }
 
     /** 闸门内的实际流程：加载（按需），解码并收敛尺寸，识别（可被取消打断） */
-    private suspend fun recognizeLocked(file: File): OcrResult {
+    private suspend fun recognizeLocked(file: File, params: OcrRunParams?): OcrResult {
         val dir = env.modelDir()
         requireReady(dir)
         val t0 = now()
@@ -200,7 +217,7 @@ class OcrService(
             val height = img.height
             val rgb = AiClassifyPolicy.argbToRgb(img.toArgb())
             val t1 = now()
-            val outcome = recognizeCancellable(width, height, rgb)
+            val outcome = recognizeCancellable(width, height, rgb, params)
             val t2 = now()
             return OcrResult(outcome, MODEL_ID, elapsedMs = t2 - t0, inferMs = t2 - t1)
         } finally {
@@ -212,7 +229,7 @@ class OcrService(
      * 在 IO 线程跑阻塞的识别；外层协程被取消时立刻调 [OcrBackend.cancel] 让 Rust 在下一个检查点返回，
      * 而不是等一整张图跑完。正常结束不会触发取消。
      */
-    private suspend fun recognizeCancellable(width: Int, height: Int, rgb: ByteArray): OcrOutcome = coroutineScope {
+    private suspend fun recognizeCancellable(width: Int, height: Int, rgb: ByteArray, params: OcrRunParams?): OcrOutcome = coroutineScope {
         val finished = AtomicBoolean(false)
         val watcher = launch(start = CoroutineStart.UNDISPATCHED) {
             try {
@@ -222,7 +239,7 @@ class OcrService(
             }
         }
         try {
-            withContext(Dispatchers.IO) { backend.recognize(width, height, rgb) }
+            withContext(Dispatchers.IO) { backend.recognize(width, height, rgb, params) }
         } finally {
             finished.set(true)
             watcher.cancel()
@@ -282,7 +299,10 @@ class OcrService(
  * @param models 模型状态来源，对应清单里的 [OcrService.MODEL_ID]
  */
 class LocalOcrProvider(private val service: OcrService, private val models: ModelStateSource? = null) :
-    AiProvider, OcrEngine, AiSessionControl {
+    AiProvider, OcrEngine, AiSessionControl, AiTunable {
+    /** 可调参数：来自 [AiOcrPolicy.PARAM_SPECS]，范围与默认值不在这里另抄 */
+    override fun paramSpecs(): List<AiParamSpec> = AiOcrPolicy.PARAM_SPECS
+
     /** 固定 id */
     override val id: String = ID
 
@@ -313,7 +333,7 @@ class LocalOcrProvider(private val service: OcrService, private val models: Mode
     override suspend fun run(task: AiTask, input: String): AiRunResult = throw AiRouter.notRunnable(ID, task)
 
     /** 转交服务 */
-    override suspend fun recognize(file: File): OcrResult = service.recognize(file)
+    override suspend fun recognize(file: File, params: OcrRunParams?): OcrResult = service.recognize(file, params)
 
     /** 预热：加载模型会话 */
     override suspend fun warmup(): WarmupResult = service.warmup()

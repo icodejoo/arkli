@@ -254,7 +254,7 @@ class AiProviderContractTest {
         override fun availability() = AiAvailability.AVAILABLE
         override suspend fun run(task: AiTask, input: String): AiRunResult =
             if (task == AiTask.PROMPT) AiRunResult.Text("") else throw AiRouter.notRunnable(id, task)
-        override suspend fun recognize(file: java.io.File): OcrResult = throw UnsupportedOperationException()
+        override suspend fun recognize(file: java.io.File, params: OcrRunParams?): OcrResult = throw UnsupportedOperationException()
     }
 
     /** 说谎者 8：实现了 MattingEngine，却没声明 matting */
@@ -414,6 +414,15 @@ class AiProviderContractTest {
                 AiParamDefaults.KEY_MAX_TOKENS -> sp.optionValues.forEach {
                     if (it <= 0) out += "$label 档位 $it 不合法"
                 }
+                AiOcrPolicy.KEY_OCR_SENSITIVITY, AiClassifyPolicy.KEY_CLIP_STRICTNESS -> {
+                    if (sp.optionValues != listOf(0.0, 1.0, 2.0)) out += "$label optionValues 必须为 0, 1, 2"
+                }
+                AiOcrPolicy.KEY_OCR_DROP_SCORE -> {
+                    inside(0.0, 0.8)
+                }
+                AiOcrPolicy.KEY_OCR_MAX_SIDE -> {
+                    if (sp.optionValues != listOf(640.0, 960.0, 1280.0)) out += "$label optionValues 必须为 640, 960, 1280"
+                }
                 // topP / 重复惩罚是会话级参数，不进请求约束：只核对默认值落在自己的范围内
                 AiQwenPolicy.KEY_TOP_P, AiQwenPolicy.KEY_REPETITION_PENALTY ->
                     if (sp.default < sp.min - 1e-9 || sp.default > sp.max + 1e-9) out += "$label 默认值 ${sp.default} 不在 ${sp.min}~${sp.max}"
@@ -484,7 +493,7 @@ class AiProviderContractTest {
     fun everyTunableProvider_keepsParamInvariants() {
         val tunable = registered().filter { it is AiTunable }
         assertEquals(
-            listOf(LocalClipProvider.ID, LocalNllbProvider.ID, LocalQwenProvider.ID, LocalCoupletProvider.ID),
+            listOf(LocalClipProvider.ID, LocalOcrProvider.ID, LocalNllbProvider.ID, LocalQwenProvider.ID, LocalCoupletProvider.ID),
             tunable.map { it.id },
         )
         tunable.forEach { p ->
@@ -500,7 +509,7 @@ class AiProviderContractTest {
         for (i in 0 until arr.length()) {
             val o = arr.getJSONObject(i)
             val id = o.getString("id")
-            val expect = id in setOf(LocalClipProvider.ID, LocalNllbProvider.ID, LocalQwenProvider.ID, LocalCoupletProvider.ID)
+            val expect = id in setOf(LocalClipProvider.ID, LocalOcrProvider.ID, LocalNllbProvider.ID, LocalQwenProvider.ID, LocalCoupletProvider.ID)
             assertEquals("$id params 字段", expect, o.has("params"))
         }
     }
@@ -518,6 +527,35 @@ class AiProviderContractTest {
         val temp = qwen.paramSpecs().first { it.key == AiGeneratePolicy.KEY_TEMPERATURE }.toJson()
         assertEquals("prompt", temp.getJSONArray("applyTo").getString(0))
         assertEquals(false, temp.getBoolean("advanced"))
+    }
+
+    @Test
+    fun ocrAndClip_paramSpecs_jsonMatchesBridgeContract() {
+        val ocr = registered().first { it.id == LocalOcrProvider.ID } as AiTunable
+        val ocrSpecs = ocr.paramSpecs()
+        assertEquals(3, ocrSpecs.size)
+        val sensitivity = ocrSpecs.first { it.key == AiOcrPolicy.KEY_OCR_SENSITIVITY }.toJson()
+        assertEquals("select", sensitivity.getString("kind"))
+        assertEquals(1.0, sensitivity.getDouble("default"), 0.0)
+        assertEquals(3, sensitivity.getJSONArray("options").length())
+        assertEquals(3, sensitivity.getJSONArray("optionValues").length())
+        assertEquals("call", sensitivity.getString("scope"))
+
+        val dropScore = ocrSpecs.first { it.key == AiOcrPolicy.KEY_OCR_DROP_SCORE }.toJson()
+        assertEquals("slider", dropScore.getString("kind"))
+        assertEquals(0.5, dropScore.getDouble("default"), 0.0)
+
+        val maxSide = ocrSpecs.first { it.key == AiOcrPolicy.KEY_OCR_MAX_SIDE }.toJson()
+        assertEquals(true, maxSide.getBoolean("advanced"))
+        assertEquals(960.0, maxSide.getDouble("default"), 0.0)
+
+        val clip = registered().first { it.id == LocalClipProvider.ID } as AiTunable
+        val clipSpecs = clip.paramSpecs()
+        val strictness = clipSpecs.first { it.key == AiClassifyPolicy.KEY_CLIP_STRICTNESS }.toJson()
+        assertEquals("select", strictness.getString("kind"))
+        assertEquals(1.0, strictness.getDouble("default"), 0.0)
+        assertEquals(3, strictness.getJSONArray("options").length())
+        assertEquals(3, strictness.getJSONArray("optionValues").length())
     }
 
     @Test

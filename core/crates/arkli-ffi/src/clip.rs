@@ -73,6 +73,20 @@ pub struct ClipCategoryProb {
     pub prob: f32,
 }
 
+/// 宽松严格度档位对应值。
+pub const STRICTNESS_LOOSE: u32 = 0;
+/// 标准严格度档位对应值。
+pub const STRICTNESS_STANDARD: u32 = 1;
+/// 严格严格度档位对应值。
+pub const STRICTNESS_STRICT: u32 = 2;
+
+/// 单次分类选项。
+#[derive(Debug, Clone, Default, uniffi::Record)]
+pub struct ClipRunOptions {
+    /// 判定严格度：0 宽松、1 标准、2 严格
+    pub strictness: Option<u32>,
+}
+
 /// 分类结果。
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct ClipClassifyResult {
@@ -176,24 +190,73 @@ pub fn clip_set_vocab(entries: Vec<ClipVocabEntry>, dim: u32, vectors_f16le: Vec
 /// - `width`、`height`：像素宽高
 /// - `rgb`：行优先 RGB，长度 `width * height * 3`（原生已解码并摆正方向，Rust 负责缩放到 224）
 /// - `top_k`：返回物品数，0 视为默认 3
+/// - `options`：单次分类选项（判定严格度），传 None 表示使用默认值
 ///
 /// 返回：top-k 物品下标与余弦、分类概率、置信度。
 ///
 /// 错误：`NotLoaded`（没调用过 `clip_load` / `clip_set_vocab`）、`InvalidInput`、`Backend`。
+///
+/// 示例（Kotlin）：`val r = clipClassify(w.toUInt(), h.toUInt(), rgbBytes, 3u, null)`
 #[uniffi::export]
-pub fn clip_classify(width: u32, height: u32, rgb: Vec<u8>, top_k: u32) -> Result<ClipClassifyResult, ClipFfiError> {
+pub fn clip_classify(
+    width: u32,
+    height: u32,
+    rgb: Vec<u8>,
+    top_k: u32,
+    options: Option<ClipRunOptions>,
+) -> Result<ClipClassifyResult, ClipFfiError> {
+    let strictness = match options.and_then(|o| o.strictness) {
+        None => None,
+        Some(STRICTNESS_LOOSE) => Some(arkli_ai::classify::ClassifyStrictness::Loose),
+        Some(STRICTNESS_STANDARD) => Some(arkli_ai::classify::ClassifyStrictness::Standard),
+        Some(STRICTNESS_STRICT) => Some(arkli_ai::classify::ClassifyStrictness::Strict),
+        Some(other) => {
+            return Err(ClipFfiError::InvalidInput {
+                reason: format!(
+                    "未知的严格度档位：{other}，只允许 {STRICTNESS_LOOSE}（宽松）、{STRICTNESS_STANDARD}（标准）、{STRICTNESS_STRICT}（严格）"
+                ),
+            });
+        }
+    };
     let img = RawImage::new(width, height, PixelFormat::Rgb, rgb).map_err(map_err)?;
     let mut opts = ClassifyOptions::default();
     if top_k > 0 {
         opts.top_k = top_k as usize;
     }
+    if let Some(s) = strictness {
+        opts.uncertain_threshold = s.threshold();
+    }
     with_state(|s| {
-        let vocab = s.vocab.as_ref().ok_or_else(|| ClipFfiError::NotLoaded { reason: "词表未设置".into() })?;
-        let enc = s.encoder.as_mut().ok_or_else(|| ClipFfiError::NotLoaded { reason: "模型未加载".into() })?;
+        let vocab = s
+            .vocab
+            .as_ref()
+            .ok_or_else(|| ClipFfiError::NotLoaded {
+                reason: "词表未设置".into(),
+            })?;
+        let enc = s
+            .encoder
+            .as_mut()
+            .ok_or_else(|| ClipFfiError::NotLoaded {
+                reason: "模型未加载".into(),
+            })?;
         let r = classify_image(enc, vocab, &img, opts).map_err(map_err)?;
         Ok(ClipClassifyResult {
-            items: r.items.iter().map(|h| ClipItemHit { index: h.index as u32, score: h.score }).collect(),
-            categories: r.categories.into_iter().map(|c| ClipCategoryProb { category: c.category, prob: c.prob }).collect(),
+            items: r
+                .items
+                .iter()
+                .map(|h| ClipItemHit {
+                    index: h.index as u32,
+                    score: h.score,
+                })
+                .collect(),
+            categories: r
+                .categories
+                .into_iter()
+                .map(|c| ClipCategoryProb {
+                    category: c.category,
+                    prob: c.prob,
+                })
+                .collect(),
             confidence: r.confidence,
             uncertain: r.uncertain,
         })
@@ -234,7 +297,7 @@ mod tests {
         clip_unload();
         let (e, b) = tiny_vocab();
         clip_set_vocab(e, 2, b).unwrap();
-        let r = clip_classify(1, 1, vec![0; 3], 3);
+        let r = clip_classify(1, 1, vec![0; 3], 3, None);
         assert!(matches!(r, Err(ClipFfiError::NotLoaded { .. })));
     }
 
@@ -246,7 +309,21 @@ mod tests {
 
     #[test]
     fn 像素长度不对报入参错误() {
-        assert!(matches!(clip_classify(2, 2, vec![0; 5], 3), Err(ClipFfiError::InvalidInput { .. })));
+        assert!(matches!(clip_classify(2, 2, vec![0; 5], 3, None), Err(ClipFfiError::InvalidInput { .. })));
+    }
+
+    #[test]
+    fn 非法严格度档位报入参错误() {
+        let r = clip_classify(
+            1,
+            1,
+            vec![0; 3],
+            3,
+            Some(ClipRunOptions {
+                strictness: Some(7),
+            }),
+        );
+        assert!(matches!(r, Err(ClipFfiError::InvalidInput { .. })));
     }
 
     #[test]

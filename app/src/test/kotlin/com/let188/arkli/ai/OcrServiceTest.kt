@@ -46,6 +46,7 @@ class OcrServiceTest {
 
         @Volatile
         var cancelCalled = false
+        var lastParams: OcrRunParams? = null
         override fun load(modelDir: String) { calls += "load" }
         override fun unload() { calls += "unload" }
         override fun cancel() {
@@ -53,9 +54,10 @@ class OcrServiceTest {
             cancelled.countDown()
         }
 
-        override fun recognize(width: Int, height: Int, rgb: ByteArray): OcrOutcome {
+        override fun recognize(width: Int, height: Int, rgb: ByteArray, params: OcrRunParams?): OcrOutcome {
             lastSize = width to height
             lastRgbLen = rgb.size
+            lastParams = params
             calls += "recognize"
             if (block) {
                 started.countDown()
@@ -236,5 +238,16 @@ class OcrServiceTest {
         assertTrue(manifest.contains("\"id\": \"${OcrService.MODEL_ID}\""))
         OcrService.REQUIRED_FILES.forEach { assertTrue("清单缺 $it", manifest.contains("\"name\": \"$it\"")) }
         assertTrue(manifest.contains("\"dir\": \"$OCR_MODEL_DIR\""))
+    }
+
+    @Test
+    fun recognize_passesParamsToBackend() {
+        val dir = fullDir()
+        val backend = FakeBackend()
+        val svc = OcrService(env(dir), backend, FakeCodec())
+        val img = File(tmp.root, "img.jpg").apply { writeText("x") }
+        val params = OcrRunParams(sensitivity = 2, dropScore = 0.6f, maxSide = 1280)
+        runBlocking { svc.recognize(img, params) }
+        assertEquals(params, backend.lastParams)
     }
 }

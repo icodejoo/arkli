@@ -19,6 +19,46 @@ use crate::image::RawImage;
 pub const DEFAULT_TEMPERATURE: f32 = 100.0;
 /// 聚合置信度低于该值视为“拿不准”。
 pub const DEFAULT_UNCERTAIN_THRESHOLD: f32 = 0.8;
+/// 宽松模式下的拿不准阈值（只是围绕默认 0.8 对称收放，非调参所得）。
+pub const UNCERTAIN_THRESHOLD_LOOSE: f32 = 0.65;
+/// 严格模式下的拿不准阈值（只是围绕默认 0.8 对称收放，非调参所得）。
+pub const UNCERTAIN_THRESHOLD_STRICT: f32 = 0.9;
+
+/// 分类判定严格度档位。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ClassifyStrictness {
+    /// 宽松档位（阈值 0.65，减少“拿不准”判定）
+    Loose,
+    /// 标准档位（默认阈值 0.8）
+    #[default]
+    Standard,
+    /// 严格档位（阈值 0.9，提高确信度门槛）
+    Strict,
+}
+
+impl ClassifyStrictness {
+    /// 获取当前严格度对应的拿不准置信度阈值。
+    ///
+    /// - 返回：置信度阈值浮点数（0.0..=1.0）
+    ///
+    /// ```
+    /// use arkli_ai::classify::{
+    ///     ClassifyStrictness, DEFAULT_UNCERTAIN_THRESHOLD, UNCERTAIN_THRESHOLD_LOOSE,
+    ///     UNCERTAIN_THRESHOLD_STRICT,
+    /// };
+    /// assert_eq!(ClassifyStrictness::Loose.threshold(), UNCERTAIN_THRESHOLD_LOOSE);
+    /// assert_eq!(ClassifyStrictness::Standard.threshold(), DEFAULT_UNCERTAIN_THRESHOLD);
+    /// assert_eq!(ClassifyStrictness::Strict.threshold(), UNCERTAIN_THRESHOLD_STRICT);
+    /// ```
+    pub fn threshold(self) -> f32 {
+        match self {
+            Self::Loose => UNCERTAIN_THRESHOLD_LOOSE,
+            Self::Standard => DEFAULT_UNCERTAIN_THRESHOLD,
+            Self::Strict => UNCERTAIN_THRESHOLD_STRICT,
+        }
+    }
+}
+
 /// 默认返回的物品数。
 pub const DEFAULT_TOP_K: usize = 3;
 
@@ -471,5 +511,35 @@ mod tests {
         assert!((r.items[0].score - 1.0).abs() < 1e-3);
         assert!(classify(&[1.0], &v, ClassifyOptions::default()).is_err());
         assert!(classify(&[0.0, 0.0], &v, ClassifyOptions::default()).is_err());
+    }
+
+    #[test]
+    fn 严格度三档阈值映射() {
+        assert_eq!(ClassifyStrictness::Loose.threshold(), UNCERTAIN_THRESHOLD_LOOSE);
+        assert_eq!(ClassifyStrictness::Standard.threshold(), DEFAULT_UNCERTAIN_THRESHOLD);
+        assert_eq!(ClassifyStrictness::Strict.threshold(), UNCERTAIN_THRESHOLD_STRICT);
+    }
+
+    #[test]
+    fn 同一结果在严格下拿不准在宽松下不拿不准() {
+        let v = vocab_of(&[("a", "R", [1.0, 0.0]), ("b", "D", [0.0, 1.0])]);
+        let img = [1.0, 0.0];
+        let opt_strict = ClassifyOptions {
+            temperature: 1.0,
+            uncertain_threshold: ClassifyStrictness::Strict.threshold(),
+            ..Default::default()
+        };
+        let r_strict = classify(&img, &v, opt_strict).unwrap();
+        assert!(r_strict.confidence > UNCERTAIN_THRESHOLD_LOOSE && r_strict.confidence < UNCERTAIN_THRESHOLD_STRICT);
+        assert!(r_strict.uncertain, "置信度 {:.3} 应在 Strict 阈值 {:.2} 下判定为拿不准", r_strict.confidence, UNCERTAIN_THRESHOLD_STRICT);
+
+        let opt_loose = ClassifyOptions {
+            temperature: 1.0,
+            uncertain_threshold: ClassifyStrictness::Loose.threshold(),
+            ..Default::default()
+        };
+        let r_loose = classify(&img, &v, opt_loose).unwrap();
+        assert_eq!(r_strict.confidence, r_loose.confidence);
+        assert!(!r_loose.uncertain, "置信度 {:.3} 应在 Loose 阈值 {:.2} 下判定为拿得准", r_loose.confidence, UNCERTAIN_THRESHOLD_LOOSE);
     }
 }

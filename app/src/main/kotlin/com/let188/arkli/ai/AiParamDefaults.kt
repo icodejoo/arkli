@@ -31,6 +31,7 @@ object AiParamDefaults {
             is AiCall.Translate -> fillTranslate(call, provider.id, specs, store)
             is AiCall.Couplet -> fillCouplet(call, provider.id, specs, store)
             is AiCall.Classify -> fillClassify(call, provider.id, specs, store)
+            is AiCall.Ocr -> fillOcr(call, provider.id, specs, store)
             else -> call
         }
         return filled as C
@@ -69,10 +70,20 @@ object AiParamDefaults {
         return AiCall.Couplet(call.req.copy(temperature = t, topK = k))
     }
 
-    /** 识物：页面没传 topK 时用用户设置补，没有则保持 null（由分派处兜底） */
+    /** 识物：页面没传 topK、strictness 时用用户设置补，没有则保持 null（由分派处兜底） */
     private fun fillClassify(call: AiCall.Classify, id: String, specs: List<AiParamSpec>, store: AiParamStore): AiCall.Classify {
         val k = call.req.topK ?: user(specs, AiGeneratePolicy.KEY_TOP_K, id, store)?.toInt()
-        if (k == call.req.topK) return call
-        return AiCall.Classify(call.req.copy(topK = k))
+        val s = call.req.strictness ?: user(specs, AiClassifyPolicy.KEY_CLIP_STRICTNESS, id, store)?.toInt()
+        if (k == call.req.topK && s == call.req.strictness) return call
+        return AiCall.Classify(call.req.copy(topK = k, strictness = s))
+    }
+
+    /** 文字识别：页面没传的灵敏度、过滤分、最长边用用户设置补 */
+    private fun fillOcr(call: AiCall.Ocr, id: String, specs: List<AiParamSpec>, store: AiParamStore): AiCall.Ocr {
+        val sensitivity = call.req.sensitivity ?: user(specs, AiOcrPolicy.KEY_OCR_SENSITIVITY, id, store)?.toInt()
+        val dropScore = call.req.dropScore ?: user(specs, AiOcrPolicy.KEY_OCR_DROP_SCORE, id, store)?.toFloat()
+        val maxSide = call.req.maxSide ?: user(specs, AiOcrPolicy.KEY_OCR_MAX_SIDE, id, store)?.toInt()
+        if (sensitivity == call.req.sensitivity && dropScore == call.req.dropScore && maxSide == call.req.maxSide) return call
+        return AiCall.Ocr(call.req.copy(sensitivity = sensitivity, dropScore = dropScore, maxSide = maxSide))
     }
 }

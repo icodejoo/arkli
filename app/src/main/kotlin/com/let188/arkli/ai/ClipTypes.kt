@@ -76,6 +76,15 @@ data class ClassifyResult(
 )
 
 /**
+ * 识物运行期可调参数（调用级）。
+ *
+ * @property strictness 判定严格度：0 宽松、1 标准、2 严格；null 表示缺省
+ */
+data class ClassifyRunParams(
+    val strictness: Int? = null,
+)
+
+/**
  * 能识别图片的提供者（`classifyImage` 任务）。与文本类的 [AiProvider.run] 分开，因为输入是文件。
  *
  * 使用示例：`(registry.get("local-clip") as ImageClassifier).classify(file, 3)`
@@ -86,10 +95,11 @@ interface ImageClassifier {
      *
      * @param file 图片文件
      * @param topK 返回的物品数
+     * @param params 运行期可调参数；null 表示缺省
      * @return 识别结果
      * @throws com.let188.arkli.bridge.BridgeException NOT_READY（模型未就绪）、INTERNAL（解码或推理失败）
      */
-    suspend fun classify(file: File, topK: Int): ClassifyResult
+    suspend fun classify(file: File, topK: Int, params: ClassifyRunParams? = null): ClassifyResult
 }
 
 /**
@@ -121,9 +131,10 @@ interface ClipBackend {
      * @param height 高
      * @param rgb 行优先 RGB，长度 `width * height * 3`
      * @param topK 物品数
+     * @param params 运行期可调参数；null 表示缺省
      * @return 分类结果
      */
-    fun classify(width: Int, height: Int, rgb: ByteArray, topK: Int): ClassifyOutcome
+    fun classify(width: Int, height: Int, rgb: ByteArray, topK: Int, params: ClassifyRunParams? = null): ClassifyOutcome
 }
 
 /**

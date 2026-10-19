@@ -7,6 +7,7 @@ import com.let188.arkli.bridge.BridgeException
 import com.let188.arkli.image.AndroidImageCodec
 import kotlinx.coroutines.CancellationException
 import uniffi.arkli_ffi.OcrFfiException
+import uniffi.arkli_ffi.OcrRunOptions
 import uniffi.arkli_ffi.ocrCancel
 import uniffi.arkli_ffi.ocrLoad
 import uniffi.arkli_ffi.ocrRecognize
@@ -55,8 +56,17 @@ internal class UniffiOcrBackend(private val store: AiParamStore) : OcrBackend {
     override fun unload() = ocrUnload()
 
     /** 识别 */
-    override fun recognize(width: Int, height: Int, rgb: ByteArray): OcrOutcome = guard {
-        val r = ocrRecognize(width.toUInt(), height.toUInt(), rgb)
+    override fun recognize(width: Int, height: Int, rgb: ByteArray, params: OcrRunParams?): OcrOutcome = guard {
+        val options = if (params == null || (params.sensitivity == null && params.dropScore == null && params.maxSide == null)) {
+            null
+        } else {
+            OcrRunOptions(
+                sensitivity = params.sensitivity?.toUInt(),
+                dropScore = params.dropScore,
+                maxSide = params.maxSide?.toUInt(),
+            )
+        }
+        val r = ocrRecognize(width.toUInt(), height.toUInt(), rgb, options)
         OcrOutcome(
             r.width.toInt(),
             r.height.toInt(),
@@ -104,8 +114,8 @@ internal object OcrRuntime {
                 AndroidOcrEnv(context),
                 UniffiOcrBackend(store),
                 AndroidImageCodec(),
-                // LocalOcrProvider 未实现 AiTunable，无自身可调参数，故传 emptyList()
-                settingsKey = { AiMnnParams.fingerprint(LocalOcrProvider.ID, emptyList(), store) },
+                // LocalOcrProvider 参数规格来自 AiOcrPolicy.PARAM_SPECS
+                settingsKey = { AiMnnParams.fingerprint(LocalOcrProvider.ID, AiOcrPolicy.PARAM_SPECS, store) },
             ).also { service = it }
         }
     }

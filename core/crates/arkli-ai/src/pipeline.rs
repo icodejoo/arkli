@@ -26,6 +26,39 @@ const CLS_ROTATED_INDEX: usize = 1;
 /// 方向分类输出类别数。
 const CLS_CLASSES: usize = 2;
 
+/// 宽松检测框阈值（更灵敏，检出更多框）。
+pub const OCR_BOX_THRESH_LOOSE: f32 = 0.35;
+/// 严格检测框阈值（更保守，检出更少框）。
+pub const OCR_BOX_THRESH_STRICT: f32 = 0.6;
+/// 单次识别允许的最长边上限列表。
+pub const OCR_ALLOWED_MAX_SIDES: [u32; 3] = [640, 960, 1280];
+/// 识别结果最低得分阈值下限。
+pub const OCR_DROP_SCORE_MIN: f32 = 0.0;
+/// 识别结果最低得分阈值上限。
+pub const OCR_DROP_SCORE_MAX: f32 = 0.8;
+
+/// 文本检测灵敏度档位。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DetSensitivity {
+    /// 宽松档位（box_thresh = 0.35）
+    Loose,
+    /// 标准档位（保持模型加载配置）
+    Standard,
+    /// 严格档位（box_thresh = 0.6）
+    Strict,
+}
+
+/// 单次文字识别选项。
+#[derive(Default, Clone, Copy, PartialEq, Debug)]
+pub struct OcrCallOptions {
+    /// 检测灵敏度
+    pub sensitivity: Option<DetSensitivity>,
+    /// 识别最低得分过滤阈值（0.0..=0.8）
+    pub drop_score: Option<f32>,
+    /// 检测图最长边上限（只允许 640/960/1280）
+    pub max_side: Option<u32>,
+}
+
 /// OCR 管线参数。
 #[derive(Debug, Clone, PartialEq)]
 pub struct OcrOptions {
@@ -251,19 +284,91 @@ impl OcrPipeline {
     /// - `cancel`：取消令牌；触发后在下一个检查点返回 [`AiError::Cancelled`]
     /// - `progress`：进度回调。顺序：检测 0/1、检测 1/1、识别 k/n（每行一次；无文字时 0/0）
     /// - 返回：按阅读顺序排好的文本行，低于 `drop_score` 与空文本已剔除
+    ///
+    /// ```no_run
+    /// use arkli_ai::pipeline::OcrPipeline;
+    /// use arkli_ai::task::CancelToken;
+    /// use arkli_ai::RawImage;
+    /// # fn doc(p: &mut OcrPipeline, img: &RawImage) {
+    /// let lines = p.recognize(img, &CancelToken::new(), &mut |_| {}).unwrap();
+    /// # }
+    /// ```
     pub fn recognize(
         &mut self,
         image: &RawImage,
         cancel: &CancelToken,
         progress: &mut dyn FnMut(Progress),
     ) -> Result<Vec<TextLine>> {
-        if self.options.max_tile_height.is_some() {
+        self.recognize_with(image, &OcrCallOptions::default(), cancel, progress)
+    }
+
+    /// 按单次调用选项识别一张图里的所有文字。
+    ///
+    /// - `image`：已解码的原始像素图
+    /// - `call`：单次调用选项（灵敏度、丢弃得分阈值、最长边上限）
+    /// - `cancel`：取消令牌；触发后在下一个检查点返回 [`AiError::Cancelled`]
+    /// - `progress`：进度回调。顺序：检测 0/1、检测 1/1、识别 k/n
+    /// - 返回：按阅读顺序排好的文本行
+    ///
+    /// ```no_run
+    /// use arkli_ai::pipeline::{OcrPipeline, OcrCallOptions, DetSensitivity};
+    /// use arkli_ai::task::CancelToken;
+    /// use arkli_ai::RawImage;
+    /// # fn doc(p: &mut OcrPipeline, img: &RawImage) {
+    /// let opts = OcrCallOptions {
+    ///     sensitivity: Some(DetSensitivity::Loose),
+    ///     drop_score: Some(0.6),
+    ///     max_side: Some(960),
+    /// };
+    /// let lines = p.recognize_with(img, &opts, &CancelToken::new(), &mut |_| {}).unwrap();
+    /// # }
+    /// ```
+    pub fn recognize_with(
+        &mut self,
+        image: &RawImage,
+        call: &OcrCallOptions,
+        cancel: &CancelToken,
+        progress: &mut dyn FnMut(Progress),
+    ) -> Result<Vec<TextLine>> {
+        if let Some(ds) = call.drop_score {
+            if ds.is_nan() || ds < OCR_DROP_SCORE_MIN || ds > OCR_DROP_SCORE_MAX {
+                return Err(AiError::InvalidConfig(format!(
+                    "drop_score 必须在 {}..={} 范围内（非 NaN），当前为 {ds}",
+                    OCR_DROP_SCORE_MIN, OCR_DROP_SCORE_MAX
+                )));
+            }
+        }
+        if let Some(ms) = call.max_side {
+            if !OCR_ALLOWED_MAX_SIDES.contains(&ms) {
+                return Err(AiError::InvalidConfig(format!(
+                    "max_side 只允许 {:?}，当前为 {ms}",
+                    OCR_ALLOWED_MAX_SIDES
+                )));
+            }
+        }
+
+        let mut opts = self.options.clone();
+        if let Some(sens) = call.sensitivity {
+            match sens {
+                DetSensitivity::Loose => opts.det_post.box_thresh = OCR_BOX_THRESH_LOOSE,
+                DetSensitivity::Strict => opts.det_post.box_thresh = OCR_BOX_THRESH_STRICT,
+                DetSensitivity::Standard => {}
+            }
+        }
+        if let Some(ds) = call.drop_score {
+            opts.drop_score = ds;
+        }
+        if let Some(ms) = call.max_side {
+            opts.det_pre.max_side = ms;
+        }
+
+        if opts.max_tile_height.is_some() {
             return Err(AiError::Unsupported("大图分块识别尚未实现".into()));
         }
-        if image.width.max(image.height) > self.options.max_input_side {
+        if image.width.max(image.height) > opts.max_input_side {
             return Err(AiError::InvalidImage(format!(
                 "图像最长边超过 {}，请先降采样",
-                self.options.max_input_side
+                opts.max_input_side
             )));
         }
         cancel.check()?;
@@ -275,7 +380,7 @@ impl OcrPipeline {
             current: 0,
             total: 1,
         });
-        let det_in = preprocess_det(&rgb, &self.options.det_pre)?;
+        let det_in = preprocess_det(&rgb, &opts.det_pre)?;
         let (rw, rh) = (det_in.resized_w, det_in.resized_h);
         let prob = self.det.run(det_in.tensor)?;
         let expect = [1, 1, rh as i64, rw as i64];
@@ -285,7 +390,7 @@ impl OcrPipeline {
                 prob.shape
             )));
         }
-        let mut boxes = db_boxes(&prob.data, rw as usize, rh as usize, &self.options.det_post)?;
+        let mut boxes = db_boxes(&prob.data, rw as usize, rh as usize, &opts.det_post)?;
         map_to_source(&mut boxes, rw, rh, det_in.src_w, det_in.src_h);
         sort_reading_order(&mut boxes);
         progress(Progress {
@@ -310,15 +415,15 @@ impl OcrPipeline {
             if let Some(cls) = self.cls.as_mut() {
                 let t = preprocess_cls(
                     &crop,
-                    self.options.cls_height,
-                    self.options.cls_width,
-                    self.options.det_pre.channel_order,
+                    opts.cls_height,
+                    opts.cls_width,
+                    opts.det_pre.channel_order,
                 )?;
-                if is_rotated(&cls.run(t)?, self.options.cls_thresh)? {
+                if is_rotated(&cls.run(t)?, opts.cls_thresh)? {
                     crop = crop.rotate180();
                 }
             }
-            let t = preprocess_rec(&crop, &self.options.rec_pre)?;
+            let t = preprocess_rec(&crop, &opts.rec_pre)?;
             let out = self.rec.run(t)?;
             let [_, steps, classes] = out.shape[..] else {
                 return Err(AiError::BadModelOutput(format!(
@@ -329,7 +434,7 @@ impl OcrPipeline {
             let (text, score) = self
                 .decoder
                 .decode(&out.data, steps as usize, classes as usize)?;
-            if !text.is_empty() && score >= self.options.drop_score {
+            if !text.is_empty() && score >= opts.drop_score {
                 lines.push(TextLine {
                     quad: b.quad,
                     text,
@@ -638,5 +743,184 @@ c
         assert!(!is_rotated(&t(0.2, 0.8), 0.9).unwrap());
         assert!(!is_rotated(&t(0.95, 0.05), 0.9).unwrap());
         assert!(is_rotated(&Tensor::new(vec![1, 3], vec![0.0; 3]).unwrap(), 0.9).is_err());
+    }
+
+    #[test]
+    fn 缺省按次选项与默认识别完全一致() {
+        let calls1 = Arc::new(AtomicUsize::new(0));
+        let mut p1 = pipeline(None, calls1);
+        let res_legacy = p1.recognize(&white(), &CancelToken::new(), &mut |_| {}).unwrap();
+
+        let calls2 = Arc::new(AtomicUsize::new(0));
+        let mut p2 = pipeline(None, calls2);
+        let res_with = p2.recognize_with(&white(), &OcrCallOptions::default(), &CancelToken::new(), &mut |_| {}).unwrap();
+
+        assert_eq!(res_legacy, res_with);
+    }
+
+    #[test]
+    fn 按次选项越界报配置错误() {
+        let mut p = pipeline(None, Arc::new(AtomicUsize::new(0)));
+        let token = CancelToken::new();
+
+        // drop_score 0.9 越界（上限 0.8）
+        let opt_high = OcrCallOptions {
+            drop_score: Some(0.9),
+            ..Default::default()
+        };
+        assert!(matches!(
+            p.recognize_with(&white(), &opt_high, &token, &mut |_| {}),
+            Err(AiError::InvalidConfig(_))
+        ));
+
+        // drop_score 为 NaN 越界
+        let opt_nan = OcrCallOptions {
+            drop_score: Some(f32::NAN),
+            ..Default::default()
+        };
+        assert!(matches!(
+            p.recognize_with(&white(), &opt_nan, &token, &mut |_| {}),
+            Err(AiError::InvalidConfig(_))
+        ));
+
+        // max_side 800 越界（只允许 640/960/1280）
+        let opt_side = OcrCallOptions {
+            max_side: Some(800),
+            ..Default::default()
+        };
+        assert!(matches!(
+            p.recognize_with(&white(), &opt_side, &token, &mut |_| {}),
+            Err(AiError::InvalidConfig(_))
+        ));
+    }
+
+    #[test]
+    fn 按次选项生效_灵敏度_过滤阈值_检测尺寸() {
+        // 1. sensitivity 严格比标准少框，宽松不少于标准
+        let det_multi: Box<dyn Session> = Box::new(FnSession(|t: Tensor| {
+            let (h, w) = (t.shape[2] as usize, t.shape[3] as usize);
+            let mut d = vec![0.0f32; h * w];
+            for y in 10..20 {
+                for x in 10..50 {
+                    d[y * w + x] = 0.70;
+                }
+            }
+            for y in 30..40 {
+                for x in 10..50 {
+                    d[y * w + x] = 0.52;
+                }
+            }
+            for y in 50..60 {
+                for x in 10..50 {
+                    d[y * w + x] = 0.40;
+                }
+            }
+            Tensor::new(vec![1, 1, h as i64, w as i64], d)
+        }));
+        let mut p_sens = OcrPipeline::new(
+            det_multi,
+            fake_rec(Arc::new(AtomicUsize::new(0))),
+            None,
+            decoder(),
+            OcrOptions::default(),
+        );
+        let token = CancelToken::new();
+        let lines_strict = p_sens.recognize_with(
+            &white(),
+            &OcrCallOptions {
+                sensitivity: Some(DetSensitivity::Strict),
+                ..Default::default()
+            },
+            &token,
+            &mut |_| {},
+        ).unwrap();
+        let lines_std = p_sens.recognize_with(
+            &white(),
+            &OcrCallOptions {
+                sensitivity: Some(DetSensitivity::Standard),
+                ..Default::default()
+            },
+            &token,
+            &mut |_| {},
+        ).unwrap();
+        let lines_loose = p_sens.recognize_with(
+            &white(),
+            &OcrCallOptions {
+                sensitivity: Some(DetSensitivity::Loose),
+                ..Default::default()
+            },
+            &token,
+            &mut |_| {},
+        ).unwrap();
+        assert!(lines_strict.len() < lines_std.len(), "严格档位框数 ({}) 应少于标准档位 ({})", lines_strict.len(), lines_std.len());
+        assert!(lines_loose.len() >= lines_std.len(), "宽松档位框数 ({}) 应不少于标准档位 ({})", lines_loose.len(), lines_std.len());
+
+        // 2. drop_score 调高会过滤（识别输出得分 0.7，默认阈值 0.5 保留，调高到 0.75 过滤）
+        let rec_mid = Box::new(FnSession(|_t: Tensor| {
+            let seq = [1usize, 1, 0, 2, 2, 0, 3];
+            let mut d = vec![0.05f32; seq.len() * 5];
+            for (t, &c) in seq.iter().enumerate() {
+                d[t * 5 + c] = 0.7;
+            }
+            Tensor::new(vec![1, seq.len() as i64, 5], d)
+        }));
+        let mut p_drop = OcrPipeline::new(
+            fake_det(),
+            rec_mid,
+            None,
+            decoder(),
+            OcrOptions::default(),
+        );
+        let lines_keep = p_drop.recognize_with(
+            &white(),
+            &OcrCallOptions {
+                drop_score: Some(0.6),
+                ..Default::default()
+            },
+            &token,
+            &mut |_| {},
+        ).unwrap();
+        assert_eq!(lines_keep.len(), 1);
+        let lines_filtered = p_drop.recognize_with(
+            &white(),
+            &OcrCallOptions {
+                drop_score: Some(0.75),
+                ..Default::default()
+            },
+            &token,
+            &mut |_| {},
+        ).unwrap();
+        assert!(lines_filtered.is_empty(), "调高 drop_score 到 0.75 后应过滤掉得分为 0.7 的行");
+
+        // 3. max_side 640 时送入检测的尺寸变小
+        let det_seen_shape = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen = det_seen_shape.clone();
+        let det_spy = Box::new(FnSession(move |t: Tensor| {
+            *seen.lock().unwrap() = t.shape.clone();
+            let (h, w) = (t.shape[2] as usize, t.shape[3] as usize);
+            Tensor::new(vec![1, 1, h as i64, w as i64], vec![0.0f32; h * w])
+        }));
+        let mut p_size = OcrPipeline::new(
+            det_spy,
+            fake_rec(Arc::new(AtomicUsize::new(0))),
+            None,
+            decoder(),
+            OcrOptions::default(),
+        );
+        let big_img = RawImage::new(1200, 800, PixelFormat::Rgb, vec![255; 1200 * 800 * 3]).unwrap();
+        p_size.recognize_with(&big_img, &OcrCallOptions::default(), &token, &mut |_| {}).unwrap();
+        let default_w = det_seen_shape.lock().unwrap()[3];
+        p_size.recognize_with(
+            &big_img,
+            &OcrCallOptions {
+                max_side: Some(640),
+                ..Default::default()
+            },
+            &token,
+            &mut |_| {},
+        ).unwrap();
+        let small_w = det_seen_shape.lock().unwrap()[3];
+        assert_eq!(small_w, 640);
+        assert!(small_w < default_w, "max_side=640 送入检测宽 ({small_w}) 应小于默认最长边 ({default_w})");
     }
 }

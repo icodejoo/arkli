@@ -142,6 +142,11 @@ AI 中心详情弹窗里让用户调推理参数（温度、回答长度、束�
 | `local-nllb` | `numBeams` | select 快速 / 均衡 / 精细 | 值 1/2/4 即束宽，页面没传 `numBeams` 才补 |
 | `local-couplet` | `temperature` / `topK` | slider 0~1.5 / stepper（高级） | 页面没传才补 |
 | `local-clip` | `topK` | stepper 1~10（高级） | 页面没显式传才补 |
+| `local-clip` | `clipStrictness` | select 松 / 标准 / 严（默认 1） | 识别严格度，scope `call`。对应阈值 0.65/0.8/0.9（对称收放，非调参所得）；只影响“拿不准”提示的松紧，不改变排序 |
+| `local-ocr` | `ocrSensitivity` | select 宽松 / 标准 / 严格（默认 1） | 检测灵敏度，scope `call`。标准档按模型自带 box_thresh（v5 0.5 / v6 0.45），宽松 0.35、严格 0.6；档位越严越可能漏淡字，越宽松越可能多出杂框。`det_post.thresh`/`unclip_ratio` 默认依模型版本而不同、风险大，本期不开放 |
+| `local-ocr` | `ocrDropScore` | slider 0~0.8（步进 0.05，默认 0.5） | 过滤低置信文字，scope `call`。与 Rust DEFAULT_DROP_SCORE 一致，低于该分数的文字行直接丢弃 |
+| `local-ocr` | `ocrMaxSide` | select 640 / 960 / 1280（高级，默认 960） | 检测图最长边上限，scope `call`。送入检测网络前等比缩放到该最长边以内 |
+
 
 **`mnn` 伪提供者（步 4）**：所有本地 MNN 模型共用的基础参数，只出现在 `params.get/set/reset`（`AiParams.resolveTunable` 直接认 `provider: "mnn"`，返回 `AiMnnParams.SPECS`），**不进** `native.ai.providers`、不参与路由。现有一项 `numThread`（stepper 1~6，默认 4，scope `session`，默认值是原先各 `AndroidXxx.kt` 写死的 4 的唯一来源）。Clip/Couplet/Matting/Ocr/Translate 的 Backend 加载时读 `AiMnnParams.threads(store)`；语音识别（sherpa）有自己的线程数，不受影响。Web 入口：AI 中心顶部“MNN 基础参数”卡片 → `MnnParamsSheet.vue`（内嵌 `ModelParamsPanel provider-id="mnn"`）。
 

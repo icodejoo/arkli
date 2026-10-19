@@ -37,14 +37,32 @@ impl std::fmt::Display for OcrFfiError {
     }
 }
 
+/// 宽松灵敏度档位对应值。
+pub const SENSITIVITY_LOOSE: u32 = 0;
+/// 标准灵敏度档位对应值。
+pub const SENSITIVITY_STANDARD: u32 = 1;
+/// 严格灵敏度档位对应值。
+pub const SENSITIVITY_STRICT: u32 = 2;
+
 /// 把 arkli-ai 的错误映射到 FFI 错误。
 fn map_err(e: AiError) -> OcrFfiError {
     let reason = e.to_string();
     match e {
-        AiError::InvalidImage(_) => OcrFfiError::InvalidInput { reason },
+        AiError::InvalidImage(_) | AiError::InvalidConfig(_) => OcrFfiError::InvalidInput { reason },
         AiError::Cancelled => OcrFfiError::Cancelled { reason },
         _ => OcrFfiError::Backend { reason },
     }
+}
+
+/// 单次文字识别选项。
+#[derive(Debug, Clone, Default, uniffi::Record)]
+pub struct OcrRunOptions {
+    /// 检测灵敏度：0 宽松、1 标准、2 严格
+    pub sensitivity: Option<u32>,
+    /// 识别最低得分阈值（0.0..=0.8）
+    pub drop_score: Option<f32>,
+    /// 检测图最长边上限（只允许 640/960/1280）
+    pub max_side: Option<u32>,
 }
 
 /// 一个点，原图像素坐标。
@@ -143,22 +161,59 @@ fn load_mnn(s: &mut State, lib: &str, dir: &Path, threads: u32) -> Result<OcrPip
 /// 参数：
 /// - `width`、`height`：像素宽高（最长边不得超过 4096，更大的图由原生侧先降采样）
 /// - `rgb`：行优先 RGB，长度 `width * height * 3`（原生已解码并摆正方向）
+/// - `options`：单次识别选项（灵敏度、丢弃阈值、最长边），传 None 表示使用默认值
 ///
 /// 返回：按阅读顺序的文本行（坐标为输入图像素坐标），低分与空文本已剔除。
 ///
 /// 错误：`NotLoaded`（没调用过 `ocr_load`）、`InvalidInput`、`Cancelled`（期间调用了 `ocr_cancel`）、`Backend`。
 ///
-/// 示例（Kotlin）：`val r = ocrRecognize(w.toUInt(), h.toUInt(), rgbBytes)`
+/// 示例（Kotlin）：`val r = ocrRecognize(w.toUInt(), h.toUInt(), rgbBytes, null)`
 #[uniffi::export]
-pub fn ocr_recognize(width: u32, height: u32, rgb: Vec<u8>) -> Result<OcrResult, OcrFfiError> {
+pub fn ocr_recognize(
+    width: u32,
+    height: u32,
+    rgb: Vec<u8>,
+    options: Option<OcrRunOptions>,
+) -> Result<OcrResult, OcrFfiError> {
+    let call_opts = match options {
+        Some(opt) => {
+            let sensitivity = match opt.sensitivity {
+                None => None,
+                Some(SENSITIVITY_LOOSE) => Some(arkli_ai::pipeline::DetSensitivity::Loose),
+                Some(SENSITIVITY_STANDARD) => Some(arkli_ai::pipeline::DetSensitivity::Standard),
+                Some(SENSITIVITY_STRICT) => Some(arkli_ai::pipeline::DetSensitivity::Strict),
+                Some(other) => {
+                    return Err(OcrFfiError::InvalidInput {
+                        reason: format!(
+                            "未知的灵敏度档位：{other}，只允许 {SENSITIVITY_LOOSE}（宽松）、{SENSITIVITY_STANDARD}（标准）、{SENSITIVITY_STRICT}（严格）"
+                        ),
+                    });
+                }
+            };
+            arkli_ai::pipeline::OcrCallOptions {
+                sensitivity,
+                drop_score: opt.drop_score,
+                max_side: opt.max_side,
+            }
+        }
+        None => arkli_ai::pipeline::OcrCallOptions::default(),
+    };
+
     let img = RawImage::new(width, height, PixelFormat::Rgb, rgb).map_err(map_err)?;
     // 先登记令牌再等状态锁：排队期间调用 ocr_cancel 也能让本次一开始就取消
     let token = CancelToken::new();
     *CANCEL.lock().unwrap_or_else(|p| p.into_inner()) = Some(token.clone());
     with_state(|s| {
-        let p = s.pipeline.as_mut().ok_or_else(|| OcrFfiError::NotLoaded { reason: "文字识别模型未加载".into() })?;
+        let p = s
+            .pipeline
+            .as_mut()
+            .ok_or_else(|| OcrFfiError::NotLoaded {
+                reason: "文字识别模型未加载".into(),
+            })?;
         let t0 = Instant::now();
-        let lines = p.recognize(&img, &token, &mut |_| {}).map_err(map_err)?;
+        let lines = p
+            .recognize_with(&img, &call_opts, &token, &mut |_| {})
+            .map_err(map_err)?;
         Ok(OcrResult {
             width,
             height,
@@ -206,13 +261,27 @@ mod tests {
     #[test]
     fn 未加载模型时识别报未就绪() {
         ocr_unload();
-        let r = ocr_recognize(1, 1, vec![0; 3]);
+        let r = ocr_recognize(1, 1, vec![0; 3], None);
         assert!(matches!(r, Err(OcrFfiError::NotLoaded { .. })));
     }
 
     #[test]
     fn 像素长度不对报入参错误() {
-        assert!(matches!(ocr_recognize(2, 2, vec![0; 5]), Err(OcrFfiError::InvalidInput { .. })));
+        assert!(matches!(ocr_recognize(2, 2, vec![0; 5], None), Err(OcrFfiError::InvalidInput { .. })));
+    }
+
+    #[test]
+    fn 非法灵敏度档位报入参错误() {
+        let r = ocr_recognize(
+            1,
+            1,
+            vec![0; 3],
+            Some(OcrRunOptions {
+                sensitivity: Some(7),
+                ..Default::default()
+            }),
+        );
+        assert!(matches!(r, Err(OcrFfiError::InvalidInput { .. })));
     }
 
     #[test]
@@ -232,6 +301,7 @@ mod tests {
     fn 错误映射() {
         assert!(matches!(map_err(AiError::Cancelled), OcrFfiError::Cancelled { .. }));
         assert!(matches!(map_err(AiError::InvalidImage("x".into())), OcrFfiError::InvalidInput { .. }));
+        assert!(matches!(map_err(AiError::InvalidConfig("x".into())), OcrFfiError::InvalidInput { .. }));
         assert!(matches!(map_err(AiError::Backend("x".into())), OcrFfiError::Backend { .. }));
     }
 
@@ -252,7 +322,7 @@ mod tests {
         let raw = std::fs::read(env("ARKLI_OCR_RGB")).unwrap();
         let w = u32::from_le_bytes(raw[0..4].try_into().unwrap());
         let h = u32::from_le_bytes(raw[4..8].try_into().unwrap());
-        let r = ocr_recognize(w, h, raw[8..].to_vec()).unwrap();
+        let r = ocr_recognize(w, h, raw[8..].to_vec(), None).unwrap();
         println!("{}x{} {} 行 {}ms", r.width, r.height, r.lines.len(), r.elapsed_ms);
         for l in &r.lines {
             println!("  [{:.3}] {} {:?}", l.score, l.text, l.points[0]);
@@ -260,9 +330,9 @@ mod tests {
         assert_eq!(r.lines.len(), 6);
         assert!(r.lines.iter().all(|l| l.points.len() == 4));
         ocr_unload();
-        assert!(matches!(ocr_recognize(w, h, raw[8..].to_vec()), Err(OcrFfiError::NotLoaded { .. })));
+        assert!(matches!(ocr_recognize(w, h, raw[8..].to_vec(), None), Err(OcrFfiError::NotLoaded { .. })));
         ocr_load(env("ARKLI_MNN_DYLIB"), env("ARKLI_OCR_DIR"), 4).unwrap();
-        assert_eq!(ocr_recognize(w, h, raw[8..].to_vec()).unwrap().lines.len(), 6);
+        assert_eq!(ocr_recognize(w, h, raw[8..].to_vec(), None).unwrap().lines.len(), 6);
         ocr_unload();
     }
 }

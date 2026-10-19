@@ -55,5 +55,8 @@ pub use backend::{
 };
 pub use error::{AiError, Result};
 pub use image::{PixelFormat, RawImage};
-pub use pipeline::{OcrModelPaths, OcrOptions, OcrPipeline, TextLine};
+pub use classify::ClassifyStrictness;
+pub use pipeline::{
+    DetSensitivity, OcrCallOptions, OcrModelPaths, OcrOptions, OcrPipeline, TextLine,
+};
 pub use task::{CancelToken, Progress, Stage};

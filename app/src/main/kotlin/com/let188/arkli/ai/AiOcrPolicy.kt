@@ -10,8 +10,17 @@ import kotlin.math.roundToLong
  *
  * @property provider 指定的提供者 id；null 表示用第一个支持文字识别的
  * @property path 页面缓存路径，如 `cache/pick/a.jpg`
+ * @property sensitivity 检测灵敏度：0 宽松、1 标准、2 严格；null 表示缺省
+ * @property dropScore 识别最低得分阈值（0.0..=0.8）；null 表示缺省
+ * @property maxSide 检测图最长边上限（只允许 640/960/1280）；null 表示缺省
  */
-data class AiOcrRequest(val provider: String?, val path: String)
+data class AiOcrRequest(
+    val provider: String?,
+    val path: String,
+    val sensitivity: Int? = null,
+    val dropScore: Float? = null,
+    val maxSide: Int? = null,
+)
 
 /**
  * 文字识别的纯逻辑（选提供者归 [AiRouter]）：参数校验、尺寸收敛、结果序列化。无 Android 依赖，可单测。
@@ -19,6 +28,89 @@ data class AiOcrRequest(val provider: String?, val path: String)
  * 使用示例：`AiOcrPolicy.parse(JSONObject("""{"path":"cache/pick/a.jpg"}"""))`
  */
 object AiOcrPolicy {
+    /** 参数键：检测灵敏度（select，0 宽松、1 标准、2 严格） */
+    const val KEY_OCR_SENSITIVITY = "ocrSensitivity"
+
+    /** 参数键：过滤低置信文字（slider，0~0.8） */
+    const val KEY_OCR_DROP_SCORE = "ocrDropScore"
+
+    /** 参数键：检测图最长边（select，640/960/1280） */
+    const val KEY_OCR_MAX_SIDE = "ocrMaxSide"
+
+    /** 默认检测灵敏度：1（标准） */
+    const val DEFAULT_OCR_SENSITIVITY = 1
+
+    /** 检测灵敏度档位标签 */
+    val OCR_SENSITIVITY_OPTIONS: List<String> = listOf("宽松", "标准", "严格")
+
+    /** 检测灵敏度档位对应值 */
+    val OCR_SENSITIVITY_VALUES: List<Double> = listOf(0.0, 1.0, 2.0)
+
+    /** 默认识别低置信过滤分：0.5（与 core/crates/arkli-ai/src/pipeline.rs 的 DEFAULT_DROP_SCORE 同值） */
+    const val DEFAULT_DROP_SCORE = 0.5f
+
+    /** 过滤低置信文字下限 */
+    const val DROP_SCORE_MIN = 0.0
+
+    /** 过滤低置信文字上限 */
+    const val DROP_SCORE_MAX = 0.8
+
+    /** 过滤低置信文字步进 */
+    const val DROP_SCORE_STEP = 0.05
+
+    /** 默认检测图最长边：960 */
+    const val DEFAULT_OCR_MAX_SIDE = 960
+
+    /** 检测图最长边档位标签 */
+    val OCR_MAX_SIDE_OPTIONS: List<String> = listOf("640", "960", "1280")
+
+    /** 检测图最长边档位对应值 */
+    val OCR_MAX_SIDE_VALUES: List<Double> = listOf(640.0, 960.0, 1280.0)
+
+    /**
+     * 文字识别的可调参数规格列表。
+     */
+    val PARAM_SPECS: List<AiParamSpec> = listOf(
+        AiParamSpec(
+            key = KEY_OCR_SENSITIVITY,
+            label = "检测灵敏度",
+            desc = "标准档按模型自带的检测阈值；档位越严越可能漏淡字，越宽松越可能多出杂框",
+            kind = AiParamKind.SELECT,
+            default = DEFAULT_OCR_SENSITIVITY.toDouble(),
+            min = OCR_SENSITIVITY_VALUES.min(),
+            max = OCR_SENSITIVITY_VALUES.max(),
+            step = 1.0,
+            options = OCR_SENSITIVITY_OPTIONS,
+            optionValues = OCR_SENSITIVITY_VALUES,
+            applyTo = listOf(AiTask.OCR),
+        ),
+        AiParamSpec(
+            key = KEY_OCR_DROP_SCORE,
+            label = "过滤低置信文字",
+            desc = "丢弃识别置信度低于该阈值的文字行，数值越高漏字风险越大，数值越低噪点越多",
+            kind = AiParamKind.SLIDER,
+            default = DEFAULT_DROP_SCORE.toDouble(),
+            min = DROP_SCORE_MIN,
+            max = DROP_SCORE_MAX,
+            step = DROP_SCORE_STEP,
+            applyTo = listOf(AiTask.OCR),
+        ),
+        AiParamSpec(
+            key = KEY_OCR_MAX_SIDE,
+            label = "检测图最长边",
+            desc = "送入文字检测网络的最大尺寸；边长越大细小文字越清楚，耗时和内存也越高",
+            kind = AiParamKind.SELECT,
+            default = DEFAULT_OCR_MAX_SIDE.toDouble(),
+            min = OCR_MAX_SIDE_VALUES.min(),
+            max = OCR_MAX_SIDE_VALUES.max(),
+            step = 1.0,
+            options = OCR_MAX_SIDE_OPTIONS,
+            optionValues = OCR_MAX_SIDE_VALUES,
+            advanced = true,
+            applyTo = listOf(AiTask.OCR),
+        ),
+    )
+
     /** Rust 管线接受的最长边上限，与 `arkli-ai` 的 `MAX_INPUT_SIDE` 一致 */
     const val MAX_EDGE = 4096
 
