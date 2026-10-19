@@ -41,6 +41,7 @@ internal class UniffiTranslateBackend(private val store: AiParamStore) : Transla
     override fun load(modelDir: String): Unit = guard {
         val t0 = System.nanoTime()
         MnnNative.ensureLoaded()
+        MnnRuntimeOptions.apply(store)
         translateLoad(MNN_RUNTIME_LIB, modelDir, AiMnnParams.threads(store))
         Log.i(TRANSLATE_LOG_TAG, "模型加载完成 ${(System.nanoTime() - t0) / NANOS_PER_MS} ms")
         Unit

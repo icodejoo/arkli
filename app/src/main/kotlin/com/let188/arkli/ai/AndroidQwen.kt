@@ -52,7 +52,14 @@ internal class MnnQwenBackend(
         val originalJson = JSONObject(configFile.readText(Charsets.UTF_8))
         val modelDir = configFile.parentFile?.absolutePath ?: configFile.parent.orEmpty()
         val threads = AiMnnParams.threads(store).toInt()
-        val wrapped = QwenConfigWrapper.wrap(originalJson, modelDir, threads)
+        val wrapped = QwenConfigWrapper.wrap(
+            originalJson,
+            modelDir,
+            threads,
+            power = AiMnnParams.power(store),
+            topP = AiQwenPolicy.topP(store),
+            penalty = AiQwenPolicy.repetitionPenalty(store),
+        )
         val runtimeConfig = File(context.cacheDir, RUNTIME_CONFIG_FILE)
         runtimeConfig.writeText(wrapped.toString(), Charsets.UTF_8)
         handle = guard { MnnNative.nativeCreate(runtimeConfig.absolutePath.toByteArray(Charsets.UTF_8)) }

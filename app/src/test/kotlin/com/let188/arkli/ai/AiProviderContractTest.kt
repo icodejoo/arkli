@@ -414,6 +414,9 @@ class AiProviderContractTest {
                 AiParamDefaults.KEY_MAX_TOKENS -> sp.optionValues.forEach {
                     if (it <= 0) out += "$label 档位 $it 不合法"
                 }
+                // topP / 重复惩罚是会话级参数，不进请求约束：只核对默认值落在自己的范围内
+                AiQwenPolicy.KEY_TOP_P, AiQwenPolicy.KEY_REPETITION_PENALTY ->
+                    if (sp.default < sp.min - 1e-9 || sp.default > sp.max + 1e-9) out += "$label 默认值 ${sp.default} 不在 ${sp.min}~${sp.max}"
                 else -> out += "$label 没有对应的约束比对，请补 rangeViolations"
             }
         }

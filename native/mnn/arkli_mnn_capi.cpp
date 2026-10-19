@@ -57,6 +57,8 @@ constexpr int kMemNormal = 0;
 constexpr int kMemLow = 2;
 /** 精度模式的合法范围上限（Precision_Low_BF16） */
 constexpr int kPrecisionMax = 3;
+/** 性能模式的最大合法值（0 normal / 1 high / 2 low） */
+constexpr int kPowerMax = 2;
 /** 张量维数上限 */
 constexpr int kMaxNdim = 8;
 /** bionic `malloc.h` 的 M_PURGE（API 28+）：让分配器把空闲页还给系统；低版本调用返回 0，无副作用 */
@@ -130,6 +132,7 @@ std::string checkConfig(const arkli_mnn_config& c) {
         return "memory 只能是 2(low)";
     }
     if (c.precision < 0 || c.precision > kPrecisionMax) return "precision 超出范围 0..3";
+    if (c.power < 0 || c.power > kPowerMax) return "power 超出范围 0..2";
     return "";
 }
 
@@ -144,6 +147,7 @@ void arkli_mnn_config_default(arkli_mnn_config* cfg) {
     cfg->threads = kDefaultThreads;
     cfg->memory = kMemLow;
     cfg->precision = 0;
+    cfg->power = 0;
     cfg->rearrange = 1;
 }
 
@@ -182,6 +186,7 @@ arkli_mnn_net* arkli_mnn_net_load(const char* model, const char* weight, const c
         MNN::BackendConfig backend;
         backend.memory = c.memory == kMemLow ? MNN::BackendConfig::Memory_Low : MNN::BackendConfig::Memory_Normal;
         backend.precision = static_cast<MNN::BackendConfig::PrecisionMode>(c.precision);
+        backend.power = static_cast<MNN::BackendConfig::PowerMode>(c.power);
         MNN::ScheduleConfig sched;
         sched.type = MNN_FORWARD_CPU;
         sched.numThread = threads;

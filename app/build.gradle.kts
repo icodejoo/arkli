@@ -154,13 +154,17 @@ fun downloadTo(url: String, dst: File) {
 // 这里构建时按需下载并校验 sha256。改了 so 就要同步改下面的 sha256，并更新 docs/research/qwen35-mnn-model.md。
 // ---------------------------------------------------------------------------
 
-/** MNN 运行库 release 的下载前缀 */
-val mnnReleaseBase = "https://github.com/icodejoo/arkli/releases/download/mnn-478c10e-v3/"
+/**
+ * MNN 运行库 release 的下载前缀。
+ * 注意：v4 是新 so（ABI 2，C 接口加了 power）的版本号，尚未上传 release，当前靠 .gradle 缓存构建；
+ * 上传 v4 时三个 so 都要放（libMNN.so、libsherpa-mnn-jni.so 不变，但下载前缀相同）。
+ */
+val mnnReleaseBase = "https://github.com/icodejoo/arkli/releases/download/mnn-478c10e-v4/"
 
 /** MNN 运行库的文件名与 sha256 */
 val mnnLibs = mapOf(
     "libMNN.so" to "9cc1ff8b8b039431913a37ad1853dfa51162b41ae8b90927507204397096a353",
-    "libarkli-mnn.so" to "ede1c34ed694444463b26649b691088e8b667ea4b662a1a90606c5515c43a747",
+    "libarkli-mnn.so" to "accbe024d2a56b09ab34b2edaefdfe9b8a07f0eedee688d49b2473ea8b026bc2",
     "libsherpa-mnn-jni.so" to "aa79262fa17431bf513c7c4ac9855df02d09c1fe364396c0d8032df652a0c339",
 )
 

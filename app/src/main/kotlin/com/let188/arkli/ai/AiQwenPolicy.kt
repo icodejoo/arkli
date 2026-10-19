@@ -46,6 +46,36 @@ object AiQwenPolicy {
     /** top-k 步进 */
     const val TOP_K_STEP: Double = 1.0
 
+    /** 参数键：Top-P（核采样阈值） */
+    const val KEY_TOP_P = "topP"
+
+    /** 参数键：重复惩罚 */
+    const val KEY_REPETITION_PENALTY = "penalty"
+
+    /** Top-P 默认值：取自模型 config.json 的 topP（0.95），改动时须与模型文件一致 */
+    const val DEFAULT_TOP_P: Double = 0.95
+
+    /** Top-P 下限 */
+    const val TOP_P_MIN: Double = 0.5
+
+    /** Top-P 上限（1.0 即不截断） */
+    const val TOP_P_MAX: Double = 1.0
+
+    /** Top-P 步进 */
+    const val TOP_P_STEP: Double = 0.05
+
+    /** 重复惩罚默认值：取自模型 config.json 的 penalty（1.1），改动时须与模型文件一致 */
+    const val DEFAULT_REPETITION_PENALTY: Double = 1.1
+
+    /** 重复惩罚下限（1.0 即关闭） */
+    const val PENALTY_MIN: Double = 1.0
+
+    /** 重复惩罚上限：再高小模型容易词不达意 */
+    const val PENALTY_MAX: Double = 1.3
+
+    /** 重复惩罚步进 */
+    const val PENALTY_STEP: Double = 0.05
+
     /** 单次最多生成的 token 数；手机上约 17 tok/s，256 个约 15 秒，够摘要与改写，再长体验很差 */
     const val MAX_NEW_TOKENS = 256
 
@@ -167,6 +197,32 @@ object AiQwenPolicy {
             applyTo = listOf(AiTask.PROMPT),
         ),
         AiParamSpec(
+            key = KEY_TOP_P,
+            label = "累积概率阈值（Top-P）",
+            desc = "仅自由问答生效，改完下次使用时重新加载。只在累计概率达到该值的候选词里挑，越小越保守",
+            kind = AiParamKind.SLIDER,
+            default = DEFAULT_TOP_P,
+            min = TOP_P_MIN,
+            max = TOP_P_MAX,
+            step = TOP_P_STEP,
+            advanced = true,
+            scope = AiParamScope.SESSION,
+            applyTo = listOf(AiTask.PROMPT),
+        ),
+        AiParamSpec(
+            key = KEY_REPETITION_PENALTY,
+            label = "重复惩罚",
+            desc = "仅自由问答生效，改完下次使用时重新加载。越大越不爱重复用词，1.0 表示不惩罚；太大会让小模型词不达意",
+            kind = AiParamKind.SLIDER,
+            default = DEFAULT_REPETITION_PENALTY,
+            min = PENALTY_MIN,
+            max = PENALTY_MAX,
+            step = PENALTY_STEP,
+            advanced = true,
+            scope = AiParamScope.SESSION,
+            applyTo = listOf(AiTask.PROMPT),
+        ),
+        AiParamSpec(
             key = AiParamDefaults.KEY_MAX_TOKENS,
             label = "回答长度",
             desc = "控制单次生成字数上限，长文本耗时更长；不影响翻译",
@@ -180,6 +236,28 @@ object AiQwenPolicy {
             applyTo = SUPPORTED_TASKS.toList(),
         ),
     )
+
+    /**
+     * 读取当前生效的 Top-P。
+     *
+     * @param store 参数持久化存储
+     * @return 0.5~1.0
+     * @example `AiQwenPolicy.topP(store)`
+     */
+    fun topP(store: AiParamStore): Double = effective(store, KEY_TOP_P)
+
+    /**
+     * 读取当前生效的重复惩罚。
+     *
+     * @param store 参数持久化存储
+     * @return 1.0~1.3
+     * @example `AiQwenPolicy.repetitionPenalty(store)`
+     */
+    fun repetitionPenalty(store: AiParamStore): Double = effective(store, KEY_REPETITION_PENALTY)
+
+    /** 按键取本提供者当前生效值 */
+    private fun effective(store: AiParamStore, key: String): Double =
+        store.effectiveValue(LocalQwenProvider.ID, PARAM_SPECS.first { it.key == key })
 
     /**
      * 按任务拼出送给模型的用户内容（用任务对应的预设）。

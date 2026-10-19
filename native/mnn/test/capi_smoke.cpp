@@ -257,6 +257,26 @@ void testErrors(const std::string& model, const Case& c) {
     bad.memory = 1;
     CHECK(arkli_mnn_net_load(model.c_str(), nullptr, in.ptrs.data(), (int)in.ptrs.size(), out.ptrs.data(),
                              (int)out.ptrs.size(), &bad, err, kErrLen) == nullptr, "memory=1 非法");
+    // power / precision：合法取值能加载，越界被拒
+    for (int pw = 0; pw <= 2; ++pw) {
+        arkli_mnn_config ok = cfg;
+        ok.power = pw;
+        ok.precision = pw == 1 ? 1 : 0;
+        arkli_mnn_net* n2 = arkli_mnn_net_load(model.c_str(), nullptr, in.ptrs.data(), (int)in.ptrs.size(),
+                                               out.ptrs.data(), (int)out.ptrs.size(), &ok, err, kErrLen);
+        CHECK(n2 != nullptr, std::string("power 合法值应能加载: ") + err);
+        if (n2) arkli_mnn_net_free(n2);
+    }
+    for (int badPower : {-1, 3}) {
+        arkli_mnn_config bp = cfg;
+        bp.power = badPower;
+        CHECK(arkli_mnn_net_load(model.c_str(), nullptr, in.ptrs.data(), (int)in.ptrs.size(), out.ptrs.data(),
+                                 (int)out.ptrs.size(), &bp, err, kErrLen) == nullptr, "power 越界应被拒");
+    }
+    arkli_mnn_config badPrec = cfg;
+    badPrec.precision = 4;
+    CHECK(arkli_mnn_net_load(model.c_str(), nullptr, in.ptrs.data(), (int)in.ptrs.size(), out.ptrs.data(),
+                             (int)out.ptrs.size(), &badPrec, err, kErrLen) == nullptr, "precision=4 非法");
     // 不给 err 缓冲也不能崩
     CHECK(arkli_mnn_net_load("Z:/不存在/x.mnn", nullptr, in.ptrs.data(), 1, out.ptrs.data(), 1, &cfg, nullptr, 0) == nullptr, "err 为 NULL");
 

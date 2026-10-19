@@ -36,7 +36,7 @@ extern "C" {
 #endif
 
 /** ABI 版本号；接口有不兼容改动时递增，调用方 dlopen 后要先校验 */
-#define ARKLI_MNN_ABI 1
+#define ARKLI_MNN_ABI 2
 
 /** 一个已加载的模型：一个 Module 加自己独占的 RuntimeManager */
 typedef struct arkli_mnn_net arkli_mnn_net;
@@ -51,6 +51,8 @@ typedef struct {
     int memory;
     /** 精度模式：0 normal / 1 high / 2 low(fp16，目标机不支持，慎用) / 3 bf16 */
     int precision;
+    /** 性能模式：0 normal / 1 high（占满大核，更快更烫）/ 2 low（省电，明显变慢）；其他值报错 */
+    int power;
     /** 非 0 则加载时预重排权重：稳态内存回到权重体积、峰值更低（生产建议 1） */
     int rearrange;
 } arkli_mnn_config;
@@ -88,7 +90,7 @@ enum {
 ARKLI_MNN_API int arkli_mnn_abi_version(void);
 
 /**
- * 用默认值填充配置：threads=4、memory=2(low)、precision=0、rearrange=1。
+ * 用默认值填充配置：threads=4、memory=2(low)、precision=0、power=0、rearrange=1。
  * @param cfg 待填充的配置，NULL 时什么也不做
  */
 ARKLI_MNN_API void arkli_mnn_config_default(arkli_mnn_config* cfg);

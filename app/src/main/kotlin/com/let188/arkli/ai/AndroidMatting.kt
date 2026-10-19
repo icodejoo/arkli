@@ -66,6 +66,7 @@ internal class UniffiMattingBackend(private val mode: MattingMode, private val s
     override fun load(modelPath: String): Unit = guard {
         val t0 = System.nanoTime()
         MnnNative.ensureLoaded()
+        MnnRuntimeOptions.apply(store)
         mattingLoad(MNN_RUNTIME_LIB, ffiMode, modelPath, AiMnnParams.threads(store))
         Log.i(MATTING_LOG_TAG, "${mode.wire} 模型加载完成 ${(System.nanoTime() - t0) / MATTING_NANOS_PER_MS} ms")
         Unit

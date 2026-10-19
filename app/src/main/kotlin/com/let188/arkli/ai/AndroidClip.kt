@@ -60,6 +60,7 @@ internal class UniffiClipBackend(private val store: AiParamStore) : ClipBackend 
     /** 加载 MNN 运行库与模型（`.mnn` 在 Rust 侧自动选 MNN 后端；先确保 so 已载入） */
     override fun load(modelPath: String) = guard {
         MnnNative.ensureLoaded()
+        MnnRuntimeOptions.apply(store)
         clipLoad(MNN_RUNTIME_LIB, modelPath, AiMnnParams.threads(store))
     }
 

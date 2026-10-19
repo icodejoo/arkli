@@ -26,6 +26,7 @@ pub mod ffi;
 use std::ffi::{c_char, c_int, CString};
 use std::path::{Path, PathBuf};
 use std::ptr::{self, NonNull};
+use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::backend::{GraphSession, GraphTensorSession, GraphValue, Session};
@@ -37,6 +38,23 @@ use ffi::{Api, RawNet, RawVal, DTYPE_F32, DTYPE_I32, ERR_BUF_LEN, MAX_NDIM};
 
 /// 默认 CPU 线程数。
 pub const DEFAULT_THREADS: i32 = 4;
+/// 性能模式的最大合法值（0 normal / 1 high / 2 low）。
+pub const POWER_MAX: i32 = 2;
+
+/// 进程级性能模式设置，各 `*_load` 构造配置时读取。
+static RUNTIME_POWER: AtomicI32 = AtomicI32::new(0);
+
+/// 设置进程级的 MNN 性能模式；之后新建的会话生效，已加载的不受影响。
+///
+/// 参数：
+/// - `power`：0 均衡 / 1 性能 / 2 省电；其他值按均衡处理
+///
+/// 示例：`arkli_ai::mnn::set_runtime_options(1);`
+pub fn set_runtime_options(power: i32) {
+    let w = if (0..=POWER_MAX).contains(&power) { power } else { 0 };
+    RUNTIME_POWER.store(w, Ordering::Relaxed);
+}
+
 /// 外置权重文件的后缀：`model.mnn` 的权重在 `model.mnn.weight`。
 pub const WEIGHT_SUFFIX: &str = ".weight";
 
@@ -72,6 +90,8 @@ pub struct MnnConfig {
     memory: c_int,
     /// 精度模式（0 normal / 1 high / 2 fp16 / 3 bf16）
     precision: c_int,
+    /// 性能模式（0 normal / 1 high / 2 low）
+    power: c_int,
     /// 非 0 则加载时预重排权重
     rearrange: c_int,
 }
@@ -79,11 +99,23 @@ pub struct MnnConfig {
 impl Default for MnnConfig {
     /// 默认：4 线程、low 内存、normal 精度、预重排（与 C 侧 `arkli_mnn_config_default` 一致）。
     fn default() -> Self {
-        Self { threads: DEFAULT_THREADS, memory: ffi::MEMORY_LOW, precision: 0, rearrange: 1 }
+        Self { threads: DEFAULT_THREADS, memory: ffi::MEMORY_LOW, precision: 0, power: 0, rearrange: 1 }
     }
 }
 
 impl MnnConfig {
+    /// 以进程级运行时设置（见 [`set_runtime_options`]）为底的配置，各模型加载入口用它。
+    pub fn runtime() -> Self {
+        Self::default()
+            .with_power(RUNTIME_POWER.load(Ordering::Relaxed))
+    }
+
+    /// 设置性能模式：0 均衡 / 1 性能 / 2 省电，越界按均衡。
+    pub fn with_power(mut self, power: i32) -> Self {
+        self.power = if (0..=POWER_MAX).contains(&power) { power } else { 0 };
+        self
+    }
+
     /// 设置线程数；0 视为默认值 4。
     pub fn with_threads(mut self, threads: u32) -> Self {
         self.threads = if threads == 0 { DEFAULT_THREADS } else { threads as c_int };
@@ -107,6 +139,7 @@ impl MnnConfig {
             threads: self.threads,
             memory: self.memory,
             precision: self.precision,
+            power: self.power,
             rearrange: self.rearrange,
         }
     }
@@ -263,7 +296,7 @@ impl MnnRuntime {
     /// - `threads`：线程数，0 视为默认 4
     pub fn load_clip_encoder(&self, model: &Path, threads: u32) -> Result<ClipEncoder> {
         let weight = external_weight_path(model);
-        let cfg = MnnConfig::default().with_threads(threads);
+        let cfg = MnnConfig::runtime().with_threads(threads);
         let net = self.load_net(model, weight.as_deref(), &[INPUT_NAME], &[OUTPUT_NAME], &cfg)?;
         Ok(ClipEncoder::from_graph(net))
     }
@@ -298,7 +331,7 @@ impl MnnRuntime {
     /// - `mode`：抠图模式，决定输入输出名、缩放边长与归一化
     /// - `threads`：线程数，0 视为默认 4
     pub fn load_matter(&self, model: &Path, mode: MattingMode, threads: u32) -> Result<Matter<MnnNet>> {
-        let cfg = MnnConfig::default().with_threads(threads);
+        let cfg = MnnConfig::runtime().with_threads(threads);
         let net = self.load_net(model, external_weight_path(model).as_deref(), &[mode.input_name()], &[mode.output_name()], &cfg)?;
         Ok(Matter::new(net, mode))
     }
@@ -309,7 +342,7 @@ impl MnnRuntime {
     /// - `threads`：线程数，0 视为默认 4
     /// - `options`：管线参数
     pub fn load_ocr_pipeline_with(&self, dir: &Path, threads: u32, options: OcrOptions) -> Result<OcrPipeline> {
-        let cfg = MnnConfig::default().with_threads(threads);
+        let cfg = MnnConfig::runtime().with_threads(threads);
         let mut loader = |p: &Path| -> Result<Box<dyn Session>> {
             let net = self.load_net(p, external_weight_path(p).as_deref(), &[OCR_INPUT_NAME], &[OCR_OUTPUT_NAME], &cfg)?;
             Ok(Box::new(GraphTensorSession::new(net)))
@@ -510,8 +543,25 @@ mod tests {
     #[test]
     fn 默认配置是low加预重排() {
         let c = MnnConfig::default();
-        assert_eq!(c.raw(), ffi::RawConfig { threads: 4, memory: 2, precision: 0, rearrange: 1 });
+        assert_eq!(c.raw(), ffi::RawConfig { threads: 4, memory: 2, precision: 0, power: 0, rearrange: 1 });
         assert_eq!(std::mem::size_of::<MnnConfig>(), std::mem::size_of::<ffi::RawConfig>());
+    }
+
+    #[test]
+    fn 性能模式可设且越界回落() {
+        assert_eq!(MnnConfig::default().with_power(2).raw().power, 2);
+        assert_eq!(MnnConfig::default().with_power(9).raw().power, 0);
+        assert_eq!(MnnConfig::default().with_power(-1).raw().power, 0);
+    }
+
+    #[test]
+    fn 进程级设置被runtime读取() {
+        set_runtime_options(1);
+        let c = MnnConfig::runtime();
+        assert_eq!(c.raw().power, 1);
+        set_runtime_options(7);
+        let c = MnnConfig::runtime();
+        assert_eq!(c.raw().power, 0);
     }
 
     #[test]

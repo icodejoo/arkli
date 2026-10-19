@@ -7,6 +7,7 @@ pub mod clip;
 pub mod couplet;
 pub mod matting;
 pub mod mem;
+pub mod mnn_options;
 pub mod ocr;
 pub mod translate;
 

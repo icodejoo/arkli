@@ -440,7 +440,7 @@ impl Engine<MnnRunner<MnnNet>> {
         let (layers, heads, head_dim) = manifest.decoder_dims();
         let names = graph_names(layers);
         let intra = if threads > 0 { threads } else { manifest.execution.intra_threads as u32 };
-        let cfg = MnnConfig::default().with_threads(intra);
+        let cfg = MnnConfig::runtime().with_threads(intra);
         let load = |key: &str, data_key: &str, ins: &[String], outs: &[String]| -> Result<MnnNet, TranslateError> {
             let model = manifest.resolve_file(dir, key)?;
             let weight = weight_for(&manifest, dir, data_key, &model)?;

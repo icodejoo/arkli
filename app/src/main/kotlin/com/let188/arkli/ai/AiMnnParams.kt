@@ -14,6 +14,15 @@ object AiMnnParams {
     /** 参数键：推理线程数 */
     const val KEY_NUM_THREAD = "numThread"
 
+    /** 参数键：性能模式 */
+    const val KEY_POWER = "power"
+
+    /** 性能模式取值：均衡（MNN 的 Power_Normal） */
+    const val POWER_NORMAL = 0
+
+    /** 性能模式取值：性能（Power_High） */
+    const val POWER_HIGH = 1
+
     /** 默认线程数 */
     const val DEFAULT_THREADS = 4
 
@@ -41,6 +50,19 @@ object AiMnnParams {
             step = STEP_THREADS,
             scope = AiParamScope.SESSION,
         ),
+        AiParamSpec(
+            key = KEY_POWER,
+            label = "性能模式",
+            desc = "性能档固定用大核计算，在大小核调度不好的手机上可能更快，代价是更耗电；改完下次使用时重新加载",
+            kind = AiParamKind.SELECT,
+            default = POWER_NORMAL.toDouble(),
+            min = POWER_NORMAL.toDouble(),
+            max = POWER_HIGH.toDouble(),
+            step = 1.0,
+            options = listOf("均衡", "性能"),
+            optionValues = listOf(POWER_NORMAL, POWER_HIGH).map { it.toDouble() },
+            scope = AiParamScope.SESSION,
+        ),
     )
 
     /**
@@ -54,6 +76,19 @@ object AiMnnParams {
         val spec = SPECS.first { it.key == KEY_NUM_THREAD }
         return store.effectiveValue(PROVIDER_ID, spec).toUInt()
     }
+
+    /**
+     * 读取当前生效的性能模式。
+     *
+     * @param store 参数持久化存储
+     * @return 0 均衡 / 1 性能
+     * @example `AiMnnParams.power(store)`
+     */
+    fun power(store: AiParamStore): Int = intValue(store, KEY_POWER)
+
+    /** 按键取当前生效值并取整 */
+    private fun intValue(store: AiParamStore, key: String): Int =
+        store.effectiveValue(PROVIDER_ID, SPECS.first { it.key == key }).toInt()
 
     /**
      * 计算并入 MNN 公用会话参数后的提供者会话指纹。

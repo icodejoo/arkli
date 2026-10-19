@@ -513,7 +513,7 @@ mod loader {
         }
         let model = dir.join(FILE_MODEL);
         let weight = external_weight_path(&model);
-        let cfg = MnnConfig::default().with_threads(threads);
+        let cfg = MnnConfig::runtime().with_threads(threads);
         let net = rt.load_net(&model, weight.as_deref(), &[INPUT_IDS, INPUT_POSITIONS], &[OUTPUT_LOGITS], &cfg)?;
         Couplet::new(net, vocab)
     }

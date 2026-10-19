@@ -45,6 +45,7 @@ internal class UniffiOcrBackend(private val store: AiParamStore) : OcrBackend {
     override fun load(modelDir: String): Unit = guard {
         val t0 = System.nanoTime()
         MnnNative.ensureLoaded()
+        MnnRuntimeOptions.apply(store)
         ocrLoad(MNN_RUNTIME_LIB, modelDir, AiMnnParams.threads(store))
         Log.i(OCR_LOG_TAG, "模型加载完成 ${(System.nanoTime() - t0) / OCR_NANOS_PER_MS} ms")
         Unit

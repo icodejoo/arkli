@@ -44,6 +44,7 @@ internal class UniffiCoupletBackend(private val store: AiParamStore) : CoupletBa
     override fun load(modelDir: String): Unit = guard {
         val t0 = System.nanoTime()
         MnnNative.ensureLoaded()
+        MnnRuntimeOptions.apply(store)
         coupletLoad(MNN_RUNTIME_LIB, modelDir, AiMnnParams.threads(store))
         Log.i(COUPLET_LOG_TAG, "模型加载完成 ${(System.nanoTime() - t0) / COUPLET_NANOS_PER_MS} ms")
         Unit

@@ -84,8 +84,8 @@ C ABI（`native/mnn/arkli_mnn_capi.h:46-56`，`.cpp:182-196`）现在只暴露�
 | 参数 | 含义 | 项目现值 | 钉死提交上是否可用（读码） | 对这类 CPU 的意义 | 是否重建会话 | 调错风险 | 建议 |
 |---|---|---|---|---|---|---|---|
 | 线程数 `numThread` | CPU 算子线程 | 4（各 `AndroidXxx.kt` 常量；Qwen 来自 config.json；语音 2） | 可用。ABI 已暴露 `threads` | **有意义**。旧实测：设备只有 4 个大核，6 与 8 线程反而更慢（`qwen35-mnn-model.md` §5，Qwen） | 是（加载时定） | 设过大变慢；设 1 速度掉到约 1/3 量级（推测，未测） | **开放**：步进 1~6（默认 4）。其它机型大核数不同时才有意义 |
-| 功耗 `power` | `Power_Normal/High/Low`；CPU 后端据此选绑核集合：Low 绑最小核簇 `groups[0]`，High 从最大核簇起按线程数凑核，Normal 不绑（`CPUBackend.cpp:190-206`） | Normal（没暴露） | 可用，但 **C ABI 没暴露，要加字段** | **有意义**：大小核机器上 Normal 不绑核，线程可能落在小核上拖慢；High 强制大核更稳；Low 省电但明显变慢。未实测收益 | 是 | High 发热、耗电；Low 极慢 | **开放**：三选一“均衡 / 性能 / 省电”，默认均衡；性能档加“发热耗电更高”说明。**上线前必须真机测 Normal vs High 的 tok/s** |
-| 精度 `precision` | Normal/High/Low/Low_BF16 | 0（Normal）；Qwen 的 `config.json` 里是 `low` | ABI 已暴露，Rust 无 setter。**构建 `MNN_ARM82=OFF`**，所以没有 fp16 内核 | 本机无 fp16；旧实测 `low` 与 `normal` 在本机“没有可见差别”（`qwen35-mnn-model.md` §3），有 fp16 新机才可能拉开（未测） | 是 | Low 在有 fp16 的机型可能溢出变乱码；bf16(3) 在无 bf16 指令上很慢（推测，未测） | **折叠到“高级”**：普通/高精度两档；不提供 low/bf16 |
+| 功耗 `power` | `Power_Normal/High/Low`；CPU 后端据此选绑核集合：Low 绑最小核簇 `groups[0]`，High 从最大核簇起按线程数凑核，Normal 不绑（`CPUBackend.cpp:190-206`） | Normal（没暴露） | 可用，但 **C ABI 没暴露，要加字段** | **有意义**：大小核机器上 Normal 不绑核，线程可能落在小核上拖慢；High 强制大核更稳；Low 省电但明显变慢。未实测收益 | 是 | High 发热、耗电；Low 极慢 | **实测后只开放“均衡 / 性能”两档**，默认均衡，性能档说明“更耗电、不保证更快”。**实测结论**：真机实测（STG-AL00，4 大 4 小核，无 fp16，MNN_ARM82=OFF）：性能(High)对均衡(Normal)，Qwen 校对热态约 4.8 s 对 4.8 s、NLLB 约 0.93 s 对 0.94 s，无收益；省电(Low) Qwen 约 10.2 s、NLLB 约 2.1 s，且切回均衡后不恢复（约 9.0 s / 2.1 s），原因是 MNN 线程池全局、重载不重建，Low 把线程绑到小核（Cpus_allowed_list 0-3），Normal 不绑核所以沿用旧绑定，切到 High 会主动绑大核才能恢复；精度高对普通无差别（本构建无 fp16 内核）。省电档因绑核残留且无收益而去掉。 |
+| 精度 `precision` | Normal/High/Low/Low_BF16 | 0（Normal）；Qwen 的 `config.json` 里是 `low` | ABI 已暴露，Rust 无 setter。**构建 `MNN_ARM82=OFF`**，所以没有 fp16 内核 | 本机无 fp16；旧实测 `low` 与 `normal` 在本机“没有可见差别”（`qwen35-mnn-model.md` §3），有 fp16 新机才可能拉开（未测） | 是 | Low 在有 fp16 的机型可能溢出变乱码；bf16(3) 在无 bf16 指令上很慢（推测，未测） | **实测后整项不开放**（本构建无 fp16 内核，高/普通无差别），有 fp16 的机型可再评估；也不提供 low/bf16。读码补充：CPU 后端只在“编译开 `MNN_ARM82` + CPU 支持 fp16 + `Precision_Low`”三者同时满足时才切 fp16 内核（`CPUBackend.cpp:329-335`），`Precision_High` 在 CPU 后端无任何分支，所以“高/普通”在任何机型上都一样。fp16 是提速档不是提质档；**暂不引入**（2026-10-19 与用户讨论）：现有速度够用（Qwen 校对约 2.6 s、NLLB 约 0.9 s），重编 libMNN.so 与逐模型质量回归成本不划算，测试机也跑不了 fp16。将来速度成瓶颈再用 `scripts/mnn/eval_*.py` 对比 fp16 前后质量后决定，且应由原生按模型默认开启，不做成用户开关 |
 | 内存 `memory` | Low=保持量化权重+激活动态量化 | low | 只能 low | normal 会把权重还原成 float（NLLB 约 2.85GB，`capi.h` 头注释） | — | OOM 闪退 | **不开放**（C ABI 已拒绝） |
 | 后端 `type` | CPU/OpenCL/Vulkan/… | CPU | **不可用**：`MNN_OPENCL=OFF`、`MNN_VULKAN=OFF`；LLM 的 `backend_type` 同理 | 开 GPU 要重编 `libMNN.so`（体积、兼容、模型转换侧都要再评估） | — | 崩溃 | **不开放**；作为后续独立课题 |
 | `rearrange` | 加载时预重排权重，稳态内存降到权重体积 | 1 | 可用 | 有意义（省内存），但关了只会更占内存/更慢 | 是 | 关掉峰值内存升高 | **不开放** |
@@ -93,7 +93,7 @@ C ABI（`native/mnn/arkli_mnn_capi.h:46-56`，`.cpp:182-196`）现在只暴露�
 | `CPU_LITTLECORE_DECREASE_RATE` | 大小核任务分配比例，默认 50 | 默认 | 可用（`Session.cpp:88`），C ABI 没暴露 | 只在 `power != Low` 且线程>1 时参与分配 | 是 | 调错变慢 | **不开放** |
 | `attention_mode` / `dynamic_option` / `kvcache_mmap` / `cpu_sme2_*`（Qwen config） | 注意力量化、动态量化粒度、KV 落盘、SME2 | 模型 config.json 默认 | 部分可用；SME2 是 Arm 新指令，本机没有 | 对本机意义不明，且改错数值会输出乱码 | 是 | 乱码/崩溃 | **不开放** |
 
-**弹窗内容建议（MNN 基础参数）**：线程数（步进）、性能模式（三段选）、「高级」折叠里放计算精度；底部「恢复默认」。说明文案写清“改完下次使用模型时会重新加载”。
+**弹窗内容建议（MNN 基础参数）**：线程数（步进）、性能模式（均衡/性能两段选；计算精度已不开放）；底部「恢复默认」。说明文案写清“改完下次使用模型时会重新加载”。
 
 **C ABI 要补的**：`arkli_mnn_config` 加 `power`、（可选）`little_core_rate`，`ARKLI_MNN_ABI` 升 2；`checkConfig` 校验 power 0..2；`net_load` 里 `backend.power = …`，`setHint(CPU_LITTLECORE_DECREASE_RATE, …)`。Rust `MnnConfig` 加 `with_precision/with_power`，并经一个**全局运行时设置**（FFI 新函数 `mnn_set_runtime_options(threads, precision, power)`，存进程内静态量，各 `*_load` 读取）带入，避免给 5 个 `*_load` 的 uniffi 签名各加参数。Qwen 走 JNI：`nativeCreate` 路径里 `set_config` 追加 `thread_num/power/precision`（读码：`llm.cpp:243-262` 从 config 读），也要重建 `libarkli-mnn.so`。
 
@@ -300,13 +300,13 @@ interface AiTunable {
 | 2 | 先给**已有通道**的参数声明 spec：Qwen（temperature/topK/回答长度）、NLLB（numBeams）、对联（temperature/topK）、识物（topK） | 各 `LocalXxxProvider` 的 `paramSpecs()`；各 Policy 常量 | S~M | 否 |
 | 3 | Web：`aiParams` store、`ModelParamsPanel.vue`、接进 `ModelSourcesSheet`（已安装才显示）、扫描测试 | `web/src/native/ai.ts`（`aiParamsGet/Set/Reset`）、`stores/aiParams.ts`、`shared/ModelParamsPanel.vue`、`ModelSourcesSheet.vue`、`AiView.vue`、测试、桥协议/文档 | M | **热更新**（原生步 1 装机后） |
 | 4 | MNN 基础参数（线程数先做）：线程不用改 C ABI——各 `AndroidXxx.kt` 的常量改读 `AiParamStore`（Qwen 经 JNI `set_config` 的 `thread_num`）；公用弹窗入口与 `mnn` 伪提供者 | `AndroidClip/Ocr/Translate/Couplet/Matting.kt`、`MnnQwenBackend`、JNI（Qwen 一项）、`AiView.vue`、`MnnParamsSheet.vue` | M | Qwen 线程要重编 JNI；其余只装机 |
-| 5 | C ABI：`power`（+可选 `little_core_rate`），`ARKLI_MNN_ABI` 升 2；Rust `MnnConfig::with_precision/with_power`；FFI 新增 `mnn_set_runtime_options`；Qwen JNI `set_config` 追加 power/precision；**真机测 Normal vs High 的 tok/s 与发热**，数据决定“性能模式”是否真上 | `arkli_mnn_capi.{h,cpp}`、`arkli_mnn_jni.cpp`、`core/crates/arkli-ai/src/mnn/{mod,ffi}.rs`、`arkli-ffi/src/lib.rs`、重新生成 uniffi 绑定、`build.gradle.kts` 的 sha256、`qwen35-mnn-model.md` 校验表 | L | **要**（`libarkli-mnn.so` + Rust，上传 release、改 sha） |
+| 5 | C ABI：`power`（+可选 `little_core_rate`），`ARKLI_MNN_ABI` 升 2；Rust `MnnConfig::with_power`；FFI 新增 `mnn_set_runtime_options(power)`（precision 通道实测后已删）；Qwen 经包装 config 写 power；**真机测 Normal vs High 的 tok/s 与发热**，数据决定“性能模式”是否真上 | `arkli_mnn_capi.{h,cpp}`、`arkli_mnn_jni.cpp`、`core/crates/arkli-ai/src/mnn/{mod,ffi}.rs`、`arkli-ffi/src/lib.rs`、重新生成 uniffi 绑定、`build.gradle.kts` 的 sha256、`qwen35-mnn-model.md` 校验表 | L | **要**（`libarkli-mnn.so` + Rust，上传 release、改 sha） |
 | 6 | Qwen 新采样参数 topP/重复惩罚：`samplerConfig` 加字段、`AiSamplingParams` 扩字段、spec | `arkli_mnn_jni.cpp`、`AiGenerate.kt`、`AiQwenPolicy.kt`、`MnnQwenBackend` | M | 要（并入步 5 一起重编更省事） |
 | 7 | OCR / 识物按次选项（Rust 引擎 + FFI + Kotlin policy + spec） | `pipeline.rs`、`classify.rs`、`arkli-ffi/src/{ocr,clip}.rs`、`AiOcrPolicy.kt`、`AiClassifyPolicy.kt`、`AiCall`、`AndroidOcr/Clip.kt` | L | 要（Rust） |
 | 8 | 抠图细化参数并入（待另一子代理的成果合并后） | 待定 | S~M | 视情况 |
 | 9 | 文档：`ai-protocol.md` 加“参数调整”小节与 checklist 一项、`bridge-protocol.md` 加三个方法、`model-picker.md` 与 `status.md` 同步，索引由主会话统一改 | docs | S | 否 |
 
-**实施进度**：步 1~3 已完成并真机验证（Qwen 温度因设备未装 Qwen 未实测）。步 9 的 `ai-protocol.md` / `bridge-protocol.md` / `model-picker.md` / `status.md` 已同步。步 4（MNN 基础参数入口 + 线程数）已实现，真机待验；步 5~8 未做，详见 [状态](../status.md)。
+**实施进度**：步 1~3 已完成并真机验证（Qwen 温度因设备未装 Qwen 未实测）。步 9 的 `ai-protocol.md` / `bridge-protocol.md` / `model-picker.md` / `status.md` 已同步。步 4（MNN 基础参数入口 + 线程数）已实现，真机待验；步 5/6 已实现（2026-10-19，真机待验）：C ABI 升 2 加 `power`，Rust `mnn_set_runtime_options`，Qwen 的功耗/topP/惩罚走包装 config（读码确认 `power`、`precision` 键存在、topP/penalty 在 `load()` 里生效且不被 JNI `set_config` 覆盖，故不改 JNI；注意 LLM 引擎的 `precision` 默认是 `low`，所以 Qwen 的“普通”档沿用该默认、只在“高精度”时写键，此项随精度一并下线）。**实测收口（2026-10-19）**：真机实测（STG-AL00，4 大 4 小核，无 fp16，MNN_ARM82=OFF）：性能(High)对均衡(Normal)，Qwen 校对热态约 4.8 s 对 4.8 s、NLLB 约 0.93 s 对 0.94 s，无收益；省电(Low) Qwen 约 10.2 s、NLLB 约 2.1 s，且切回均衡后不恢复（约 9.0 s / 2.1 s），原因是 MNN 线程池全局、重载不重建，Low 把线程绑到小核（Cpus_allowed_list 0-3），Normal 不绑核所以沿用旧绑定，切到 High 会主动绑大核才能恢复；精度高对普通无差别（本构建无 fp16 内核）。用户拍板：性能模式只留均衡/性能，精度整项不开放，Rust/FFI/Kotlin 的 precision 通道已删（C ABI 字段保留恒传 0）；步 7、8 未做，详见 [状态](../status.md)。
 
 建议交付顺序：**1+2+3 先上线一版**（**已实现，2026-10-19，未提交、真机未验**）（Qwen/NLLB/对联/识物的开放参数，纯 Kotlin + Web，立即可见效果），再做 4（线程），5/6 合并重编一次，7 单独一批。
 
@@ -323,7 +323,7 @@ interface AiTunable {
 
 **未核实（不要当结论用）**
 - MNN 文档里 `power` 键、各配置“是否需重载”的官方说法（文档页没有；本文“是否重建”全是读码）。
-- `precision=low` 在本构建（`MNN_ARM82=OFF`）上到底走什么内核、与 normal 在无 fp16 机器上的差异：只有旧实测“无可见差别”（单机、小样本）。
+- （已实测：本构建高/普通精度无差别）`precision=low` 在本构建（`MNN_ARM82=OFF`）上到底走什么内核、与 normal 在无 fp16 机器上的差异：只有旧实测“无可见差别”（单机、小样本）。
 - 功耗模式 High 对 tok/s 与发热的实际影响：只有读码得到“绑大核”的机制，**无实测数字**，步 5 必须真机测。
 - `use_mmap` 对 Qwen 内存与速度的影响：文档建议手机开，本机未测。
 - NLLB 官方推荐的 `num_beams`/`length_penalty` 取值、SigLIP2 `logit_scale/logit_bias` 原文、GPT-2 采样官方建议、sherpa-onnx/sherpa-mnn 的 `num_threads`/`decoding_method`/端点规则原文、PaddleOCR 方向分类阈值 `cls_thresh` 的官方说明。

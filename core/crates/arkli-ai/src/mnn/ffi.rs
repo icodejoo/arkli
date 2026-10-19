@@ -12,7 +12,7 @@ use libloading::Library;
 use crate::error::{AiError, Result};
 
 /// 本绑定对应的 C ABI 版本（须与头文件 `ARKLI_MNN_ABI` 相等）。
-pub const ABI_VERSION: c_int = 1;
+pub const ABI_VERSION: c_int = 2;
 /// 张量类型：float32。
 pub const DTYPE_F32: c_int = 0;
 /// 张量类型：int32（承接 ONNX 的 int64 输入）。
@@ -38,7 +38,7 @@ pub struct RawVal {
     _private: [u8; 0],
 }
 
-/// C 侧 `arkli_mnn_config`：四个 int，布局必须与头文件一致。
+/// C 侧 `arkli_mnn_config`：五个 int，布局必须与头文件一致。
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RawConfig {
@@ -48,6 +48,8 @@ pub struct RawConfig {
     pub memory: c_int,
     /// 精度模式
     pub precision: c_int,
+    /// 性能模式（0 normal / 1 high / 2 low）
+    pub power: c_int,
     /// 非 0 则加载时预重排权重
     pub rearrange: c_int,
 }
@@ -247,8 +249,8 @@ mod tests {
 
     #[test]
     fn 配置结构体布局与c一致() {
-        // 四个 int，无填充
-        assert_eq!(std::mem::size_of::<RawConfig>(), 4 * std::mem::size_of::<c_int>());
+        // 五个 int，无填充
+        assert_eq!(std::mem::size_of::<RawConfig>(), 5 * std::mem::size_of::<c_int>());
         assert_eq!(std::mem::align_of::<RawConfig>(), std::mem::align_of::<c_int>());
     }
 

@@ -69,7 +69,7 @@ class AiMnnParamsTest {
         val params = JSONObject().put(KEY_PROVIDER, AiMnnParams.PROVIDER_ID)
         val res = AiParams.handleGet(params, emptyProviders, store)
         val specs = res.getJSONArray(KEY_SPECS)
-        assertEquals(1, specs.length())
+        assertEquals(2, specs.length())
         val spec = specs.getJSONObject(0)
         assertEquals(AiMnnParams.KEY_NUM_THREAD, spec.getString(AiParamSpec.KEY_KEY))
         assertEquals(AiParamKind.STEPPER.wire, spec.getString(AiParamSpec.KEY_KIND))
@@ -193,6 +193,61 @@ class AiMnnParamsTest {
                 backend.calls,
             )
         }
+    }
+
+    @Test
+    fun mnn_power_defaultsAndRoundTrip() {
+        assertEquals(AiMnnParams.POWER_NORMAL, AiMnnParams.power(store))
+        AiParams.handleSet(makeSet(AiMnnParams.KEY_POWER to 1), emptyProviders, store)
+        assertEquals(AiMnnParams.POWER_HIGH, AiMnnParams.power(store))
+        // 不在选项里的值被拒（省电档 2 已下线）
+        assertBad { AiParams.handleSet(makeSet(AiMnnParams.KEY_POWER to 2), emptyProviders, store) }
+        assertBad { AiParams.handleSet(makeSet(AiMnnParams.KEY_POWER to 3), emptyProviders, store) }
+        // 精度整项不开放
+        assertTrue(AiMnnParams.SPECS.none { it.key == "precision" })
+    }
+
+    @Test
+    fun mnn_fingerprint_changesWithPower() {
+        val base = AiMnnParams.fingerprint(LocalOcrProvider.ID, emptyList(), store)
+        store.set(AiMnnParams.PROVIDER_ID, AiMnnParams.KEY_POWER, 1.0)
+        val afterPower = AiMnnParams.fingerprint(LocalOcrProvider.ID, emptyList(), store)
+        assertNotEquals(base, afterPower)
+    }
+
+    @Test
+    fun qwen_topPAndPenalty_defaultsAndFingerprint() {
+        assertEquals(0.95, AiQwenPolicy.topP(store), EPSILON)
+        assertEquals(1.1, AiQwenPolicy.repetitionPenalty(store), EPSILON)
+        val before = AiMnnParams.fingerprint(LocalQwenProvider.ID, AiQwenPolicy.PARAM_SPECS, store)
+        store.set(LocalQwenProvider.ID, AiQwenPolicy.KEY_TOP_P, 0.8)
+        val mid = AiMnnParams.fingerprint(LocalQwenProvider.ID, AiQwenPolicy.PARAM_SPECS, store)
+        assertNotEquals(before, mid)
+        store.set(LocalQwenProvider.ID, AiQwenPolicy.KEY_REPETITION_PENALTY, 1.2)
+        assertNotEquals(mid, AiMnnParams.fingerprint(LocalQwenProvider.ID, AiQwenPolicy.PARAM_SPECS, store))
+        assertEquals(0.8, AiQwenPolicy.topP(store), EPSILON)
+        assertEquals(1.2, AiQwenPolicy.repetitionPenalty(store), EPSILON)
+    }
+
+    @Test
+    fun qwenConfigWrapper_powerSampling() {
+        val original = JSONObject().put("precision", "low").put("topP", 0.95).put("penalty", 1.1)
+        // 默认：不动 power，也不动采样
+        val d = QwenConfigWrapper.wrap(original, "/m", 4)
+        assertTrue(!d.has(QwenConfigWrapper.KEY_POWER))
+        // 模型自带的 precision 原样保留
+        assertEquals("low", d.getString("precision"))
+        assertEquals(0.95, d.getDouble(QwenConfigWrapper.KEY_TOP_P), EPSILON)
+        // 性能 + 采样覆盖
+        val h = QwenConfigWrapper.wrap(original, "/m", 4, power = 1, topP = 0.8, penalty = 1.2)
+        assertEquals("high", h.getString(QwenConfigWrapper.KEY_POWER))
+        assertEquals(0.8, h.getDouble(QwenConfigWrapper.KEY_TOP_P), EPSILON)
+        assertEquals(1.2, h.getDouble(QwenConfigWrapper.KEY_PENALTY), EPSILON)
+        // 省电档已下线：2 不写键
+        assertTrue(!QwenConfigWrapper.wrap(original, "/m", 4, power = 2).has(QwenConfigWrapper.KEY_POWER))
+        // 不改入参
+        assertEquals("low", original.getString("precision"))
+        assertTrue(!original.has(QwenConfigWrapper.KEY_POWER))
     }
 
     @Test
