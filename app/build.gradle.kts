@@ -156,10 +156,9 @@ fun downloadTo(url: String, dst: File) {
 
 /**
  * MNN 运行库 release 的下载前缀。
- * 注意：v4 是新 so（ABI 2，C 接口加了 power）的版本号，尚未上传 release，当前靠 .gradle 缓存构建；
- * 上传 v4 时三个 so 都要放（libMNN.so、libsherpa-mnn-jni.so 不变，但下载前缀相同）。
+ * v3 里的 libarkli-mnn.so 已于 2026-10-19 原地覆盖为 ABI 2 版（C 接口加了 power），旧提交按旧 sha 校验会失败。
  */
-val mnnReleaseBase = "https://github.com/icodejoo/arkli/releases/download/mnn-478c10e-v4/"
+val mnnReleaseBase = "https://github.com/icodejoo/arkli/releases/download/mnn-478c10e-v3/"
 
 /** MNN 运行库的文件名与 sha256 */
 val mnnLibs = mapOf(

@@ -102,7 +102,7 @@ summary: L2 本地文本模型 Qwen3.5-0.8B 的 MNN 权重与运行库：来源�
 | 文件 | 字节 | sha256 |
 |---|---|---|
 | `libMNN.so` | 4,899,952 | `9cc1ff8b8b039431913a37ad1853dfa51162b41ae8b90927507204397096a353` |
-| `libarkli-mnn.so`（JNI + C ABI v2：`arkli_mnn_config` 加 `power`；**尚未上传 release，计划放 `mnn-478c10e-v4`**；此前版本 71,592 字节 `b4c9bf34…9f40`、取消版 73,112 字节 `ede1c34e…a747` 已作废） | 73,176 | `accbe024d2a56b09ab34b2edaefdfe9b8a07f0eedee688d49b2473ea8b026bc2` |
+| `libarkli-mnn.so`（JNI + C ABI v2：`arkli_mnn_config` 加 `power`；**2026-10-19 已原地覆盖上传到 `mnn-478c10e-v3`**；此前版本 71,592 字节 `b4c9bf34…9f40`、取消版 73,112 字节 `ede1c34e…a747` 已作废） | 73,176 | `accbe024d2a56b09ab34b2edaefdfe9b8a07f0eedee688d49b2473ea8b026bc2` |
 | `libsherpa-mnn-jni.so`（语音 sherpa-mnn JNI，release v2；Qwen 不用，随同一 release 发布） | 2,690,520 | `aa79262fa17431bf513c7c4ac9855df02d09c1fe364396c0d8032df652a0c339` |
 | `MNN-LICENSE.txt` | 11,346 | `a830d59c4f98d110e0540d0581efada06192ba6e798434307d1794b07a290302` |
 
