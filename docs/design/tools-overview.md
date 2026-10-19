@@ -97,6 +97,7 @@ summary: 六份工具设计的汇总：优先级统计、体积估计、全部�
 | 二维码相机 | CameraX |
 | 裁剪框 | cropperjs |
 | 证件照 | 约 25MB 抠图模型按需下载 |
+| 抠图 | MODNet fp32 25.9MB 与 U2Net-p f16 2.4MB 两个模型按需下载（release 未发布），见 [抠图](tools/matting.md) |
 | 导出目录 | `Pictures/Arkli`，文件名"工具名_时间戳_序号" |
 | IP 查询 | 不做省市级，不引 11MB 离线库 |
 | 明文 HTTP | 不放开 |

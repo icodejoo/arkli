@@ -63,6 +63,13 @@ sealed class AiCall(val task: AiTask, val provider: String?, val port: AiPort<*>
      * @property req 已校验的请求
      */
     class Couplet(val req: AiCoupletRequest) : AiCall(AiTask.COUPLET, req.provider, AiPort.Couplet)
+
+    /**
+     * 抠图。
+     *
+     * @property req 已校验的请求
+     */
+    class Matting(val req: AiMattingRequest) : AiCall(AiTask.MATTING, req.provider, AiPort.Matting)
 }
 
 /**
@@ -150,6 +157,7 @@ object AiInvokePolicy {
             AiPort.Classify -> AiCall.Classify(AiClassifyPolicy.parse(flat))
             AiPort.Ocr -> AiCall.Ocr(AiOcrPolicy.parse(flat))
             AiPort.Couplet -> AiCall.Couplet(AiCoupletPolicy.parse(flat))
+            AiPort.Matting -> AiCall.Matting(AiMattingPolicy.parse(flat))
             AiPort.Session -> throw bad("${port.entry} 不是任务入口")
         }
     }
@@ -253,7 +261,7 @@ class AiInvoker(private val providers: () -> List<AiProvider>, private val resol
      * 分派一次已解析的调用。
      *
      * @param call 调用
-     * @return 结果 JSON：run 为 [AiPolicy.resultJson]，翻译为 [AiTranslatePolicy.resultJson]，识图为 [AiClassifyPolicy.resultJson]，文字识别为 [AiOcrPolicy.resultJson]，对联为 [AiCoupletPolicy.resultJson]
+     * @return 结果 JSON：run 为 [AiPolicy.resultJson]，翻译为 [AiTranslatePolicy.resultJson]，识图为 [AiClassifyPolicy.resultJson]，文字识别为 [AiOcrPolicy.resultJson]，对联为 [AiCoupletPolicy.resultJson]，抠图为 [AiMattingPolicy.resultJson]
      * @throws BridgeException BAD_PARAMS（路由失败、超出约束、路径无效）、NOT_READY、INTERNAL
      */
     suspend fun dispatch(call: AiCall): JSONObject = when (call) {
@@ -280,6 +288,12 @@ class AiInvoker(private val providers: () -> List<AiProvider>, private val resol
         is AiCall.Couplet -> {
             val c = route(call, AiPort.Couplet).port
             AiCoupletPolicy.resultJson(withContext(Dispatchers.IO) { c.generate(call.req) })
+        }
+        is AiCall.Matting -> {
+            val m = route(call, AiPort.Matting).port
+            val file = resolver.resolve(call.req.path)?.takeIf { it.isFile }
+                ?: throw BridgeException(BridgeErrors.BAD_PARAMS, BAD_IMAGE_PATH)
+            AiMattingPolicy.resultJson(withContext(Dispatchers.IO) { m.matte(file) })
         }
     }
 

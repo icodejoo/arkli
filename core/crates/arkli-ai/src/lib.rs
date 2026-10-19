@@ -16,6 +16,8 @@
 //! - [`pipeline`]：`OcrPipeline::recognize`，支持取消令牌与进度回调
 //! - [`clip`]：CLIP 类图像编码器（缩放、归一化、向量），用于 SigLIP2 识物
 //! - [`classify`]：词表向量与零样本分类（top-k、按分类聚合的 softmax 概率、置信度）
+//! - [`matting`]：抠图（MODNet 人像 / U2Net-p 通用；缩放、归一化、单次前向、alpha 缩回原图尺寸）
+//! - [`matting_refine`]：抠图边缘细化（引导滤波收紧 alpha、Blur-Fusion 估计去污染前景色）
 //! - [`couplet`]：对联生成（GPT-2 字级模型；等长掩码、top-k 采样；目录加载在 feature `mnn-backend` 下）
 //! - `translate`（feature `mnn-backend`）：本地翻译（NLLB-200；MNN 三图后端，分词、束搜索、标点后处理）
 //!
@@ -36,6 +38,8 @@ pub mod ctc;
 pub mod db;
 pub mod error;
 pub mod image;
+pub mod matting;
+pub mod matting_refine;
 pub mod pipeline;
 pub mod preprocess;
 pub mod provider;

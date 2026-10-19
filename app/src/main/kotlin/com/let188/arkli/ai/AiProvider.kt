@@ -37,7 +37,10 @@ enum class AiTask(val wire: String, val isText: Boolean) {
     OCR("ocr", false),
 
     /** 对联（文本生成类，但参数与结果强类型，走专用端口 `native.ai.couplet`，不走 `native.ai.run`） */
-    COUPLET("couplet", false);
+    COUPLET("couplet", false),
+
+    /** 抠图（输入是图片，输出是带透明通道的 PNG，走 `native.ai.matting`，不走 `native.ai.run`） */
+    MATTING("matting", false);
 
     companion object {
         /**

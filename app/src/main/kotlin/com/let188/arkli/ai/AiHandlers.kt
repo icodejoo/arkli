@@ -116,6 +116,21 @@ internal class AiOcrHandler(private val invoker: AiInvoker) : BridgeHandler {
 }
 
 /**
+ * `native.ai.matting`（`native.ai.invoke` 钉死抠图端口的别名）：`{ provider?, path, mode }` ->
+ * `{ path, width, height, mode, elapsedMs, inferMs, refineMs, modelId }`（见 [AiMattingPolicy.resultJson]）。解码与推理在后台线程，
+ * 同一时刻只跑一个（[AiHeavyGate]）；取消（`native.task.cancel`）最迟在一次前向结束后生效（前向不可中途打断）。
+ *
+ * @param invoker 分派器
+ */
+internal class AiMattingHandler(private val invoker: AiInvoker) : BridgeHandler {
+    /** 按参数形状校验后交给分派器 */
+    override suspend fun handle(ctx: CallContext, params: JSONObject): Any? {
+        requireMainFrame(ctx)
+        return invoker.dispatch(AiCall.Matting(AiMattingPolicy.parse(params)))
+    }
+}
+
+/**
  * `native.ai.couplet`（`native.ai.invoke` 钉死对联端口的别名）：`{ provider?, text, temperature?, topK?, seed? }` ->
  * `{ text, elapsedMs, modelId }`（见 [AiCoupletPolicy.resultJson]）。推理在后台线程，同一时刻只跑一个（[AiHeavyGate]）；
  * 取消（`native.task.cancel`）会打断 Rust 里的生成。

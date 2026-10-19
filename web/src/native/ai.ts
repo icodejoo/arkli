@@ -196,6 +196,28 @@ export async function aiCouplet(
 }
 
 /**
+ * 抠图（本地 MODNet 人像 / U2Net-p 通用）。转调 `native.ai.invoke` 并钉住 `native.ai.matting` 入口，模型状态由 AI 目录读取。
+ * 长调用不设超时，可用 signal 取消；一次前向无法中途打断，取消最迟约 0.6~0.8 秒后生效。
+ *
+ * @param path 图片缓存相对路径
+ * @param mode 模式：`portrait` 人像、`general` 通用
+ * @param signal 取消信号，触发后调用以 CANCELLED 拒绝
+ * @param call 原生调用函数，默认走 bridge（仅测试注入）
+ * @returns 带透明通道的 PNG 路径与尺寸、耗时
+ * @throws AiNotReadyError 无宿主、方法不存在或该模式的模型未就绪；BAD_PARAMS 原样抛出
+ * @example const r = await aiMatting('cache/pick/a.jpg', 'portrait'); // r.path 是透明 PNG
+ */
+export async function aiMatting(path: string, mode: MattingMode, signal?: AbortSignal, call: CancelableCallFn = bridgeCall): Promise<MattingResult> {
+  if (!isNativeAvailable()) throw new AiNotReadyError('matting')
+  try {
+    return await aiInvoke('matting', { path, mode }, { entry: AI_METHODS.matting, signal }, call)
+  } catch (e) {
+    if (isNotReadyError(e)) throw new AiNotReadyError('matting')
+    throw e
+  }
+}
+
+/**
  * 图像超分。
  *
  * @param path 图片缓存相对路径
@@ -337,7 +359,7 @@ export async function fetchAiResult(path: string, fetchFn: typeof fetch = (...a)
 }
 
 /** AI 任务：页面只认任务，不认厂商 */
-export type AiTask = 'summarize' | 'proofread' | 'rewrite' | 'describeImage' | 'prompt' | 'translate' | 'classifyImage' | 'ocr' | 'couplet'
+export type AiTask = 'summarize' | 'proofread' | 'rewrite' | 'describeImage' | 'prompt' | 'translate' | 'classifyImage' | 'ocr' | 'couplet' | 'matting' | 'matting'
 
 /** 提供者不可用的原因（未知值按字符串透传，页面不认识就当「不可用」） */
 export type AiUnavailableReason = 'no_handler' | 'unsupported_device' | 'not_installed' | 'not_configured' | (string & {})
@@ -345,8 +367,8 @@ export type AiUnavailableReason = 'no_handler' | 'unsupported_device' | 'not_ins
 /** AI 层（决策 0005）：L1 本地小模型 / L2 本地大模型 / L3 本机 AI / L4 远端 API */
 export type AiLayer = 'L1' | 'L2' | 'L3' | 'L4'
 
-/** 任务入口：执行该任务要调的桥方法，取 `AI_METHODS.run/translate/classify/ocr/couplet`（未知值按字符串透传） */
-export type AiEntry = (typeof AI_METHODS)['run' | 'translate' | 'classify' | 'ocr' | 'couplet'] | (string & {})
+/** 任务入口：执行该任务要调的桥方法，取 `AI_METHODS.run/translate/classify/ocr/couplet/matting`（未知值按字符串透传） */
+export type AiEntry = (typeof AI_METHODS)['run' | 'translate' | 'classify' | 'ocr' | 'couplet' | 'matting'] | (string & {})
 
 /** 一项任务的约束，由原生给出（前端不再自己写语言清单） */
 export interface AiOfferConstraints {
@@ -608,6 +630,37 @@ export interface CoupletResult {
   modelId: string
 }
 
+/** 抠图模式：人像（MODNet）/ 通用主体（U2Net-p），各对应一个本地模型 */
+export type MattingMode = 'portrait' | 'general'
+
+/** 抠图的输入 */
+export interface AiMattingInput {
+  /** 图片缓存相对路径，如 `cache/pick/a.jpg` */
+  path: string
+  /** 模式；原生据此选提供者（`local-matting-portrait` / `local-matting-general`） */
+  mode: MattingMode
+}
+
+/** 抠图结果（`native.ai.matting` / `native.ai.invoke` 的 `matting` 任务） */
+export interface MattingResult {
+  /** 带透明通道的 PNG 的缓存相对路径，如 `cache/out/matting_portrait_ab12cd34.png` */
+  path: string
+  /** PNG 宽（大图会被原生收敛到最长边 3072） */
+  width: number
+  /** PNG 高 */
+  height: number
+  /** 使用的模式 */
+  mode: MattingMode
+  /** 总耗时毫秒（含首次加载、解码、合成与编码） */
+  elapsedMs: number
+  /** 其中 Rust 侧耗时毫秒（缩放、前向、alpha 缩回、边缘细化） */
+  inferMs: number
+  /** 其中边缘细化（引导滤波 + 前景色估计）耗时毫秒，已含在 inferMs 内 */
+  refineMs: number
+  /** 模型标识，如 `matting-modnet-mnn-fp32` */
+  modelId: string
+}
+
 /** 没有附加选项的任务 */
 type NoOptions = Record<string, never>
 
@@ -647,6 +700,8 @@ export interface AiTaskMap {
   ocr: { input: AiOcrInput; options: NoOptions; output: OcrResult }
   /** 对联（couplet 专用端口，文本生成类但不走 run） */
   couplet: { input: AiCoupletInput; options: AiCoupletOptions; output: CoupletResult }
+  /** 抠图（matting 专用端口，输出带透明通道的 PNG 路径） */
+  matting: { input: AiMattingInput; options: NoOptions; output: MattingResult }
 }
 
 /** {@link aiInvoke} 的调用选项 */
@@ -654,7 +709,7 @@ export interface AiInvokeOptions<T extends keyof AiTaskMap> {
   /** 指定提供者 id；缺省由原生取该任务缺省端口的第一个候选 */
   provider?: string
   /**
-   * 钉住入口（桥方法名，取 `AI_METHODS.run/translate/classify/ocr/couplet`）。不钉时：指定了 provider 就走它报价里的入口，
+   * 钉住入口（桥方法名，取 `AI_METHODS.run/translate/classify/ocr/couplet/matting`）。不钉时：指定了 provider 就走它报价里的入口，
    * 否则走任务的缺省入口。**注意**：只点名交接类提供者（它的 translate 报价入口是 run）而不钉入口时，结果是 {@link AiRunResult}
    * 形状而不是 {@link TranslateResult}；需要确定形状就钉住入口（旧封装都钉了）。
    */

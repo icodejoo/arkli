@@ -412,6 +412,66 @@ class AiInvokeTest {
         )
     }
 
+    /** 抠图替身：恒可用，回固定结果，记录收到的文件 */
+    private class MattingOmni(val mode: MattingMode) : AiProvider, MattingEngine {
+        override val id = mode.providerId
+        var last: File? = null
+        override val displayName = "抠图替身"
+        override val layer = AiLayer.L1
+        override fun capabilities() = setOf(AiTask.MATTING)
+        override fun availability() = AiAvailability.AVAILABLE
+        override suspend fun run(task: AiTask, input: String): AiRunResult = throw AiRouter.notRunnable(id, task)
+        override suspend fun matte(file: File): MattingResult {
+            last = file
+            return MattingResult("cache/out/matting_${mode.wire}_x.png", 30, 20, mode, mode.modelId, 800, 600)
+        }
+    }
+
+    @Test
+    fun matting_invokeAndLegacyEntryAgree_andModeSelectsProvider() {
+        val all = AiFixtures.registered(tmp)
+        val inv = invoker(all, image())
+        val input = JSONObject().put("path", "cache/pick/a.jpg").put("mode", "general")
+        /** 旧入口 native.ai.matting 的处理流程（与 AiMattingHandler 一致） */
+        fun old(p: JSONObject) = err { inv.dispatch(AiCall.Matting(AiMattingPolicy.parse(p))) }
+        // 未就绪：mode 选到通用提供者，invoke 与旧入口错误完全一致
+        val notReady = err { inv.invoke(params("matting", input)) }
+        assertEquals(BridgeErrors.NOT_READY to "local-matting-general 当前不可用：not_installed", notReady)
+        assertEquals(notReady, old(input))
+        assertEquals(AiPort.Matting, inv.plan(params("matting", input)).port)
+        assertEquals("local-matting-general", inv.plan(params("matting", input)).provider.id)
+        assertEquals("local-matting-portrait", inv.plan(params("matting", JSONObject(input.toString()).put("mode", "portrait"))).provider.id)
+        // provider 与 mode 不符、缺 mode：BAD_PARAMS
+        assertEquals(BridgeErrors.BAD_PARAMS, err { inv.invoke(params("matting", input, provider = "local-matting-portrait")) }.first)
+        assertEquals(BridgeErrors.BAD_PARAMS, err { inv.invoke(params("matting", JSONObject().put("path", "cache/pick/a.jpg"))) }.first)
+        // 走错入口
+        assertEquals(BridgeErrors.BAD_PARAMS, err { inv.invoke(params("matting", input, entry = AiModule.METHOD_RUN)) }.first)
+        assertEquals(BridgeErrors.BAD_PARAMS, err { inv.invoke(params("matting", input, entry = AiModule.METHOD_OCR)) }.first)
+        // 文本生成选项在抠图端口一律拒绝
+        assertEquals(BridgeErrors.BAD_PARAMS, err { inv.invoke(params("matting", input, options = JSONObject().put("temperature", 0.5))) }.first)
+        // 路径解析不到文件：BAD_PARAMS
+        val bad = invoker(listOf(MattingOmni(MattingMode.GENERAL)), null)
+        assertEquals(BridgeErrors.BAD_PARAMS to "path 不是有效的缓存图片路径", err { bad.invoke(params("matting", input)) })
+    }
+
+    @Test
+    fun matting_resultJsonShape_andRoutesByMode() {
+        val portrait = MattingOmni(MattingMode.PORTRAIT)
+        val general = MattingOmni(MattingMode.GENERAL)
+        val f = image()
+        val inv = invoker(listOf(portrait, general), f)
+        val j = runBlocking { inv.invoke(params("matting", JSONObject().put("path", "cache/pick/a.jpg").put("mode", "portrait"))) }
+        assertEquals("cache/out/matting_portrait_x.png", j.getString("path"))
+        assertEquals(30, j.getInt("width"))
+        assertEquals(20, j.getInt("height"))
+        assertEquals("portrait", j.getString("mode"))
+        assertEquals(MattingMode.PORTRAIT.modelId, j.getString("modelId"))
+        assertEquals(800L, j.getLong("elapsedMs"))
+        assertEquals(600L, j.getLong("inferMs"))
+        assertEquals(f, portrait.last)
+        assertEquals(null, general.last)
+    }
+
     /** 对联替身：恒可用，记录收到的请求，回固定下联 */
     private class CoupletOmni : AiProvider, CoupletEngine {
         override val id = "couplet-omni"

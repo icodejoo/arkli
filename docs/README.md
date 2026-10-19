@@ -28,6 +28,7 @@
 - [统一 AI 协议](design/ai-protocol.md) — AiRouter 选提供者、统一入口 native.ai.invoke 的分派（旧方法为别名）、能力=端口不变量、报价 offers（任务+入口+约束）与按约束校验输入、生命周期从提供者派生、文本生成预设与按次采样（第 6 步）、前端 AI 目录与 aiInvoke、后续步骤。OCR 作为第一个按新协议接入的任务（M8）与“新增一个 AI 任务的 checklist”。active。
 - [模型选择器](design/model-picker.md) — AI 工具的模型选择：工具声明 tasks、目录自动算可选项、四种状态、选择存提供者 id 与旧值迁移。文字识别页只读目录、缺模型提示条。active。
 - [图片类工具](design/tools/image.md) — 21 项。draft。
+- [抠图（人像 / 通用）](design/tools/matting.md) — MODNet 与 U2Net-p 两个本地 MNN 模型、选型与真机数据、`native.ai.matting` 协议、取消限制、模型 release 未发布。active。
 - [音视频与 AI 类工具](design/tools/media-ai.md) — 10 项。draft。
 - [文本与计算类工具](design/tools/text-calc.md) — 22 项。draft。
 - [开发者、编码与网络类工具](design/tools/dev-net.md) — 17 项。draft。

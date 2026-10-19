@@ -90,6 +90,7 @@ export const tools: ToolMeta[] = [
   { id: 'device-info', name: '设备信息', description: '屏幕、系统、硬件、网络与特性探测', load: () => import('./device-info/index.vue') },
   { id: 'image-compress', name: '图片压缩', description: '压缩与格式转换，JPEG、WebP、PNG，可批量', load: () => import('./image-compress/index.vue') },
   { id: 'image-stitch', name: '图片拼接', description: '多图纵向或横向拼成一张长图', load: () => import('./image-stitch/index.vue') },
+  { id: 'matting', name: '抠图', description: '去掉背景得到透明 PNG，可换底色（人像/通用，需本地模型）', tags: [TAG_AI], tasks: [{ task: 'matting', entry: AI_METHODS.matting }], load: () => import('./matting/index.vue') },
   { id: 'image-grid', name: '九宫格切图', description: '把图片切成 2×2、3×3 等多张', load: () => import('./image-grid/index.vue') },
   { id: 'hash', name: '哈希计算', description: 'MD5、SHA-1、SHA-256、SHA-512，支持文件', load: () => import('./hash/index.vue') },
   { id: 'pinyin', name: '中文转拼音', description: '带声调、数字声调、首字母，多音字提示', load: () => import('./pinyin/index.vue') },

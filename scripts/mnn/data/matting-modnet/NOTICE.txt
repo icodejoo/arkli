@@ -1,0 +1,20 @@
+NOTICE
+
+This package contains a portrait matting model converted from MODNet (Trimap-Free Portrait Matting in Real Time).
+
+Original work
+- Model: MODNet, input 1x3x512x512, output 1x1x512x512 alpha matte
+- Creators: Zhanghan Ke et al. (ZHKKKe/MODNet), https://github.com/ZHKKKe/MODNet
+- License: Apache License 2.0 (see LICENSE-Apache-2.0.txt)
+- Source of the ONNX file: the Hugging Face repository Xenova/modnet (a third-party re-upload of the MODNet weights).
+  It has NOT been compared byte for byte with the weights published by the original authors.
+
+Modifications made in this package
+- The ONNX file was given a fixed 512x512 input/output shape and converted to MNN (modnet512_fp32.mnn), weights kept in fp32.
+  No retraining or fine-tuning was done. Outputs can differ slightly from those of the original ONNX file.
+
+Disclaimers
+- This package is not affiliated with, endorsed by, or sponsored by the MODNet authors.
+- The model is provided "as is", without warranty of any kind. Results may be wrong: dark clothes on a dark background
+  can be cut out as holes, and the model is trained for portraits only.
+- This notice is not legal advice.

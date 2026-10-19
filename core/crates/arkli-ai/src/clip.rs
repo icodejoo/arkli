@@ -23,11 +23,11 @@ pub const OUTPUT_NAME: &str = "pooler_output";
 const PIXEL_MAX: f32 = 255.0;
 
 /// 一个方向上的重采样系数：每个输出点对应 `[start, start + weights.len())` 的输入点。
-struct Taps {
+pub(crate) struct Taps {
     /// 起始输入下标
-    start: usize,
+    pub(crate) start: usize,
     /// 归一化后的权重
-    weights: Vec<f32>,
+    pub(crate) weights: Vec<f32>,
 }
 
 /// 三角（bilinear）滤波核，支持范围 (-1, 1)。
@@ -41,7 +41,7 @@ fn triangle(x: f32) -> f32 {
 }
 
 /// 按 PIL 的 `precompute_coeffs` 公式算一个方向的系数。缩小时核按比例变宽（抗锯齿）。
-fn build_taps(in_len: usize, out_len: usize) -> Vec<Taps> {
+pub(crate) fn build_taps(in_len: usize, out_len: usize) -> Vec<Taps> {
     let scale = in_len as f32 / out_len as f32;
     let filter_scale = scale.max(1.0);
     let support = filter_scale;

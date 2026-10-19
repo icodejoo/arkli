@@ -5,11 +5,12 @@ uniffi::setup_scaffolding!();
 
 pub mod clip;
 pub mod couplet;
+pub mod matting;
 pub mod mem;
 pub mod ocr;
 pub mod translate;
 
-/// `expect` 的说明：调用前已经把运行时 / 后端建好（clip / ocr / translate 共用）。
+/// `expect` 的说明：调用前已经把运行时 / 后端建好（clip / ocr / translate / matting 共用）。
 pub(crate) const ENSURED_ABOVE: &str = "上面已确保存在";
 
 /// 返回核心库版本号。

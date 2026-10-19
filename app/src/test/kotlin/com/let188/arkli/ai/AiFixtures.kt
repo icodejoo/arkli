@@ -63,12 +63,32 @@ internal object AiFixtures {
         override fun cancel() {}
     }
 
+    /** 不该被调用的抠图引擎（卸载除外） */
+    class NoMatting : MattingBackend {
+        override fun load(modelPath: String) = error("不该加载")
+        override fun unload() {}
+        override fun matte(width: Int, height: Int, rgb: ByteArray, refine: MattingRefine): MattingOutcome = error("不该抠图")
+        override fun cancel() {}
+    }
+
     /** 文本模型引擎替身：直接回 [QWEN_OUT] */
     class EchoQwen : QwenBackend {
         override fun load(configPath: String) {}
         override fun unload() {}
         override fun generate(system: String, prompt: String, maxNewTokens: Int, sampling: Sampling) = QWEN_OUT
         override fun cancel() {}
+    }
+
+    /** 造一个模型文件不放（不可用）的抠图服务 */
+    private fun mattingService(tmp: TemporaryFolder, mode: MattingMode): MattingService {
+        val dir = tmp.newFolder()
+        val out = tmp.newFolder()
+        val env = object : MattingEnv {
+            override fun modelDir() = dir
+            override fun outDir() = out
+            override fun pagePath(file: File) = "cache/out/${file.name}"
+        }
+        return MattingService(mode, env, NoMatting(), NoCodec())
     }
 
     /**
@@ -98,6 +118,8 @@ internal object AiFixtures {
         val qwen = QwenService(object : QwenEnv { override fun modelDir() = qwenDir }, EchoQwen())
         val coupletDir = tmp.newFolder()
         val couplet = CoupletService(object : CoupletEnv { override fun modelDir() = coupletDir }, NoCouplet())
-        return AiModule.providers(OkHandoff(), clip, ocr, translate, qwen, couplet, models)
+        val mattingPortrait = mattingService(tmp, MattingMode.PORTRAIT)
+        val mattingGeneral = mattingService(tmp, MattingMode.GENERAL)
+        return AiModule.providers(OkHandoff(), clip, ocr, translate, qwen, couplet, mattingPortrait, mattingGeneral, models)
     }
 }

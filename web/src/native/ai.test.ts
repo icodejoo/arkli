@@ -341,6 +341,50 @@ describe('aiCouplet（本地对联，专用端口）', () => {
   })
 })
 
+describe('aiMatting（本地抠图，专用端口，两个模式各一个模型）', () => {
+  const RESULT = { path: 'cache/out/matting_portrait_ab12cd34.png', width: 512, height: 384, mode: 'portrait', elapsedMs: 900, inferMs: 700, refineMs: 120, modelId: 'matting-modnet-mnn-fp32' }
+  /** 只回结果的 call */
+  const ok = () => vi.fn(async () => RESULT) as unknown as import('./ai').CancelableCallFn & ReturnType<typeof vi.fn>
+  /** 抛指定错误码的 call */
+  const fail = (code: string) =>
+    vi.fn(async () => {
+      throw { code, message: 'x' }
+    }) as unknown as import('./ai').CancelableCallFn
+
+  it('转调 native.ai.invoke 并钉住 matting 入口，input 带 path 与 mode，不设超时并透传 signal', async () => {
+    const m = await load(true)
+    const call = ok()
+    const ac = new AbortController()
+    expect(await m.aiMatting('cache/pick/a.jpg', 'general', ac.signal, call)).toEqual(RESULT)
+    expect(call).toHaveBeenCalledWith(
+      'native.ai.invoke',
+      { task: 'matting', input: { path: 'cache/pick/a.jpg', mode: 'general' }, entry: 'native.ai.matting' },
+      { timeoutMs: 0, signal: ac.signal },
+    )
+  })
+  it('无宿主：抛 AiNotReadyError 且不调原生', async () => {
+    const m = await load(false)
+    const call = ok()
+    await expect(m.aiMatting('p', 'portrait', undefined, call)).rejects.toMatchObject({ name: 'AiNotReadyError', model: 'matting' })
+    expect(call).not.toHaveBeenCalled()
+  })
+  it('NOT_READY / UNKNOWN_METHOD 统一成 AiNotReadyError，BAD_PARAMS 与 CANCELLED 照抛', async () => {
+    const m = await load(true)
+    await expect(m.aiMatting('p', 'portrait', undefined, fail('NOT_READY'))).rejects.toBeInstanceOf(m.AiNotReadyError)
+    await expect(m.aiMatting('p', 'portrait', undefined, fail('UNKNOWN_METHOD'))).rejects.toBeInstanceOf(m.AiNotReadyError)
+    await expect(m.aiMatting('p', 'portrait', undefined, fail('BAD_PARAMS'))).rejects.toMatchObject({ code: 'BAD_PARAMS' })
+    await expect(m.aiMatting('p', 'portrait', undefined, fail('CANCELLED'))).rejects.toMatchObject({ code: 'CANCELLED' })
+  })
+  it('aiInvoke 的 matting 任务强类型：输入 path 与 mode，结果带透明 PNG 路径与耗时', async () => {
+    const m = await load(true)
+    const call = ok()
+    const r = await m.aiInvoke('matting', { path: 'p', mode: 'portrait' }, {}, call)
+    expect(r.path).toBe('cache/out/matting_portrait_ab12cd34.png')
+    expect(r.modelId).toBe('matting-modnet-mnn-fp32')
+    expect(call).toHaveBeenCalledWith('native.ai.invoke', { task: 'matting', input: { path: 'p', mode: 'portrait' } }, { timeoutMs: 0, signal: undefined })
+  })
+})
+
 describe('aiTranslate', () => {
   const RES = { text: '你好', elapsedMs: 1200, modelId: 'nllb600m-un6-mnn-w6', src: 'en', tgt: 'zh-CN', detectedSrc: ['en'], unrecognized: false }
   const okT = () => vi.fn(async () => RES) as unknown as import('./ai').CancelableCallFn & ReturnType<typeof vi.fn>

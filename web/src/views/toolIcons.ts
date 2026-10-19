@@ -25,6 +25,7 @@ const ICONS: Record<string, string> = {
   'image-compress': '🗜️',
   'image-stitch': '🧩',
   'image-grid': '🔳',
+  matting: '✂️',
   hash: '🧬',
   pinyin: '🈶',
   'qrcode-gen': '🏷️',

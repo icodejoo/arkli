@@ -10,6 +10,7 @@ export const AI_METHODS = {
   run: 'native.ai.run',
   ocr: 'native.ai.ocr',
   couplet: 'native.ai.couplet',
+  matting: 'native.ai.matting',
   upscale: 'native.ai.upscale',
   classify: 'native.ai.classify',
   matte: 'native.ai.matte',

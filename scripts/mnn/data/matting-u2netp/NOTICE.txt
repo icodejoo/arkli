@@ -1,0 +1,19 @@
+NOTICE
+
+This package contains a general salient-object matting model converted from U2-Net-p (U2NETP, the small U^2-Net).
+
+Original work
+- Model: U2NETP, input 1x3x320x320, the fused output (d0, tensor 1959) is used as the alpha matte
+- Creators: Xuebin Qin et al. (xuebinqin/U-2-Net), https://github.com/xuebinqin/U-2-Net
+- License: Apache License 2.0 (see LICENSE-Apache-2.0.txt)
+- Source of the ONNX file: the u2netp.onnx asset of the rembg GitHub release (danielgatis/rembg), a third-party conversion.
+  It has NOT been compared byte for byte with the weights published by the original authors.
+
+Modifications made in this package
+- Converted from ONNX to MNN with weights stored as fp16 (u2netp_f16.mnn). Activations are computed in fp32 at run time.
+  No retraining or fine-tuning was done. Outputs can differ slightly from those of the original ONNX file.
+
+Disclaimers
+- This package is not affiliated with, endorsed by, or sponsored by the U^2-Net authors.
+- The model is provided "as is", without warranty of any kind. Results may be wrong: fine details such as hair are rough.
+- This notice is not legal advice.

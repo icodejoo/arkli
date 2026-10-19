@@ -16,6 +16,7 @@ import org.json.JSONObject
  * - `native.ai.classify`：本地 SigLIP2 识物，见 [AiClassifyPolicy] 与 [ClipService]；
  * - `native.ai.ocr`：本地 PP-OCRv6 small 文字识别，是第一个按统一协议新增的任务（新增任务的步骤见 docs/design/ai-protocol.md），
  *   见 [AiOcrPolicy] 与 [OcrService]；
+ * - `native.ai.matting`：本地抠图（人像 MODNet / 通用 U2Net-p，各是一个提供者），见 [AiMattingPolicy] 与 [MattingService]；
  * - `native.ai.couplet`：本地 GPT-2 对联（MNN），上联进、等长下联出，见 [AiCoupletPolicy] 与 [CoupletService]；
  * - `native.ai.translate`：带语言对的翻译，缺省本地 NLLB（6 种联合国语言），可用 `provider` 指定 `local-qwen`，见 [AiTranslatePolicy] 与 [TranslateService]；
  * - 本地文本模型（Qwen3.5-0.8B，MNN）作为 `local-qwen` 提供者，经 `native.ai.run` 做摘要、校对、改写、提示词问答，经 `native.ai.translate` 做翻译，见 [AiQwenPolicy] 与 [QwenService]；
@@ -50,6 +51,9 @@ object AiModule {
     /** 方法名：文字识别（本地 PP-OCRv6 small） */
     const val METHOD_OCR = "native.ai.ocr"
 
+    /** 方法名：抠图（本地 MODNet 人像 / U2Net-p 通用） */
+    const val METHOD_MATTING = "native.ai.matting"
+
     /** 方法名：本地翻译（NLLB-200 600M） */
     const val METHOD_TRANSLATE = "native.ai.translate"
 
@@ -83,9 +87,11 @@ object AiModule {
      * @param translate 翻译服务
      * @param qwen 文本模型服务
      * @param couplet 对联服务
+     * @param mattingPortrait 人像抠图服务
+     * @param mattingGeneral 通用抠图服务
      * @param models 模型状态来源；null 时各本地提供者只看文件是否齐全
      * @return 提供者列表（注册顺序即缺省路由的优先级）
-     * @example `ProviderRegistry(AiModule.providers(platform, clip, ocr, translate, qwen, couplet, models))`
+     * @example `ProviderRegistry(AiModule.providers(platform, clip, ocr, translate, qwen, couplet, mattingPortrait, mattingGeneral, models))`
      */
     fun providers(
         handoff: HandoffPlatform,
@@ -94,6 +100,8 @@ object AiModule {
         translate: TranslateService,
         qwen: QwenService,
         couplet: CoupletService,
+        mattingPortrait: MattingService,
+        mattingGeneral: MattingService,
         models: ModelStateSource?,
     ): List<AiProvider> = listOf(
         IntentHandoffProvider(handoff),
@@ -102,6 +110,8 @@ object AiModule {
         LocalNllbProvider(translate, models),
         LocalQwenProvider(qwen, models),
         LocalCoupletProvider(couplet, models),
+        LocalMattingProvider(mattingPortrait, models),
+        LocalMattingProvider(mattingGeneral, models),
     )
 
     /**
@@ -120,6 +130,8 @@ object AiModule {
             TranslateRuntime.get(env.appContext),
             QwenRuntime.get(env.appContext),
             CoupletRuntime.get(env.appContext),
+            MattingRuntime.get(env.appContext, MattingMode.PORTRAIT),
+            MattingRuntime.get(env.appContext, MattingMode.GENERAL),
             models,
         )
         // 生命周期全从提供者派生：删模型前先卸会话（按 id 登记，重复安装只会替换）、进程级回收
@@ -135,6 +147,7 @@ object AiModule {
         bridge.register(METHOD_CLASSIFY, AiClassifyHandler(invoker))
         bridge.register(METHOD_OCR, AiOcrHandler(invoker))
         bridge.register(METHOD_COUPLET, AiCoupletHandler(invoker))
+        bridge.register(METHOD_MATTING, AiMattingHandler(invoker))
         bridge.register(METHOD_TRANSLATE, AiTranslateHandler(invoker))
         bridge.register(METHOD_WARMUP, AiWarmupHandler(registry))
         bridge.register(METHOD_UNLOAD, AiUnloadHandler(registry))

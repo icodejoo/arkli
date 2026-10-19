@@ -239,6 +239,15 @@ OCR 实际改动量（作为参照）：原生新增 `OcrService.kt`、`AndroidO
 - **证据**（桌面 int4，实验脚本与逐条译文在会话 scratchpad，未入库）：zh→en 76 词基线对 43~44，引号法 60~62；en→zh 28 词 15 → 20~21。真模型测试：你好→Hello、谢谢→Thank you、你好！→Hello!、Hello→你好，长句开关前后一致。
 - **局限**：只验证 zh/en、只在桌面 int4 上量过，真机未复测；仍有不少词译不对（只是显著改善），极短输入准确率要求高时仍应走短语表或 Qwen；每次多翻一遍前缀，耗时略增（桌面约 0.4~0.5 秒/条）。M6 把引擎抽成 Seq2SeqRunner 时，`wrap.rs` 是纯函数可直接复用，编排（先试包裹、失败回退）要随引擎迁移。
 
+## 抠图接入记录（第三个按 checklist 接入的任务）
+
+任务 `matting`（`isText=false`，专用端口 `AiPort.Matting` / `MattingEngine`，`AiCall.Matting`）。与 OCR 接入不同的决定：
+- **两个模型 = 两个提供者**（`local-matting-portrait` / `local-matting-general`），一个 `MattingService` 类按 `MattingMode` 实例化两份。理由：契约里一个提供者只有一个 `sessionModelId` / `modelInfo`，沿用 NLLB、Qwen 各一个提供者的做法，下载状态、预热、卸载、删模型前释放全部自动覆盖。请求带 `mode`，由 `AiMattingPolicy.parse` 补出提供者 id，`provider` 与 `mode` 冲突报 `BAD_PARAMS`；因此契约测试的 `sampleInput` 要按提供者给 `mode`。
+- **输出是文件**：服务把 Rust 返回的原图尺寸 alpha 乘进像素，用 `PngEncoder`（FAST 调优）写 `cache/out/`，结果只回路径；Rust 侧负责缩放与 alpha 缩回，不返回合成图。
+- **取消**：单次前向不可打断，只在阶段边界检查（见 [抠图](design/tools/matting.md)）。
+- 前端：`AI_METHODS.matting`、`AiTask` / `AiEntry` / `AiTaskMap.matting`、`aiMatting`、`TASK_LABELS.matting`、registry 的 `tasks: [{ task: 'matting', entry }]`；`aiCatalog.test.ts` 夹具加两个提供者。
+- 同步的测试列表：`AiFixtures`（`NoMatting`）、契约测试（id / 层 / 会话 / sample / `HiddenMatting` 说谎者）、`AiSessionDerivationTest`，新增 `MattingServiceTest`、`AiMattingPolicyTest`，`AiInvokeTest` 加两条。缺口同前：四处手写列表仍要人工同步。
+
 ## 已知局限
 
 - 共用探测只在首次使用与打开选择器时刷新：装了/卸了交接类应用后，L3 是否出现要等下次打开选择器；本地模型的下载状态走 store 推送，不受影响。

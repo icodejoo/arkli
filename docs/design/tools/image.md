@@ -5,6 +5,7 @@ updated: 2026-10-13
 summary: 「图片」分类全部工具的落地方案：层归属、所用库、bridge 方法、体积与优先级
 ---
 ## TL;DR
+- **抠图（2026-10-19 已接入）**：独立工具 `matting`，本地 MODNet（人像）与 U2Net-p（通用）经 MNN，输出透明 PNG，见 [抠图](matting.md)；证件照（第 19 项）的自动抠图仍读旧桩，待改接。
 - 覆盖功能清单「图片」分类全部 21 项：P0 5 项、P1 7 项、P2 7 项、建议不做 2 项（以图搜图、B 站封面获取）。
 - **压缩与格式转换合并，统一由原生（Kotlin）做**：解码用 `ImageDecoder`/`BitmapFactory`，JPEG/WebP 用平台 `Bitmap.compress`，PNG 自写（缩色量化 + 索引色编码，IDAT 走 `java.util.zip.Deflater`），零新增依赖，不经过 Rust。拼接、九宫格等需要即时预览/绘制的工具仍用 WebView 的 Canvas，零体积；Rust 只管 Canvas 与原生都不合适的（GIF 编解码、视觉模型），不引入 `image` 全家桶（AI 类同此约束）。
 - **Canvas 只限中小图**：超过 `MAX_CANVAS_PIXELS` 的大图（几千万像素起）不往页面里塞，免得 WebView 里出现几百 MB 的位图和 Blob；这类图交原生降采样或编码、Rust 做 PNG 像素运算，页面只拿缩略预览和结果路径（见共用部件的「大图分流」）。

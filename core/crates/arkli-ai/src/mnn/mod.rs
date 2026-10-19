@@ -31,6 +31,7 @@ use std::sync::{Arc, Mutex};
 use crate::backend::{GraphSession, GraphTensorSession, GraphValue, Session};
 use crate::clip::{ClipEncoder, INPUT_NAME, OUTPUT_NAME};
 use crate::error::{AiError, Result};
+use crate::matting::{Matter, MattingMode};
 use crate::pipeline::{OcrModelPaths, OcrOptions, OcrPipeline};
 use ffi::{Api, RawNet, RawVal, DTYPE_F32, DTYPE_I32, ERR_BUF_LEN, MAX_NDIM};
 
@@ -289,6 +290,17 @@ impl MnnRuntime {
     /// - 返回：可直接 `generate` 的引擎；清单或词表不合法返回 [`AiError::InvalidConfig`]
     pub fn load_couplet(&self, dir: &Path, threads: u32) -> Result<crate::couplet::Couplet<MnnNet>> {
         crate::couplet::load_couplet_dir(self, dir, threads)
+    }
+
+    /// 加载抠图引擎：单个 `.mnn` 模型（旁有 `.weight` 自动带上），输入输出名按模式固定。
+    ///
+    /// - `model`：模型文件（人像 `modnet512_fp32.mnn`、通用 `u2netp_f16.mnn`）
+    /// - `mode`：抠图模式，决定输入输出名、缩放边长与归一化
+    /// - `threads`：线程数，0 视为默认 4
+    pub fn load_matter(&self, model: &Path, mode: MattingMode, threads: u32) -> Result<Matter<MnnNet>> {
+        let cfg = MnnConfig::default().with_threads(threads);
+        let net = self.load_net(model, external_weight_path(model).as_deref(), &[mode.input_name()], &[mode.output_name()], &cfg)?;
+        Ok(Matter::new(net, mode))
     }
 
     /// 同 [`Self::load_ocr_pipeline`]，但由调用方指定管线参数（对比实验、自定义阈值用）。
