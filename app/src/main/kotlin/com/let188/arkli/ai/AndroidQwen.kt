@@ -5,12 +5,16 @@ import android.util.Log
 import com.let188.arkli.bridge.BridgeErrors
 import com.let188.arkli.bridge.BridgeException
 import kotlinx.coroutines.CancellationException
+import org.json.JSONObject
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 
 /** 文本模型日志 tag */
 private const val QWEN_LOG_TAG = "ArkliQwen"
+
+/** 运行时动态生成的配置文件名（写入 cacheDir 下覆盖写） */
+private const val RUNTIME_CONFIG_FILE = "qwen_runtime_config.json"
 
 /** 模型目录（相对 filesDir），与 `assets/ai/models.json` 里 qwen 条目的 dir 一致 */
 const val QWEN_MODEL_DIR = "models/qwen35-0.8b-mnn-q4"
@@ -30,15 +34,28 @@ internal class AndroidQwenEnv(context: Context) : QwenEnv {
 
 /**
  * 基于 JNI 的真实引擎。把原生层的异常翻译成桥错误码。
+ *
+ * @param context 安卓应用上下文
+ * @param store 参数持久化存储
  */
-internal class MnnQwenBackend : QwenBackend {
+internal class MnnQwenBackend(
+    private val context: Context,
+    private val store: AiParamStore,
+) : QwenBackend {
     /** 会话句柄，0 表示未加载 */
     private var handle = 0L
 
     /** 加载会话，顺带记录加载耗时 */
     override fun load(configPath: String) {
         val t0 = System.nanoTime()
-        handle = guard { MnnNative.nativeCreate(configPath.toByteArray(Charsets.UTF_8)) }
+        val configFile = File(configPath)
+        val originalJson = JSONObject(configFile.readText(Charsets.UTF_8))
+        val modelDir = configFile.parentFile?.absolutePath ?: configFile.parent.orEmpty()
+        val threads = AiMnnParams.threads(store).toInt()
+        val wrapped = QwenConfigWrapper.wrap(originalJson, modelDir, threads)
+        val runtimeConfig = File(context.cacheDir, RUNTIME_CONFIG_FILE)
+        runtimeConfig.writeText(wrapped.toString(), Charsets.UTF_8)
+        handle = guard { MnnNative.nativeCreate(runtimeConfig.absolutePath.toByteArray(Charsets.UTF_8)) }
         Log.i(QWEN_LOG_TAG, "模型加载完成 ${(System.nanoTime() - t0) / NANOS_PER_MS} ms")
     }
 
@@ -114,6 +131,13 @@ internal object QwenRuntime {
      * @return 进程内唯一的服务
      */
     fun get(context: Context): QwenService = service ?: synchronized(this) {
-        service ?: QwenService(AndroidQwenEnv(context), MnnQwenBackend()).also { service = it }
+        service ?: run {
+            val store = AiParamStores.get(context)
+            QwenService(
+                AndroidQwenEnv(context),
+                MnnQwenBackend(context.applicationContext, store),
+                settingsKey = { AiMnnParams.fingerprint(LocalQwenProvider.ID, AiQwenPolicy.PARAM_SPECS, store) },
+            ).also { service = it }
+        }
     }
 }

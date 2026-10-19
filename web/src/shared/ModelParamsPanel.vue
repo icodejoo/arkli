@@ -41,6 +41,9 @@ const state = computed(() => store.get(props.providerId))
 /** 全部参数规格列表 */
 const specs = computed(() => state.value?.specs ?? [])
 
+/** 有按任务生效的参数时才提示“页面自带设置以页面为准”（公用参数如线程数与页面无关） */
+const showPageHint = computed(() => specs.value.some((s) => s.applyTo?.length))
+
 /** 拆分出的基础参数与高级参数 */
 const splitted = computed(() => splitSpecs(specs.value))
 /** 基础参数列表 */
@@ -112,7 +115,7 @@ async function onResetAll(): Promise<void> {
 <template>
   <div v-if="specs.length > 0" class="mpp">
     <h4 v-if="title" class="mpp__title">{{ title }}</h4>
-    <p class="mpp__tip">{{ PAGE_OVERRIDE_HINT }}</p>
+    <p v-if="showPageHint" class="mpp__tip">{{ PAGE_OVERRIDE_HINT }}</p>
 
     <!-- 基础参数区 -->
     <div class="mpp__group">

@@ -5,7 +5,7 @@ import type { AiParamSpec, AiProviderInfo, AiTask } from '@/native/ai'
 import { TASK_LABELS } from './aiCatalog'
 
 /** 会话级参数需重载的提示文案 */
-export const SESSION_RELOAD_HINT = '下次使用时重新加载（约 3 秒）'
+export const SESSION_RELOAD_HINT = '改完后下次使用要重新加载模型，会多等几秒'
 
 /** 页面自带设置功能优先的提示文案 */
 export const PAGE_OVERRIDE_HINT = '页面自带设置的功能以页面为准'

@@ -128,7 +128,7 @@ AI 中心详情弹窗里让用户调推理参数（温度、回答长度、束�
 **CALL / SESSION**
 
 - `call`：每次调用补进去，改完下次调用就生效，不重建会话。本期全是它。
-- `session`：加载模型时定死，改了要重建会话。机制已备好：6 个 `XxxService` 都有 `settingsKey: () -> String` 并进重载指纹，`AiParams.sessionFingerprint` 算 SESSION 级值的指纹。**生产里还没接**（本期没有 SESSION 级参数，等线程/功耗步 4/5 再接），目前缺省是空串。改设置不会打断正在跑的推理，下次拿到闸门后才重载。
+- `session`：加载模型时定死，改了要重建会话。机制已备好：6 个 `XxxService` 都有 `settingsKey: () -> String` 并进重载指纹，`AiParams.sessionFingerprint` 算 SESSION 级值的指纹。**步 4 已接**：5 个 Runtime 创建 Service 时传 `settingsKey = { AiMnnParams.fingerprint(提供者 id, 自身 specs, store) }`，指纹含 `mnn` 组的 SESSION 值（`mnn.numThread=…`）与该提供者自己的 SESSION spec。改设置不会打断正在跑的推理，下次拿到闸门后才重载。参数 store 全进程只有一个（`AiParamStores.get(context)`），`AiModule` 与各 Runtime 共用。
 
 **已声明的参数**
 
@@ -140,6 +140,10 @@ AI 中心详情弹窗里让用户调推理参数（温度、回答长度、束�
 | `local-nllb` | `numBeams` | select 快速 / 均衡 / 精细 | 值 1/2/4 即束宽，页面没传 `numBeams` 才补 |
 | `local-couplet` | `temperature` / `topK` | slider 0~1.5 / stepper（高级） | 页面没传才补 |
 | `local-clip` | `topK` | stepper 1~10（高级） | 页面没显式传才补 |
+
+**`mnn` 伪提供者（步 4）**：所有本地 MNN 模型共用的基础参数，只出现在 `params.get/set/reset`（`AiParams.resolveTunable` 直接认 `provider: "mnn"`，返回 `AiMnnParams.SPECS`），**不进** `native.ai.providers`、不参与路由。现有一项 `numThread`（stepper 1~6，默认 4，scope `session`，默认值是原先各 `AndroidXxx.kt` 写死的 4 的唯一来源）。Clip/Couplet/Matting/Ocr/Translate 的 Backend 加载时读 `AiMnnParams.threads(store)`；语音识别（sherpa）有自己的线程数，不受影响。Web 入口：AI 中心顶部“MNN 基础参数”卡片 → `MnnParamsSheet.vue`（内嵌 `ModelParamsPanel provider-id="mnn"`）。
+
+**Qwen 线程（不改 JNI）**：`MnnQwenBackend.load` 读模型目录的 `config.json`，经纯函数 `QwenConfigWrapper.wrap` 覆盖顶层 `thread_num` 并加 `base_dir`（模型目录绝对路径，必须以 `/` 结尾，MNN 是字符串直拼），写到 `cacheDir/qwen_runtime_config.json`（固定名覆盖写），把它传给 `nativeCreate`。依据 MNN `llmconfig.hpp`：`base_dir` 取自 config，随后 `config_.merge(llm_config.json)`；ujson `merge` 是源（llm_config.json）覆盖已有键、对象递归，但设备上 `llm_config.json` 不含 `thread_num` / `base_dir`，所以覆盖值有效。不动 `mllm` 里的 `thread_num`。
 
 **校验**：`params.set` 逐项按 spec 校验（范围、步进对齐、select 值在 `optionValues` 里，无 `optionValues` 时为合法下标），**整批原子**，任一非法整批拒绝，报 `BAD_PARAMS`（不夹取，与“不静默忽略”一致）。未知提供者、没实现 `AiTunable` 的提供者、空 `values`、未知 key 同样 `BAD_PARAMS`。值与默认相同就删键不存。三个方法只接受主 frame。
 

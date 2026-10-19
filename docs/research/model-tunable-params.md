@@ -306,7 +306,7 @@ interface AiTunable {
 | 8 | 抠图细化参数并入（待另一子代理的成果合并后） | 待定 | S~M | 视情况 |
 | 9 | 文档：`ai-protocol.md` 加“参数调整”小节与 checklist 一项、`bridge-protocol.md` 加三个方法、`model-picker.md` 与 `status.md` 同步，索引由主会话统一改 | docs | S | 否 |
 
-**实施进度**：步 1~3 已完成并真机验证（Qwen 温度因设备未装 Qwen 未实测）。步 9 的 `ai-protocol.md` / `bridge-protocol.md` / `model-picker.md` / `status.md` 已同步。步 4~8 未做，详见 [状态](../status.md)。
+**实施进度**：步 1~3 已完成并真机验证（Qwen 温度因设备未装 Qwen 未实测）。步 9 的 `ai-protocol.md` / `bridge-protocol.md` / `model-picker.md` / `status.md` 已同步。步 4（MNN 基础参数入口 + 线程数）已实现，真机待验；步 5~8 未做，详见 [状态](../status.md)。
 
 建议交付顺序：**1+2+3 先上线一版**（**已实现，2026-10-19，未提交、真机未验**）（Qwen/NLLB/对联/识物的开放参数，纯 Kotlin + Web，立即可见效果），再做 4（线程），5/6 合并重编一次，7 单独一批。
 

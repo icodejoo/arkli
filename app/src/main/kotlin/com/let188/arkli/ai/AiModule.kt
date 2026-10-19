@@ -150,7 +150,7 @@ object AiModule {
         }
         AiRecycle.attach(all)
         val registry = ProviderRegistry(all)
-        val paramStore = SharedPrefsAiParamStore(env.appContext)
+        val paramStore = AiParamStores.get(env.appContext)
         val invoker = AiInvoker({ registry.all() }, { env.roots.resolveCache(it) }, paramStore)
         bridge.register(METHOD_PROVIDERS, AiProvidersHandler(registry))
         bridge.register(METHOD_PARAMS_GET, AiParamsGetHandler(registry, paramStore))

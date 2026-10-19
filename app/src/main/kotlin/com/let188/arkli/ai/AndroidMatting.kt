@@ -20,9 +20,6 @@ import java.io.File
 /** 抠图日志 tag */
 private const val MATTING_LOG_TAG = "ArkliMatting"
 
-/** Rust 算子线程数（与识物、OCR 一致取 4） */
-private const val MATTING_THREADS = 4u
-
 /** 纳秒转毫秒 */
 private const val MATTING_NANOS_PER_MS = 1_000_000L
 
@@ -58,8 +55,9 @@ private fun MattingRefine.toFfi(): MattingFfiRefine = when (this) {
  * 基于 UniFFI 的真实引擎，一个实例对应一种模式。Rust 侧对调用加锁串行；这里把 Rust 的错误翻译成桥错误码。
  *
  * @param mode 模式
+ * @param store 参数持久化存储
  */
-internal class UniffiMattingBackend(private val mode: MattingMode) : MattingBackend {
+internal class UniffiMattingBackend(private val mode: MattingMode, private val store: AiParamStore) : MattingBackend {
     /** Rust 侧的模式枚举 */
     private val ffiMode: MattingFfiMode =
         if (mode == MattingMode.PORTRAIT) MattingFfiMode.PORTRAIT else MattingFfiMode.GENERAL
@@ -68,7 +66,7 @@ internal class UniffiMattingBackend(private val mode: MattingMode) : MattingBack
     override fun load(modelPath: String): Unit = guard {
         val t0 = System.nanoTime()
         MnnNative.ensureLoaded()
-        mattingLoad(MNN_RUNTIME_LIB, ffiMode, modelPath, MATTING_THREADS)
+        mattingLoad(MNN_RUNTIME_LIB, ffiMode, modelPath, AiMnnParams.threads(store))
         Log.i(MATTING_LOG_TAG, "${mode.wire} 模型加载完成 ${(System.nanoTime() - t0) / MATTING_NANOS_PER_MS} ms")
         Unit
     }
@@ -116,7 +114,15 @@ internal object MattingRuntime {
      */
     fun get(context: Context, mode: MattingMode): MattingService = synchronized(this) {
         services.getOrPut(mode) {
-            MattingService(mode, AndroidMattingEnv(context, mode), UniffiMattingBackend(mode), AndroidImageCodec())
+            val store = AiParamStores.get(context)
+            MattingService(
+                mode,
+                AndroidMattingEnv(context, mode),
+                UniffiMattingBackend(mode, store),
+                AndroidImageCodec(),
+                // LocalMattingProvider 未实现 AiTunable，无自身可调参数，故传 emptyList()
+                settingsKey = { AiMnnParams.fingerprint(mode.providerId, emptyList(), store) },
+            )
         }
     }
 }

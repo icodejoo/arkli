@@ -15,9 +15,6 @@ import java.io.File
 /** 对联日志 tag */
 private const val COUPLET_LOG_TAG = "ArkliCouplet"
 
-/** Rust 算子线程数（与其他 MNN 模型一致取 4） */
-private const val COUPLET_THREADS = 4u
-
 /** 纳秒转毫秒 */
 private const val COUPLET_NANOS_PER_MS = 1_000_000L
 
@@ -39,13 +36,15 @@ internal class AndroidCoupletEnv(context: Context) : CoupletEnv {
 
 /**
  * 基于 UniFFI 的真实引擎。Rust 侧对调用加锁串行；这里把 Rust 的错误翻译成桥错误码。
+ *
+ * @param store 参数持久化存储
  */
-internal class UniffiCoupletBackend : CoupletBackend {
+internal class UniffiCoupletBackend(private val store: AiParamStore) : CoupletBackend {
     /** 加载 MNN 运行库与模型目录（先确保 so 已载入，Rust 按裸名 dlopen），顺带记录加载耗时 */
     override fun load(modelDir: String): Unit = guard {
         val t0 = System.nanoTime()
         MnnNative.ensureLoaded()
-        coupletLoad(MNN_RUNTIME_LIB, modelDir, COUPLET_THREADS)
+        coupletLoad(MNN_RUNTIME_LIB, modelDir, AiMnnParams.threads(store))
         Log.i(COUPLET_LOG_TAG, "模型加载完成 ${(System.nanoTime() - t0) / COUPLET_NANOS_PER_MS} ms")
         Unit
     }
@@ -92,6 +91,13 @@ internal object CoupletRuntime {
      * @return 进程内唯一的服务
      */
     fun get(context: Context): CoupletService = service ?: synchronized(this) {
-        service ?: CoupletService(AndroidCoupletEnv(context), UniffiCoupletBackend()).also { service = it }
+        service ?: run {
+            val store = AiParamStores.get(context)
+            CoupletService(
+                AndroidCoupletEnv(context),
+                UniffiCoupletBackend(store),
+                settingsKey = { AiMnnParams.fingerprint(LocalCoupletProvider.ID, AiCoupletPolicy.PARAM_SPECS, store) },
+            ).also { service = it }
+        }
     }
 }

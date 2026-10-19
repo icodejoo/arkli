@@ -177,6 +177,7 @@ vi.mock('vant/es', () => ({
 
 import { useAiParamsStore } from '@/stores/aiParams'
 import ModelParamsPanel from './ModelParamsPanel.vue'
+import { SESSION_RELOAD_HINT } from './modelParams'
 
 function renderPanel(props: { providerId: string; title?: string }) {
   return renderToString(createSSRApp({ render: () => h(ModelParamsPanel, props) }))
@@ -198,6 +199,20 @@ describe('ModelParamsPanel', () => {
     expect(html).toBe('<!---->')
   })
 
+  it('没有按任务生效的参数时（如 mnn 线程数）不显示“以页面为准”提示', async () => {
+    const store = useAiParamsStore()
+    store.cache['mnn'] = {
+      ...SAMPLE_STATE,
+      provider: 'mnn',
+      specs: SAMPLE_STATE.specs.filter((s) => !s.applyTo?.length),
+    }
+
+    const html = await renderPanel({ providerId: 'mnn' })
+
+    expect(html).toContain('线程数')
+    expect(html).not.toContain('页面自带设置的功能以页面为准')
+  })
+
   it('渲染各种控件、标题、desc、applyTo 与 session 提示', async () => {
     const store = useAiParamsStore()
     store.cache['local-qwen'] = SAMPLE_STATE
@@ -216,7 +231,7 @@ describe('ModelParamsPanel', () => {
 
     // applyTo 与 session 提示
     expect(html).toContain('只对：问答 生效')
-    expect(html).toContain('下次使用时重新加载（约 3 秒）')
+    expect(html).toContain(SESSION_RELOAD_HINT)
 
     // 各种控件 kind
     expect(html).toContain('van-slider-stub')

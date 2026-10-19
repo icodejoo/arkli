@@ -15,9 +15,6 @@ import java.io.File
 /** 翻译日志 tag */
 private const val TRANSLATE_LOG_TAG = "ArkliTranslate"
 
-/** Rust 算子线程数（与识物一致取 4） */
-private const val TRANSLATE_THREADS = 4u
-
 /** 模型目录（相对 filesDir），与 `assets/ai/models.json` 里 nllb 条目的 dir 一致 */
 const val TRANSLATE_MODEL_DIR = "models/nllb600m-un6-mnn-w6"
 
@@ -36,13 +33,15 @@ internal class AndroidTranslateEnv(context: Context) : TranslateEnv {
 
 /**
  * 基于 UniFFI 的真实引擎。Rust 侧对调用加锁串行；这里把 Rust 的错误翻译成桥错误码。
+ *
+ * @param store 参数持久化存储
  */
-internal class UniffiTranslateBackend : TranslateBackend {
+internal class UniffiTranslateBackend(private val store: AiParamStore) : TranslateBackend {
     /** 加载 MNN 运行库与模型（先确保 so 已载入，Rust 按裸名 dlopen；`model.json` 的 format 为 mnn-split），顺带记录加载耗时 */
     override fun load(modelDir: String): Unit = guard {
         val t0 = System.nanoTime()
         MnnNative.ensureLoaded()
-        translateLoad(MNN_RUNTIME_LIB, modelDir, TRANSLATE_THREADS)
+        translateLoad(MNN_RUNTIME_LIB, modelDir, AiMnnParams.threads(store))
         Log.i(TRANSLATE_LOG_TAG, "模型加载完成 ${(System.nanoTime() - t0) / NANOS_PER_MS} ms")
         Unit
     }
@@ -94,6 +93,13 @@ internal object TranslateRuntime {
      * @return 进程内唯一的服务
      */
     fun get(context: Context): TranslateService = service ?: synchronized(this) {
-        service ?: TranslateService(AndroidTranslateEnv(context), UniffiTranslateBackend()).also { service = it }
+        service ?: run {
+            val store = AiParamStores.get(context)
+            TranslateService(
+                AndroidTranslateEnv(context),
+                UniffiTranslateBackend(store),
+                settingsKey = { AiMnnParams.fingerprint(LocalNllbProvider.ID, AiTranslatePolicy.PARAM_SPECS, store) },
+            ).also { service = it }
+        }
     }
 }

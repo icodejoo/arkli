@@ -324,8 +324,8 @@ object AiParams {
             parts += "${spec.key}=$v"
         }
         mnnSessionSpecs.sortedBy { it.key }.forEach { spec ->
-            val v = store.effectiveValue("mnn", spec)
-            parts += "mnn.${spec.key}=$v"
+            val v = store.effectiveValue(AiMnnParams.PROVIDER_ID, spec)
+            parts += "${AiMnnParams.PROVIDER_ID}.${spec.key}=$v"
         }
         return parts.joinToString("|")
     }
@@ -353,6 +353,9 @@ object AiParams {
     private fun resolveTunable(params: JSONObject, providers: List<AiProvider>): Pair<String, List<AiParamSpec>> {
         val providerId = params.optString(KEY_PROVIDER).takeIf { it.isNotEmpty() }
             ?: throw BridgeException(BridgeErrors.BAD_PARAMS, "$KEY_PROVIDER 不能为空")
+        if (providerId == AiMnnParams.PROVIDER_ID) {
+            return providerId to AiMnnParams.SPECS
+        }
         val p = providers.firstOrNull { it.id == providerId }
             ?: throw BridgeException(BridgeErrors.BAD_PARAMS, "未知的提供者: $providerId")
         val tunable = p as? AiTunable

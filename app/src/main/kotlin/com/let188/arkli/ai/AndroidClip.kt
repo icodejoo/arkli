@@ -22,9 +22,6 @@ private const val CLIP_LOG_TAG = "ArkliClip"
  */
 const val MNN_RUNTIME_LIB = "libarkli-mnn.so"
 
-/** Rust 算子线程数（骁龙 680 上 4 线程是甜点，见调研文档第 8 节） */
-private const val CLIP_THREADS = 4u
-
 /** 模型目录（相对 filesDir） */
 const val CLIP_MODEL_DIR = "models/siglip2-mnn-w8"
 
@@ -56,12 +53,14 @@ internal class AndroidClipEnv(context: Context) : ClipEnv {
 
 /**
  * 基于 UniFFI 的真实引擎。Rust 侧对调用加锁串行；这里把 Rust 的错误翻译成桥错误码。
+ *
+ * @param store 参数持久化存储
  */
-internal class UniffiClipBackend : ClipBackend {
+internal class UniffiClipBackend(private val store: AiParamStore) : ClipBackend {
     /** 加载 MNN 运行库与模型（`.mnn` 在 Rust 侧自动选 MNN 后端；先确保 so 已载入） */
     override fun load(modelPath: String) = guard {
         MnnNative.ensureLoaded()
-        clipLoad(MNN_RUNTIME_LIB, modelPath, CLIP_THREADS)
+        clipLoad(MNN_RUNTIME_LIB, modelPath, AiMnnParams.threads(store))
     }
 
     /** 释放模型会话 */
@@ -112,6 +111,14 @@ internal object ClipRuntime {
      * @return 进程内唯一的服务
      */
     fun get(context: Context): ClipService = service ?: synchronized(this) {
-        service ?: ClipService(AndroidClipEnv(context), UniffiClipBackend(), AndroidImageCodec()).also { service = it }
+        service ?: run {
+            val store = AiParamStores.get(context)
+            ClipService(
+                AndroidClipEnv(context),
+                UniffiClipBackend(store),
+                AndroidImageCodec(),
+                settingsKey = { AiMnnParams.fingerprint(LocalClipProvider.ID, AiClassifyPolicy.PARAM_SPECS, store) },
+            ).also { service = it }
+        }
     }
 }
