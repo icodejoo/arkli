@@ -118,7 +118,7 @@ C ABI（`native/mnn/arkli_mnn_capi.h:46-56`，`.cpp:182-196`）现在只暴露�
 | 重复惩罚 `repetition_penalty` | 压重复 | 1.1（config.json 的 `penalty`；读码：惩罚>1 时钉死提交会自动把 penalty 放在采样链最前，`sampler.cpp:211-225`） | 1.0 | 太高会回避必要重复（人名、代码） | 同上 | 太高输出怪异 | **高级**（新增），范围 1.0~1.3；同样要改 JNI |
 | `presence_penalty` | 出现过就扣分 | 0（未设） | 非思考 2.0 / 思考 1.5 | 减少车轱辘话；官方给的值偏大，小模型实际效果未测 | 同上 | 值大时可能不愿重复关键词 | **不开放**（官方值偏激进且未实测，先不暴露） |
 | `min_p` | — | 未用（管线里没有） | 0.0 | — | — | — | 不开放 |
-| `max_new_tokens` | 单次最大生成 | 固定 256（`AiQwenPolicy.kt:41`）；翻译随原文 `clamp(字数×2,64,512)` | 官方 32768（不适合手机） | 直接决定耗时上限；0.8B 解码约 17 tok/s（旧实测），256 token 约 15 秒 | **否**（每次调用传） | 过大等很久，过小截断 | **开放**为“回答长度”三档（短 128 / 中 256 / 长 512），只作用于 prompt/摘要/改写；翻译不受影响 |
+| `max_new_tokens` | 单次最大生成 | 固定 256（`AiQwenPolicy.kt:41`）；翻译随原文 `clamp(字数×2,64,512)` | 官方 32768（不适合手机） | 直接决定耗时上限；0.8B 解码约 17 tok/s（旧实测），256 token 约 15 秒 | **否**（每次调用传） | 过大等很久，过小截断 | **开放**为“回答长度”三档（短 128 / 中 256 / 长 512），作用于 prompt/摘要/校对/改写四个文本任务（`applyTo` 即 `SUPPORTED_TASKS`）；翻译不受影响。**落地**：select 带 `optionValues`，直接存真实值 128/256/512，`AiCall.Run.maxTokens` 只由用户设置补入、页面不传 |
 | `preset` | 预设模板 | 页面传 | — | — | 否 | — | 不进弹窗（页面决定） |
 | `system` | 附加系统提示 | 页面传（仅 prompt） | — | — | 否 | — | 不进弹窗 |
 | 思考模式 `enable_thinking` | 先输出 `<think>` | 关（`config.json` 已改，托管文件里） | 官方默认开 | 手机上太慢 | 是（模板） | 开了延迟翻倍以上 | **不开放**（`qwen35-mnn-model.md` §5 已决定关） |
@@ -129,7 +129,7 @@ C ABI（`native/mnn/arkli_mnn_capi.h:46-56`，`.cpp:182-196`）现在只暴露�
 
 | 参数 | 含义 | 项目现值 | 影响 | 重建 | 风险 | 归类 |
 |---|---|---|---|---|---|---|
-| `numBeams` | 束宽 | 1（`model.json` 的 `generation.num_beams`）；API 范围 1~4 | 旧实测（M6b 桌面）：beams=2 约 2.1 倍耗时（894ms 对 422ms），因为 MNN 三图 batch 固定 1、每条束单独跑；质量收益没单独量化 | **否**（每次调用传，`TranslateOptions.num_beams`） | 4 在真机上可能多出数秒 | **已开放（API）**；AI 中心**开放**：分段控件“快速 1 / 均衡 2 / 精细 4”，旁注“越精细越慢” |
+| `numBeams` | 束宽 | 1（`model.json` 的 `generation.num_beams`）；API 范围 1~4 | 旧实测（M6b 桌面）：beams=2 约 2.1 倍耗时（894ms 对 422ms），因为 MNN 三图 batch 固定 1、每条束单独跑；质量收益没单独量化 | **否**（每次调用传，`TranslateOptions.num_beams`） | 4 在真机上可能多出数秒 | **已开放（API）**；AI 中心**开放**：分段控件“快速 1 / 均衡 2 / 精细 4”，旁注“越精细越慢”。**落地**：spec 是 select，带 `optionValues`，**存真实值 1/2/4**（`options` 只管显示），页面没传 `numBeams` 才补 |
 | `length_penalty` | 束搜索长度惩罚 | 2.0（`manifest.rs:62`） | 只在 beams>1 起作用；抑制偏短译文 | 否（清单级，需改 `model.json` 或加按次选项） | 调错译文偏长/偏短 | **不开放** |
 | `no_repeat_ngram_size` | 禁止 n-gram 重复 | 清单可选，缺省来自模型 config | 压叠词，但会误伤“谢谢谢谢”类 | 同上 | 误伤合法重复 | **不开放** |
 | `min_length_ratio` | 最小输出长度占输入比 | 0.7 | 防译文过短 | 同上 | — | **不开放** |
@@ -215,7 +215,7 @@ data class AiParamSpec(
     val key: String,            // 稳定键，如 "temperature"、"numBeams"
     val label: String, val desc: String,
     val kind: Kind,             // SLIDER / STEPPER / SWITCH / SELECT
-    val default: Double,        // 统一用数值；SWITCH 为 0/1，SELECT 为选项下标
+    val default: Double,        // 统一用数值；SWITCH 为 0/1，SELECT 有 optionValues 时为真实值，否则为选项下标
     val min: Double, val max: Double, val step: Double,
     val options: List<String> = emptyList(),   // SELECT 用
     val advanced: Boolean = false,             // true 则折叠进“高级”
@@ -232,7 +232,7 @@ interface AiTunable {
 
 - `native.ai.providers` 的每个提供者**追加** `params: AiParamSpec[]`（没有则省略，旧页面忽略）。MNN 公用参数单独声明在一个伪提供者 id `mnn`（只出现在参数方法里，不进 `providers` 的 offers、不参与路由）。
 - **新桥方法**（挂在 `AiModule`，只接受主 frame）：
-  - `native.ai.params.get` `{ provider }` → `{ provider, values: { key: number }, fingerprint }`（`provider` 可为 `mnn`）。
+  - `native.ai.params.get` `{ provider }` → `{ provider, specs, values: { key: number } }`（`provider` 可为 `mnn`；**落地时没有 `fingerprint` 字段**，指纹只在原生内部用，且 `mnn` 伪提供者留到步 4）。
   - `native.ai.params.set` `{ provider, values: { key: number } }` → 同 get；逐项按 spec 校验（越界/未知 key → `BAD_PARAMS`，**拒绝而不是夹取**，与现有“不静默忽略”原则一致）。
   - `native.ai.params.reset` `{ provider, keys?: string[] }` → 恢复默认（缺省 keys=全部）。
   - 不新增事件推送：弹窗是打开时读一次、操作后用返回值更新。**不要轮询**。
@@ -257,7 +257,7 @@ interface AiTunable {
 
 ### 5.4 校验与越界
 
-- 写入：`params.set` 按 spec 逐项校验（类型、`min/max/step`、选项下标），整批原子——有一项非法整批拒绝。
+- 写入：`params.set` 按 spec 逐项校验（类型、`min/max/step`、select 取值），整批原子——有一项非法整批拒绝。
 - 读取：存的值若不在当前 spec 范围内（例如以后收窄了范围），`get` 返回时**回落默认并清掉该键**，不抛错。
 - 调用时：用户值补进 `AiCall` 之后仍过 `constraints.check`；Rust 侧各引擎已有自己的范围校验（如 `CoupletOptions::validate`），三层都在。
 
@@ -281,7 +281,7 @@ interface AiTunable {
 
 沿用 `AiProviderContractTest` 的思路（对 `AiModule.providers(...)` 的每个提供者逐条检查，加进去自动受检）：
 
-- **不变量 8（新增）**：`AiTunable` 提供者 ⇔ 报了非空 `paramSpecs()`；`key` 在提供者内唯一；`default ∈ [min,max]`；`step>0`；SELECT 的 `options` 非空且默认是合法下标；`applyTo` 里的任务必须是该提供者报价里的任务。
+- **不变量 8（新增）**：`AiTunable` 提供者 ⇔ 报了非空 `paramSpecs()`；`key` 在提供者内唯一；`default ∈ [min,max]`；`step>0`；SELECT 的 `options` 非空；有 `optionValues` 时与 `options` 等长且默认在其中，否则默认是合法下标；`applyTo` 里的任务必须是该提供者报价里的任务。
 - **不变量 9**：每个 spec 能 `set → get` 往返、`reset` 后回到默认、越界 `set` 抛 `BAD_PARAMS` 且不改已有值；整批原子。
 - **不变量 10**：spec 范围 ⊆ 对应 `AiConstraints` 范围（Generate / Couplet / Translate 的 numBeams 范围），防止两份漂移。
 - **不变量 11**：`scope=SESSION` 的 spec 改值后，该提供者的“会话指纹”必须变化（用替身服务断言重载被触发）；`CALL` 级改值指纹不变。
@@ -306,7 +306,9 @@ interface AiTunable {
 | 8 | 抠图细化参数并入（待另一子代理的成果合并后） | 待定 | S~M | 视情况 |
 | 9 | 文档：`ai-protocol.md` 加“参数调整”小节与 checklist 一项、`bridge-protocol.md` 加三个方法、`model-picker.md` 与 `status.md` 同步，索引由主会话统一改 | docs | S | 否 |
 
-建议交付顺序：**1+2+3 先上线一版**（Qwen/NLLB/对联/识物的开放参数，纯 Kotlin + Web，立即可见效果），再做 4（线程），5/6 合并重编一次，7 单独一批。
+**实施进度**：步 1~3 已完成并真机验证（Qwen 温度因设备未装 Qwen 未实测）。步 9 的 `ai-protocol.md` / `bridge-protocol.md` / `model-picker.md` / `status.md` 已同步。步 4~8 未做，详见 [状态](../status.md)。
+
+建议交付顺序：**1+2+3 先上线一版**（**已实现，2026-10-19，未提交、真机未验**）（Qwen/NLLB/对联/识物的开放参数，纯 Kotlin + Web，立即可见效果），再做 4（线程），5/6 合并重编一次，7 单独一批。
 
 ## 7. 来源清单与“未核实”清单
 

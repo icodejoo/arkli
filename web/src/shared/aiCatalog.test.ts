@@ -117,6 +117,7 @@ function nativeProviders(over: Partial<Record<string, Partial<AiProviderInfo>>> 
         { task: 'translate' as const, entry: 'native.ai.translate', constraints: TR_CONSTRAINTS },
       ],
       modelId: 'qwen35-0.8b-mnn-q4',
+      params: [{ key: 'temperature', label: '采样温度', desc: '', kind: 'slider', default: 0.7, min: 0, max: 1.5, step: 0.1, advanced: false, scope: 'call', applyTo: ['prompt'] }],
       downloaded: false,
       sizeBytes: 0,
       downloading: false,
@@ -373,5 +374,15 @@ describe('会话（预热跟随）', () => {
     expect(sessionProviderOf(catalogOf('translate', noSession)[0])).toBeUndefined()
     const old = nativeProviders().map(({ session: _s, ...rest }) => rest)
     expect(old.map(hasSession)).toEqual([false, true, true, true, true, true, true])
+  })
+})
+
+describe('提供者带 params 不影响目录', () => {
+  it('Qwen 夹具带 params，目录条目与不带时一致', () => {
+    const withParams = nativeProviders()
+    expect(withParams.find((p) => p.id === 'local-qwen')?.params).toHaveLength(1)
+    const stripped = withParams.map((p) => ({ ...p, params: undefined }))
+    const keys = (ps: AiProviderInfo[]) => catalogFor(['summarize'], [], ps).map((i) => i.key)
+    expect(keys(withParams)).toEqual(keys(stripped))
   })
 })

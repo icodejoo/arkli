@@ -13,9 +13,9 @@ import kotlin.math.roundToLong
  *
  * @property provider 指定的提供者 id；null 表示用第一个支持识图的
  * @property path 页面缓存路径，如 `cache/pick/a.jpg`
- * @property topK 物品数
+ * @property topK 物品数；null 表示页面没传，由用户设置或 [AiClassifyPolicy.DEFAULT_TOP_K] 兜底
  */
-data class AiClassifyRequest(val provider: String?, val path: String, val topK: Int)
+data class AiClassifyRequest(val provider: String?, val path: String, val topK: Int? = null)
 
 /**
  * 识物的纯逻辑（选提供者归 [AiRouter]）：参数校验、词表解析、像素转换、结果序列化。无 Android 依赖，可单测。
@@ -28,6 +28,27 @@ object AiClassifyPolicy {
 
     /** topK 上限 */
     const val MAX_TOP_K = 10
+
+    /** topK 步进 */
+    const val TOP_K_STEP = 1.0
+
+    /**
+     * 识物的可调参数：返回物品数（高级）。范围引用本对象常量。
+     */
+    val PARAM_SPECS: List<AiParamSpec> = listOf(
+        AiParamSpec(
+            key = AiGeneratePolicy.KEY_TOP_K,
+            label = "候选物品数",
+            desc = "一次最多给出几个可能的物品，只影响展示条数，改完下一张图就生效",
+            kind = AiParamKind.STEPPER,
+            default = DEFAULT_TOP_K.toDouble(),
+            min = 1.0,
+            max = MAX_TOP_K.toDouble(),
+            step = TOP_K_STEP,
+            advanced = true,
+            applyTo = listOf(AiTask.CLASSIFY_IMAGE),
+        ),
+    )
 
     /** 路径长度上限（与 [AiPolicy.MAX_PATH] 同一个值） */
     const val MAX_PATH = AiPolicy.MAX_PATH
@@ -72,12 +93,12 @@ object AiClassifyPolicy {
             else -> throw bad("provider 需要是字符串")
         }
         val topK = when (val k = params.opt("topK")) {
-            null, JSONObject.NULL -> DEFAULT_TOP_K
+            null, JSONObject.NULL -> null
             is Int -> k
             is Long -> if (k in 1..MAX_TOP_K.toLong()) k.toInt() else throw bad("topK 需要 1~$MAX_TOP_K")
             else -> throw bad("topK 需要是整数")
         }
-        if (topK !in 1..MAX_TOP_K) throw bad("topK 需要 1~$MAX_TOP_K")
+        if (topK != null && topK !in 1..MAX_TOP_K) throw bad("topK 需要 1~$MAX_TOP_K")
         return AiClassifyRequest(provider, path, topK)
     }
 

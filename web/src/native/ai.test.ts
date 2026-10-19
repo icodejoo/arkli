@@ -562,3 +562,85 @@ describe('isAiCancelled', () => {
     expect(m.isAiCancelled(null)).toBe(false)
   })
 })
+
+describe('aiParamsGet / aiParamsSet / aiParamsReset', () => {
+  const mk = (v: unknown) => vi.fn(async () => v) as unknown as import('./ai').CancelableCallFn & ReturnType<typeof vi.fn>
+
+  const FAKE_SPEC: import('./ai').AiParamSpec = {
+    key: 'temperature',
+    label: '采样温度',
+    desc: '控制发散度',
+    kind: 'slider',
+    default: 0.7,
+    min: 0,
+    max: 1.5,
+    step: 0.1,
+    advanced: false,
+    scope: 'call',
+    applyTo: ['prompt'],
+  }
+
+  const FAKE_STATE: import('./ai').AiParamsState = {
+    provider: 'local-qwen',
+    specs: [FAKE_SPEC],
+    values: { temperature: 0.7 },
+  }
+
+  it('aiParamsGet：正常获取、无宿主抛错与错误透传', async () => {
+    const m = await load(true)
+    const call = mk(FAKE_STATE)
+    const res = await m.aiParamsGet('local-qwen', call)
+    expect(res).toEqual(FAKE_STATE)
+    expect(call).toHaveBeenCalledWith('native.ai.params.get', { provider: 'local-qwen' })
+
+    const off = await load(false)
+    await expect(off.aiParamsGet('local-qwen', mk({}))).rejects.toMatchObject({ name: 'NativeUnavailableError' })
+
+    const on = await load(true)
+    const bad = vi.fn(async () => {
+      throw { code: 'BAD_PARAMS', message: 'unknown provider' }
+    }) as unknown as import('./ai').CancelableCallFn
+    await expect(on.aiParamsGet('unknown', bad)).rejects.toMatchObject({ code: 'BAD_PARAMS' })
+  })
+
+  it('aiParamsSet：正常提交修改、无宿主抛错与错误透传', async () => {
+    const m = await load(true)
+    const updated = { ...FAKE_STATE, values: { temperature: 0.9 } }
+    const call = mk(updated)
+    const res = await m.aiParamsSet('local-qwen', { temperature: 0.9 }, call)
+    expect(res.values.temperature).toBe(0.9)
+    expect(call).toHaveBeenCalledWith('native.ai.params.set', { provider: 'local-qwen', values: { temperature: 0.9 } })
+
+    const off = await load(false)
+    await expect(off.aiParamsSet('local-qwen', { temperature: 0.9 }, mk({}))).rejects.toMatchObject({ name: 'NativeUnavailableError' })
+
+    const on = await load(true)
+    const bad = vi.fn(async () => {
+      throw { code: 'BAD_PARAMS', message: 'out of range' }
+    }) as unknown as import('./ai').CancelableCallFn
+    await expect(on.aiParamsSet('local-qwen', { temperature: 99 }, bad)).rejects.toMatchObject({ code: 'BAD_PARAMS' })
+  })
+
+  it('aiParamsReset：带 keys 与缺省 keys、无宿主抛错与错误透传', async () => {
+    const m = await load(true)
+    const call = mk(FAKE_STATE)
+
+    // 指定 keys
+    await m.aiParamsReset('local-qwen', ['temperature'], call)
+    expect(call).toHaveBeenLastCalledWith('native.ai.params.reset', { provider: 'local-qwen', keys: ['temperature'] })
+
+    // 缺省 keys
+    await m.aiParamsReset('local-qwen', undefined, call)
+    expect(call).toHaveBeenLastCalledWith('native.ai.params.reset', { provider: 'local-qwen' })
+
+    const off = await load(false)
+    await expect(off.aiParamsReset('local-qwen', undefined, mk({}))).rejects.toMatchObject({ name: 'NativeUnavailableError' })
+
+    const on = await load(true)
+    const bad = vi.fn(async () => {
+      throw { code: 'BAD_PARAMS', message: 'unknown key' }
+    }) as unknown as import('./ai').CancelableCallFn
+    await expect(on.aiParamsReset('local-qwen', ['invalid'], bad)).rejects.toMatchObject({ code: 'BAD_PARAMS' })
+  })
+})
+

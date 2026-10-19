@@ -68,6 +68,34 @@ object AiTranslatePolicy {
     /** 束宽上限 */
     const val MAX_BEAMS = 4
 
+    /** 束宽选项对应的 beam 数：快速 1、均衡 2、精细 4 */
+    val NUM_BEAMS_OPTIONS: List<Int> = listOf(1, 2, 4)
+
+    /** 束宽选项标签（显示文案） */
+    val NUM_BEAMS_LABELS: List<String> = listOf("快速", "均衡", "精细")
+
+    /** 默认束宽：1（快速） */
+    const val DEFAULT_NUM_BEAMS: Int = 1
+
+    /**
+     * NLLB 模型的参数规格列表。
+     */
+    val PARAM_SPECS: List<AiParamSpec> = listOf(
+        AiParamSpec(
+            key = AiParamDefaults.KEY_NUM_BEAMS,
+            label = "翻译精细度",
+            desc = "快速档即时呈现；均衡与精细档多路寻优，译文更通顺，耗时相应增加",
+            kind = AiParamKind.SELECT,
+            default = DEFAULT_NUM_BEAMS.toDouble(),
+            min = NUM_BEAMS_OPTIONS.min().toDouble(),
+            max = NUM_BEAMS_OPTIONS.max().toDouble(),
+            step = 1.0,
+            options = NUM_BEAMS_LABELS,
+            optionValues = NUM_BEAMS_OPTIONS.map { it.toDouble() },
+            applyTo = listOf(AiTask.TRANSLATE),
+        ),
+    )
+
     /** 源语言取此值表示自动识别（只对 src 合法，tgt 不可以） */
     const val AUTO = "auto"
 

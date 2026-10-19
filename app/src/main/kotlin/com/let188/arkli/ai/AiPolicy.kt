@@ -132,6 +132,9 @@ object AiPolicy {
         p.modelInfo()?.let {
             o.put("modelId", it.modelId).put("downloaded", it.downloaded).put("sizeBytes", it.sizeBytes).put("downloading", it.downloading)
         }
+        (p as? AiTunable)?.paramSpecs()?.takeIf { it.isNotEmpty() }?.let { specs ->
+            o.put("params", JSONArray(specs.map { it.toJson() }))
+        }
         return o.put("tasks", tasks).put("offers", offersJson(p))
     }
 

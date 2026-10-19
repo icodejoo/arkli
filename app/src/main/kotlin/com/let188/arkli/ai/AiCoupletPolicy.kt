@@ -48,11 +48,52 @@ object AiCoupletPolicy {
     /** top-k 范围，与 Rust 的 `MAX_TOP_K` 一致 */
     val TOP_K_RANGE: IntRange = 1..200
 
+    /** 引擎缺省温度，与 Rust `couplet.rs` 的缺省一致 */
+    const val DEFAULT_TEMPERATURE = 0.8f
+
+    /** 引擎缺省 top-k，与 Rust `couplet.rs` 的缺省一致 */
+    const val DEFAULT_TOP_K = 40
+
+    /** AI 中心滑块的温度上限：UI 收窄到 1.5（再高常出不通顺），原生上限仍是 [TEMPERATURE_RANGE] */
+    const val UI_MAX_TEMPERATURE = 1.5f
+
+    /** 温度滑块步进 */
+    const val TEMPERATURE_STEP = 0.05
+
     /** JS 安全整数上限：种子经 JSON 数字传入，超过它会丢精度 */
     private const val MAX_SEED = 9_007_199_254_740_991L
 
     /** 本地对联提供者的报价约束 */
     val OFFER_CONSTRAINTS = AiConstraints.Couplet(MAX_CHARS, TEMPERATURE_RANGE, TOP_K_RANGE)
+
+    /**
+     * 对联模型的可调参数：温度（UI 收窄到 0~[UI_MAX_TEMPERATURE]）与 top-k（高级）。范围引用本对象常量，不另抄数字。
+     */
+    val PARAM_SPECS: List<AiParamSpec> = listOf(
+        AiParamSpec(
+            key = KEY_TEMPERATURE,
+            label = "稳妥与新奇",
+            desc = "往左更工整稳妥，往右更敢出新意，但太右容易不通顺。页面里自己指定了的，以页面为准",
+            kind = AiParamKind.SLIDER,
+            default = DEFAULT_TEMPERATURE.toSpecDouble(),
+            min = TEMPERATURE_RANGE.start.toSpecDouble(),
+            max = UI_MAX_TEMPERATURE.toSpecDouble(),
+            step = TEMPERATURE_STEP,
+            applyTo = listOf(AiTask.COUPLET),
+        ),
+        AiParamSpec(
+            key = KEY_TOP_K,
+            label = "候选字范围",
+            desc = "每一步从多少个候选字里挑，越小越保守，改完下一副对联就生效",
+            kind = AiParamKind.STEPPER,
+            default = DEFAULT_TOP_K.toDouble(),
+            min = TOP_K_RANGE.first.toDouble(),
+            max = TOP_K_RANGE.last.toDouble(),
+            step = 1.0,
+            advanced = true,
+            applyTo = listOf(AiTask.COUPLET),
+        ),
+    )
 
     /**
      * 解析并校验对联参数（invoke 的 input + options 已被拍平成同一层）。

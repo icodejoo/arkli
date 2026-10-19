@@ -1,8 +1,8 @@
 ---
 title: 统一 AI 协议
 status: active
-updated: 2026-10-16
-summary: 原生 AI 入口怎么选提供者（AiRouter）、统一入口 native.ai.invoke 的分派、能力声明与实现端口的不变量、提供者报价（offers：任务+入口+约束）与层、按约束校验输入、生命周期从提供者派生、文本生成的预设与按次采样（AiConstraints.Generate，第 6 步）、前端 AI 目录与 aiInvoke、OCR 作为第一个按新协议接入的任务与“新增一个 AI 任务的 checklist”，对联作为第二个按 checklist 接入的专用端口任务（`couplet`），以及后续分步计划
+updated: 2026-10-19
+summary: 原生 AI 入口怎么选提供者（AiRouter）、统一入口 native.ai.invoke 的分派、能力声明与实现端口的不变量、提供者报价（offers：任务+入口+约束）与层、按约束校验输入、生命周期从提供者派生、文本生成的预设与按次采样（AiConstraints.Generate，第 6 步）、前端 AI 目录与 aiInvoke、OCR 作为第一个按新协议接入的任务与“新增一个 AI 任务的 checklist”，对联作为第二个按 checklist 接入的专用端口任务（`couplet`），AI 中心的“参数调整”（`AiTunable` / `native.ai.params.*` / 用户设置补参与优先级，2026-10-19 步 1~3，真机未验），以及后续分步计划
 ---
 
 ## TL;DR
@@ -103,13 +103,49 @@ select（AiRouter.select，不查可用性，BAD_PARAMS）
 代码：`AiGenerate.kt`（`AiPreset`、`AiGenOptions`、`AiSamplingParams`、`TextGenerator`、`AiGeneratePolicy`）、`AiProvider.kt` 的 `AiConstraints.Generate`、`AiQwenPolicy`（`Sampling`、默认采样、`OFFER_GENERATE`）。
 
 - **预设** `AiPreset`：`summarize` / `proofread` / `rewrite` / `prompt`，各自决定指令模板、system 与默认采样。不传按 task；传了就覆盖模板（task 只管路由）。**只有 `prompt` 预设允许页面额外传 `system`**，其它预设传了 `BAD_PARAMS`（小模型的 system 是为任务写死的，让页面改会破坏“只输出结果”的约束）。
-- **默认采样**：翻译、摘要、校对、改写贪心；`prompt` 温度 0.7、topK 20（`AiQwenPolicy.PROMPT_SAMPLING`，经验值：Qwen 系列非思考模式常见推荐，没有联网逐字核对 Qwen3.5 官方模型卡；topP 0.95 与重复惩罚 1.1 沿用模型 config.json）。页面传的 `temperature` / `topK` 覆盖默认；`temperature = 0` 即贪心；贪心预设上只传 `topK` 仍是贪心。
+- **默认采样**：翻译、摘要、校对、改写贪心；`prompt` 温度 0.7、topK 20（`AiQwenPolicy.PROMPT_SAMPLING`，已逐字核对 Qwen3.5-0.8B 官方模型卡（2026-10-19）：非思考模式官方推荐 temperature 1.0 / top_p 1.0 / top_k 20 / presence_penalty 2.0 / repetition_penalty 1.0，项目现值是 top_p 0.95、重复惩罚 1.1（沿用模型 config.json）、prompt 温度 0.7，**与官方不同，是自己的折中**；要不要改回官方值得真机比质量，暂不动）。页面传的 `temperature` / `topK` 覆盖默认；`temperature = 0` 即贪心；贪心预设上只传 `topK` 仍是贪心。
 - **约束** `AiConstraints.Generate(presets, temperature 0~1.5, topK 1~100, allowSystem)`：序列化为 `{ presets, temperature: {min,max}, topK: {min,max}, allowSystem }`；本地 Qwen 的四个文本任务报价都带它（`AiQwenPolicy.OFFER_GENERATE`）。
 - **非 run 端口拒绝生成选项**：翻译、识图、文字识别这些专用端口收到 `preset` / `system` / `temperature` / `topK` 等生成类选项一律 `BAD_PARAMS`（不静默忽略）；识图的 `topK` 是它自己的参数，不在此列。Qwen 翻译的 max new tokens 随原文走：`clamp(字数 × 2, 64, 512)`（`AiQwenPolicy.translateMaxTokens`），与 300 字上限配套。
 - **线程与取消**：run 端口在 IO 调度器上执行；Qwen 生成与翻译（NLLB、Qwen）都能真取消：服务里 `runCancellable`（`CancellableCall.kt`）在 IO 线程跑阻塞调用，协程被取消时 watcher 立刻调 `backend.cancel()`，原生层在下一个检查点中止并抛 `CancellationException`，桥回 `CANCELLED`，`AiHeavyGate` 随之释放。Qwen 在下一个 token 处停，预填充（整段提示一次前向）不可打断；NLLB 在下一个解码步前停，最多等一次 decoder 调用。识图（CLIP）只有一次前向、没有循环，不接取消。
 - **非生成式提供者拒绝**：`AiInvoker.route` 在选中提供者后，若 `AiCall.Run` 带了任何生成选项而它的报价约束不是 `Generate`，报 `BAD_PARAMS`（例如 `intent-handoff`）；契约不变量 7：实现 `TextGenerator` ⇔ run 承接的任务都带 `Generate`。旧入口 `native.ai.run` 不带这些字段，行为不变。
 - **JNI 与“`set_config` 不能按次切换”（读码结论，原方案的假设不成立）**：MNN 的采样器只在 `Llm::load()` 里建一次，`load()` 之后 `set_config` 只改配置不重建采样器，所以**不能**“每次生成前 `set_config`”；顺带发现旧 JNI 在 `load()` 之后设的全局贪心从未生效，翻译等其实一直在用模型 config 的混合采样（temperature 1.0）。做法：采样配置改在 `load()` 之前设；`nativeGenerate(handle, system, prompt, maxNewTokens, temperature, topK)` 每次比较采样配置，变了就在 JNI 里销毁并重建会话（句柄是 `Session` 指针，对 Kotlin 透明）；不带采样的路径（`nativeCreate`）默认贪心。**代价**：在贪心任务与提示词问答之间切换会多一次模型加载（此前真机实测加载约 3.4 s，未测重建本身），同一类任务连续调用不重建。要消除重建，只能自己在 JNI 里接管逐 token 循环与采样（要碰 `forward` / KV 元数据，风险大，本次没做）。
 - **行为变化**：翻译 / 校对 / 摘要 / 改写现在是真贪心（以前其实带温度 1.0 的采样），输出更稳定；提示词问答默认温度从 1.0 降到 0.7。
+
+## 参数调整（AI 中心，2026-10-19 步 1~3，真机未验）
+
+AI 中心详情弹窗里让用户调推理参数（温度、回答长度、束宽这类）。方案与取舍见 [调研](../research/model-tunable-params.md)；这里只记协议与约束。代码：`AiParams.kt`、`AiParamStore.kt`、`AiParamDefaults.kt`，前端 `stores/aiParams.ts`、`shared/ModelParamsPanel.vue`。
+
+**数据流**
+
+1. 提供者实现可选端口 `AiTunable.paramSpecs()`（与 `TextGenerator` 同类），返回 `AiParamSpec` 列表；`native.ai.providers` 的条目带可选 `params`（没有就省略，旧页面忽略）。
+2. 页面用 `native.ai.params.get/set/reset` 读写，返回 `{ provider, specs, values }`，`values` 是当前生效值。存储是 SharedPreferences `ai_params`，键 `<provider>.<key>`，**只存与默认不同的值**（默认以后改了老用户自动跟随，“恢复默认”就是删键）。
+3. 调用时，`AiInvoker.dispatch` 在 `constraints.check` 之前调 `AiParamDefaults.fill`，把用户**改过的**值补进调用里没带的字段，补完照常过约束校验。没改过的什么都不补，行为与改前完全一致。
+
+**优先级**：页面显式传的值 > 用户设置 > 内置默认。所以自带温度的页面（如对联页的 `QWEN_TEMPERATURE`）不受用户设置影响，弹窗文案要写明“页面自带设置的功能以页面为准”。识物靠 `AiClassifyRequest.explicitTopK` 区分“页面显式传了 topK”和“解析出来的默认值”。
+
+**spec 字段**：`key`（稳定键）、`label`、`desc`、`kind`（`slider` / `stepper` / `switch` / `select`）、`default`、`min`、`max`、`step`、`options`（select 的档位文字）、`optionValues`（可选，select 各档真实值，与 `options` 等长）、`advanced`（折进“高级”）、`scope`（`call` / `session`）、`applyTo`（只作用于哪些任务，空 = 全部）。数值统一用 number：switch 是 0/1，**select 有 `optionValues` 时存真实值，`options` 只管显示**（如 NLLB `numBeams` 直接存 1/2/4）；没有 `optionValues` 的 select 才按选项下标存。
+
+**CALL / SESSION**
+
+- `call`：每次调用补进去，改完下次调用就生效，不重建会话。本期全是它。
+- `session`：加载模型时定死，改了要重建会话。机制已备好：6 个 `XxxService` 都有 `settingsKey: () -> String` 并进重载指纹，`AiParams.sessionFingerprint` 算 SESSION 级值的指纹。**生产里还没接**（本期没有 SESSION 级参数，等线程/功耗步 4/5 再接），目前缺省是空串。改设置不会打断正在跑的推理，下次拿到闸门后才重载。
+
+**已声明的参数**
+
+| 提供者 | key | 形态 | 说明 |
+|---|---|---|---|
+| `local-qwen` | `temperature` | slider 0~1.5 | 只作用于 prompt 预设（其它预设保持贪心） |
+| `local-qwen` | `topK` | stepper，高级 | 只作用于 prompt 预设 |
+| `local-qwen` | `maxTokens` | select 短 128 / 中 256 / 长 512 | 回答长度，作用于全部文本预设，**不影响翻译**（翻译随原文走）；`AiCall.Run.maxTokens` 只由用户设置补入，页面不传 |
+| `local-nllb` | `numBeams` | select 快速 / 均衡 / 精细 | 值 1/2/4 即束宽，页面没传 `numBeams` 才补 |
+| `local-couplet` | `temperature` / `topK` | slider 0~1.5 / stepper（高级） | 页面没传才补 |
+| `local-clip` | `topK` | stepper 1~10（高级） | 页面没显式传才补 |
+
+**校验**：`params.set` 逐项按 spec 校验（范围、步进对齐、select 值在 `optionValues` 里，无 `optionValues` 时为合法下标），**整批原子**，任一非法整批拒绝，报 `BAD_PARAMS`（不夹取，与“不静默忽略”一致）。未知提供者、没实现 `AiTunable` 的提供者、空 `values`、未知 key 同样 `BAD_PARAMS`。值与默认相同就删键不存。三个方法只接受主 frame。
+
+**页面边界**：参数区只在 AI 中心详情弹窗，工具页不得读写，见 [模型选择器](model-picker.md)。
+
+**新提供者要加可调参数**：实现 `AiTunable`，并过契约不变量 8~11（见下）。范围常量引用该提供者 Policy 里已有的那一份（`AiConstraints` 也引用它），别再写第二份。
 
 ## 不变量（能力 = 端口）
 
@@ -122,6 +158,10 @@ select（AiRouter.select，不查可用性，BAD_PARAMS）
 5. （第 3 步）每个报价按 `{ task, provider }` 经 `native.ai.invoke` 定路由（`AiInvoker.plan`），落到**同一个提供者**、**报价里写的那个入口**；钉住同一入口结果不变；
 6. （第 4 步）会话类提供者的 `sessionModelId` 与它报给前端的 `modelId` 一致；
 7. （第 6 步）实现 `TextGenerator` ⇔ run 承接的任务报价都带 `AiConstraints.Generate`，且 `Generate` 只挂在 run 承接的任务上。
+8. （参数调整）可调参数的提供者实现 `AiTunable` 且 `paramSpecs()` 非空；`key` 在提供者内唯一；`default ∈ [min,max]`、`step > 0`；select 的 `options` 非空；有 `optionValues` 时与 `options` 等长、默认在其中、`min/max` 取其最小/最大，否则默认是合法下标；`applyTo` 里的任务必须是该提供者报价里的任务；
+9. 每个 spec 能 `set → get` 往返、`reset` 回默认；越界 `set` 抛 `BAD_PARAMS` 且不改已有值，整批原子；
+10. spec 范围 ⊆ 对应 `AiConstraints` 范围，防止两份漂移；
+11. `scope = session` 的 spec 改值后，会话指纹必须变化；`call` 级改值指纹不变。
 
 另有八个故意“说谎”的替身（第 6 步加了“报了生成约束却没实现 `TextGenerator`”“实现了 `TextGenerator` 却没带约束”）（含“报价少一项”“走语言对接口却不报语言”“实现了 `OcrEngine` 却没声明 `ocr`”），确认检查器本身能抓到问题。新增提供者只要加进 `AiModule.providers`，就自动受检。
 
@@ -183,6 +223,8 @@ select（AiRouter.select，不查可用性，BAD_PARAMS）
 12. `tools/registry.ts`：工具声明 `tasks: [{ task: 'xxx', entry: AI_METHODS.xxx }]` 并带 `tags: [TAG_AI]`（选择器与 AI 页都靠它）；去掉过渡 `models`。
 13. 工具页：`useAiCatalog(toolId)`，就绪 = `current.status === 'ready'`，探测完仍无就绪模型时显示 `<model-missing-notice />`；**只读状态，不得出现 ensure / cancel / remove / verify、下载进度**（见 CLAUDE.md 与 [模型选择器](model-picker.md)）。
 14. 测试（靠人）：`aiCatalog.test.ts` 的 `nativeProviders()` 夹具加该提供者的报价、“各 AI 工具声明的任务”快照加该工具、`ai.test.ts` 加封装用例（钉入口、无宿主、错误码统一）；有迁移表项就在迁移表断言里加。
+
+15. 可调参数（可选）：提供者实现 `AiTunable`，常量引用 Policy 里的范围，并过契约不变量 8~11；`AiParamDefaults.fill` 里加该任务的补参分支。前端只在 AI 中心弹窗里出现，工具页不碰。
 
 **文档**：[桥协议](bridge-protocol.md) 加 `native.ai.xxx` 行与提供者行、更新 `providers` / `invoke` 说明里的任务与入口清单；本文端口表；[模型选择器](model-picker.md) 里涉及该工具的表格。
 
@@ -269,3 +311,4 @@ OCR 实际改动量（作为参照）：原生新增 `OcrService.kt`、`AndroidO
 5. ~~**OCR 接入**~~：**已做（2026-10-16，M8，桌面部分；真机与模型上传待用户）**。新增 `OcrEngine` 专用端口 + `AiCall.Ocr` + `LocalOcrProvider`，Rust `OcrPipeline` 经 `GraphSession` 跑 MNN fp16，OCR 页与图片转表格改读 AI 目录。见上文 checklist 与 [ONNX→MNN 迁移](../research/onnx-to-mnn-migration.md) 的 M8 一节。
 6. ~~**按次采样与预设**~~：**已做（2026-10-16，桌面部分；真机待用户）**。invoke 的 `options` 带 `{ preset, system, temperature, topK }`，`AiCall.Run` 带强类型字段，校验挂在 `AiConstraints.Generate`，非生成式提供者报 `BAD_PARAMS`；JNI 按次采样（靠重建会话，原因见上文“文本生成的预设与采样”）；前端 `AiTaskMap` 文本任务 `options` 放开为 `AiGenerateOptions`。没有做 `maxNewTokens`（固定 256）。
 7. ~~**真取消**~~：**已做（2026-10-16，对联、OCR 之后补上 Qwen 与翻译；桌面单测通过，真机待验）**。Qwen：`arkli_mnn_jni.cpp` 加全局原子标志 `g_cancel` 与 `nativeCancel()`；`nativeGenerate` 开头复位标志，把输出接到自定义 `streambuf`（`CancelAwareBuf`），MNN 每个 token 都会写流并 flush，那一刻若标志已置位就把引擎状态改成 `USER_CANCEL`，`ArGeneration::generate` 下一圈开头检查到就退出循环，随后 JNI 抛 `java.util.concurrent.CancellationException`。之前文档说“`LlmContext` 不在公开头文件里”不准确：它定义在公开的 `llm/llm.hpp`，`getContext()` 返回 const 指针，`const_cast` 后即可写 `status`；状态只在解码线程自己的写流回调里改，没有跨线程写。两个坑：`response()` 开头遇到 `USER_CANCEL` 会直接返回，所以取消后和每次调用前都要把状态复位成 `RUNNING`；`CancellationException` 本身是 `IllegalStateException` 的子类，`MnnQwenBackend.guard` 要先放行再捕获后者，否则会被误报成 INTERNAL。翻译：`Engine` 持有 `CancelToken`，贪心与束搜索每个解码步前、每个句子片段前检查，`ErrorKind::Cancelled` 经 `TranslateFfiError::Cancelled` 映射成 Kotlin 的 `CancellationException`；FFI 每次 `translate_run` 换新令牌（取消不残留），`translate_cancel()` 置位。Kotlin 侧 `QwenBackend.cancel()` / `TranslateBackend.cancel()` 加 `runCancellable` 接线，取消不算引擎故障，会话保留。入口 `AiInvoker.dispatch` 的 `withContext(Dispatchers.IO)` 不用改：外层协程取消会传给服务里的 watcher。**遗留**：`libarkli-mnn.so` 改过，需要用 `native/mnn/build.sh` 重编、上传 release 并同步 `app/build.gradle.kts` 的 sha256 与 `docs/research/qwen35-mnn-model.md`；Qwen 取消在真机上的效果（取消到停止的延迟、之后能否正常再生成）待验。
+8. **参数调整**：步 1~3 已做（2026-10-19，原生框架 + 已有通道参数 + AI 中心面板，**未提交、真机未验**）。未做：步 4（MNN 公用参数入口与线程）、步 5/6（C ABI power/precision、Qwen topP/惩罚，要重编 so）、步 7（OCR/识物阈值）、步 8（抠图 `RefineStrength` 并入）。见 [调研](../research/model-tunable-params.md) §6 与 [状态](../status.md)。

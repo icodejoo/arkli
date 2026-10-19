@@ -31,7 +31,7 @@ class AiClassifyPolicyTest {
     @Test
     fun parse_defaults() {
         val r = AiClassifyPolicy.parse(JSONObject("""{"path":"cache/pick/a.jpg"}"""))
-        assertEquals(AiClassifyRequest(null, "cache/pick/a.jpg", 3), r)
+        assertEquals(AiClassifyRequest(null, "cache/pick/a.jpg", null), r)
     }
 
     @Test

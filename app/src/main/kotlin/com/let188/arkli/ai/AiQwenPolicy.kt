@@ -37,8 +37,29 @@ data class Sampling(val temperature: Float, val topK: Int) {
  * 使用示例：`AiQwenPolicy.buildPrompt(AiTask.SUMMARIZE, "一大段文字")`
  */
 object AiQwenPolicy {
+    /** 默认提示词采样温度 */
+    const val DEFAULT_TEMPERATURE: Float = 0.7f
+
+    /** 温度步进 */
+    const val TEMPERATURE_STEP: Double = 0.05
+
+    /** top-k 步进 */
+    const val TOP_K_STEP: Double = 1.0
+
     /** 单次最多生成的 token 数；手机上约 17 tok/s，256 个约 15 秒，够摘要与改写，再长体验很差 */
     const val MAX_NEW_TOKENS = 256
+
+    /** 回答长度选项的 token 数清单：短 128、中（即默认 [MAX_NEW_TOKENS]）、长 512 */
+    val MAX_TOKENS_OPTIONS: List<Int> = listOf(128, MAX_NEW_TOKENS, 512)
+
+    /** 回答长度档位名，与 [MAX_TOKENS_OPTIONS] 一一对应 */
+    private val MAX_TOKENS_NAMES: List<String> = listOf("短", "中", "长")
+
+    /** 回答长度选项文案（select 显示文案），如“中 (256)” */
+    val MAX_TOKENS_LABELS: List<String> = MAX_TOKENS_NAMES.zip(MAX_TOKENS_OPTIONS) { name, n -> "$name ($n)" }
+
+
+
 
     /**
      * Qwen 翻译的原文字数上限。翻译的 token 预算上限是 [MAX_TRANSLATE_TOKENS]（512），
@@ -95,7 +116,7 @@ object AiQwenPolicy {
      * 提示词问答的默认采样：温度 0.7、topK 20。依据：Qwen 系列非思考模式常见推荐为温度 0.7、topK 20（经验值，
      * 没有联网逐字核对 Qwen3.5 官方模型卡）；topP 0.95 与重复惩罚 1.1 沿用模型 config.json，JNI 不改。
      */
-    val PROMPT_SAMPLING = Sampling(0.7f, Sampling.DEFAULT_TOP_K)
+    val PROMPT_SAMPLING = Sampling(DEFAULT_TEMPERATURE, Sampling.DEFAULT_TOP_K)
 
     /** 允许页面传的温度范围（含端点）：超过 1.5 小模型基本胡言乱语 */
     val TEMPERATURE_RANGE: ClosedFloatingPointRange<Float> = 0f..1.5f
@@ -117,6 +138,48 @@ object AiQwenPolicy {
      * 提供者的完整能力见 [LocalQwenProvider.CAPABILITIES]。
      */
     val SUPPORTED_TASKS: Set<AiTask> = setOf(AiTask.PROMPT, AiTask.SUMMARIZE, AiTask.PROOFREAD, AiTask.REWRITE)
+
+    /**
+     * Qwen 模型的参数规格列表。
+     */
+    val PARAM_SPECS: List<AiParamSpec> = listOf(
+        AiParamSpec(
+            key = AiGeneratePolicy.KEY_TEMPERATURE,
+            label = "自由度（温度）",
+            desc = "仅自由问答生效；切换采样会多一次加载。值越高回答越有灵性发散，值越低越稳妥严谨",
+            kind = AiParamKind.SLIDER,
+            default = DEFAULT_TEMPERATURE.toSpecDouble(),
+            min = TEMPERATURE_RANGE.start.toSpecDouble(),
+            max = TEMPERATURE_RANGE.endInclusive.toSpecDouble(),
+            step = TEMPERATURE_STEP,
+            applyTo = listOf(AiTask.PROMPT),
+        ),
+        AiParamSpec(
+            key = AiGeneratePolicy.KEY_TOP_K,
+            label = "候选词范围（Top-K）",
+            desc = "仅自由问答生效；切换采样会多一次加载。控制采样时候选词数量，越小回答越保守",
+            kind = AiParamKind.SLIDER,
+            default = Sampling.DEFAULT_TOP_K.toDouble(),
+            min = TOP_K_RANGE.first.toDouble(),
+            max = TOP_K_RANGE.last.toDouble(),
+            step = TOP_K_STEP,
+            advanced = true,
+            applyTo = listOf(AiTask.PROMPT),
+        ),
+        AiParamSpec(
+            key = AiParamDefaults.KEY_MAX_TOKENS,
+            label = "回答长度",
+            desc = "控制单次生成字数上限，长文本耗时更长；不影响翻译",
+            kind = AiParamKind.SELECT,
+            default = MAX_NEW_TOKENS.toDouble(),
+            min = MAX_TOKENS_OPTIONS.min().toDouble(),
+            max = MAX_TOKENS_OPTIONS.max().toDouble(),
+            step = 1.0,
+            options = MAX_TOKENS_LABELS,
+            optionValues = MAX_TOKENS_OPTIONS.map { it.toDouble() },
+            applyTo = SUPPORTED_TASKS.toList(),
+        ),
+    )
 
     /**
      * 按任务拼出送给模型的用户内容（用任务对应的预设）。

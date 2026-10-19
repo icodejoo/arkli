@@ -58,6 +58,7 @@ class AiProviderContractTest {
         }
         dedicated.filter { !runRejects(p, it) }.forEach { out += "${p.id} 的 ${it.wire} 有专用端口，run 却也收" }
         out += offerViolations(p)
+        out += tunableViolations(p)
         return out
     }
 
@@ -343,6 +344,261 @@ class AiProviderContractTest {
                 assertEquals(AiFixtures.QWEN_OUT, r.getString("text"))
             }
         }
+    }
+
+    /** 反射判断：类上有 `paramSpecs()` 方法却没实现 [AiTunable]（声明了参数却不在接口里，下发时会被漏掉） */
+    private fun hasParamSpecsMethod(p: AiProvider): Boolean = p.javaClass.methods.any { it.name == "paramSpecs" }
+
+    /**
+     * 不变量 8：可调参数声明合法。实现 [AiTunable] 则非空；key 唯一；默认在范围内；step 大于 0；SELECT 选项合法；applyTo 在报价任务里。
+     *
+     * @param p 提供者
+     * @return 违规描述
+     */
+    private fun tunableViolations(p: AiProvider): List<String> {
+        val out = mutableListOf<String>()
+        if (p !is AiTunable) {
+            if (hasParamSpecsMethod(p)) out += "${p.id} 有 paramSpecs() 却没实现 AiTunable"
+            return out
+        }
+        val specs = p.paramSpecs()
+        if (specs.isEmpty()) out += "${p.id} 实现了 AiTunable 却没有参数"
+        if (specs.map { it.key }.let { it.size != it.toSet().size }) out += "${p.id} 的参数 key 重复"
+        val offered = p.offers().map { it.task }.toSet()
+        specs.forEach { sp ->
+            if (sp.step <= 0) out += "${p.id}.${sp.key} step 需要大于 0"
+            if (sp.min > sp.max) out += "${p.id}.${sp.key} min 大于 max"
+            if (sp.default < sp.min || sp.default > sp.max) out += "${p.id}.${sp.key} 默认值越界"
+            if (sp.kind == AiParamKind.SELECT) {
+                if (sp.options.isEmpty()) out += "${p.id}.${sp.key} SELECT 没有选项"
+                if (sp.optionValues.isEmpty()) {
+                    if (sp.min != 0.0 || sp.max != (sp.options.size - 1).toDouble() || sp.step != 1.0) out += "${p.id}.${sp.key} SELECT 的 min/max/step 要对应下标"
+                    if (sp.default.toInt() !in sp.options.indices) out += "${p.id}.${sp.key} SELECT 默认不是合法下标"
+                } else {
+                    if (sp.optionValues.size != sp.options.size) out += "${p.id}.${sp.key} optionValues 与 options 不等长"
+                    if (sp.default !in sp.optionValues) out += "${p.id}.${sp.key} SELECT 默认不在 optionValues 里"
+                    if (sp.min != sp.optionValues.min() || sp.max != sp.optionValues.max()) out += "${p.id}.${sp.key} SELECT 的 min/max 要取 optionValues 的最小/最大"
+                }
+            }
+            sp.applyTo.filter { it !in offered }.forEach { out += "${p.id}.${sp.key} 的 applyTo ${it.wire} 不在报价里" }
+        }
+        out += rangeViolations(p, specs)
+        return out
+    }
+
+    /**
+     * 不变量 10：spec 范围不超出对应 [AiConstraints] 的范围（防止两份数字漂移）。
+     * temperature/topK 对 Generate / Couplet 约束；识物 topK 对 [AiClassifyPolicy.MAX_TOP_K]；numBeams 的映射值对翻译束宽范围。
+     */
+    private fun rangeViolations(p: AiProvider, specs: List<AiParamSpec>): List<String> {
+        val out = mutableListOf<String>()
+        val cs = p.offers().mapNotNull { it.constraints }
+        specs.forEach { sp ->
+            val label = "${p.id}.${sp.key}"
+            fun inside(lo: Double, hi: Double) {
+                if (sp.min < lo - 1e-9 || sp.max > hi + 1e-9) out += "$label 范围 ${sp.min}~${sp.max} 超出约束 $lo~$hi"
+            }
+            when (sp.key) {
+                AiGeneratePolicy.KEY_TEMPERATURE -> {
+                    cs.filterIsInstance<AiConstraints.Generate>().firstOrNull()?.let { inside(it.temperature.start.toDouble(), it.temperature.endInclusive.toDouble()) }
+                    cs.filterIsInstance<AiConstraints.Couplet>().firstOrNull()?.let { inside(it.temperature.start.toDouble(), it.temperature.endInclusive.toDouble()) }
+                }
+                AiGeneratePolicy.KEY_TOP_K -> {
+                    cs.filterIsInstance<AiConstraints.Generate>().firstOrNull()?.let { inside(it.topK.first.toDouble(), it.topK.last.toDouble()) }
+                    cs.filterIsInstance<AiConstraints.Couplet>().firstOrNull()?.let { inside(it.topK.first.toDouble(), it.topK.last.toDouble()) }
+                    if (AiTask.CLASSIFY_IMAGE in p.capabilities()) inside(1.0, AiClassifyPolicy.MAX_TOP_K.toDouble())
+                }
+                AiParamDefaults.KEY_NUM_BEAMS -> sp.optionValues.forEach {
+                    if (it.toInt() !in AiTranslatePolicy.MIN_BEAMS..AiTranslatePolicy.MAX_BEAMS) out += "$label 档位束宽 $it 超出翻译约束"
+                }
+                AiParamDefaults.KEY_MAX_TOKENS -> sp.optionValues.forEach {
+                    if (it <= 0) out += "$label 档位 $it 不合法"
+                }
+                else -> out += "$label 没有对应的约束比对，请补 rangeViolations"
+            }
+        }
+        return out
+    }
+
+    /** 造一个“非默认”的合法值：取 min 与 max 里离默认远的一端 */
+    private fun otherValue(sp: AiParamSpec): Double = if (Math.abs(sp.max - sp.default) >= Math.abs(sp.min - sp.default)) sp.max else sp.min
+
+    /** 调用 block 是否以 BAD_PARAMS 拒绝 */
+    private fun rejects(block: () -> Unit): Boolean = try {
+        block()
+        false
+    } catch (e: BridgeException) {
+        e.code == BridgeErrors.BAD_PARAMS
+    }
+
+    /**
+     * 不变量 9：每个 spec 能 set 后 get 往返、reset 回默认、越界 set 抛 BAD_PARAMS 且不改已有值、整批原子。
+     */
+    private fun roundTripViolations(p: AiProvider): List<String> {
+        val out = mutableListOf<String>()
+        val all = listOf(p)
+        val store = InMemoryAiParamStore()
+        (p as AiTunable).paramSpecs().forEach { sp ->
+            val label = "${p.id}.${sp.key}"
+            val v = otherValue(sp)
+            val set = AiParams.handleSet(JSONObject().put("provider", p.id).put("values", JSONObject().put(sp.key, v)), all, store)
+            if (Math.abs(set.getJSONObject("values").getDouble(sp.key) - v) > 1e-9) out += "$label set 后 get 不是 $v"
+            val bad = JSONObject().put("provider", p.id).put("values", JSONObject().put(sp.key, sp.max + sp.step * 10))
+            if (!rejects { AiParams.handleSet(bad, all, store) }) out += "$label 越界没被拒绝"
+            val mixed = JSONObject().put("provider", p.id).put("values", JSONObject().put(sp.key, sp.default).put("__nope__", 1))
+            if (!rejects { AiParams.handleSet(mixed, all, store) }) out += "$label 未知 key 没被拒绝"
+            val after = AiParams.handleGet(JSONObject().put("provider", p.id), all, store).getJSONObject("values").getDouble(sp.key)
+            if (Math.abs(after - v) > 1e-9) out += "$label 被拒绝的批次改动了已有值"
+            val reset = AiParams.handleReset(JSONObject().put("provider", p.id), all, store)
+            if (Math.abs(reset.getJSONObject("values").getDouble(sp.key) - sp.default) > 1e-9) out += "$label reset 后不是默认"
+        }
+        return out
+    }
+
+    /**
+     * 不变量 11：SESSION 级 spec 改值后会话指纹必须变，CALL 级改值指纹不变。
+     *
+     * @param fingerprint 取指纹的函数（正式实现是 [AiParams.sessionFingerprint]，说谎者替身传常量）
+     */
+    private fun fingerprintViolations(
+        p: AiProvider,
+        fingerprint: (AiProvider, List<AiParamSpec>, AiParamStore) -> String = { q, specs, st -> AiParams.sessionFingerprint(q.id, specs, st) },
+    ): List<String> {
+        val out = mutableListOf<String>()
+        val specs = (p as AiTunable).paramSpecs()
+        specs.forEach { sp ->
+            val store = InMemoryAiParamStore()
+            val before = fingerprint(p, specs, store)
+            store.set(p.id, sp.key, otherValue(sp))
+            val changed = before != fingerprint(p, specs, store)
+            if (sp.scope == AiParamScope.SESSION && !changed) out += "${p.id}.${sp.key} 是 SESSION 级，改值后指纹没变"
+            if (sp.scope == AiParamScope.CALL && changed) out += "${p.id}.${sp.key} 是 CALL 级，改值却让指纹变了"
+        }
+        return out
+    }
+
+    @Test
+    fun everyTunableProvider_keepsParamInvariants() {
+        val tunable = registered().filter { it is AiTunable }
+        assertEquals(
+            listOf(LocalClipProvider.ID, LocalNllbProvider.ID, LocalQwenProvider.ID, LocalCoupletProvider.ID),
+            tunable.map { it.id },
+        )
+        tunable.forEach { p ->
+            assertEquals("${p.id} 参数声明", emptyList<String>(), tunableViolations(p))
+            assertEquals("${p.id} 往返/重置/越界", emptyList<String>(), roundTripViolations(p))
+            assertEquals("${p.id} 会话指纹", emptyList<String>(), fingerprintViolations(p))
+        }
+    }
+
+    @Test
+    fun providersJson_carriesParams_onlyForTunable() {
+        val arr = AiPolicy.providersJson(registered()).getJSONArray("providers")
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            val id = o.getString("id")
+            val expect = id in setOf(LocalClipProvider.ID, LocalNllbProvider.ID, LocalQwenProvider.ID, LocalCoupletProvider.ID)
+            assertEquals("$id params 字段", expect, o.has("params"))
+        }
+    }
+
+    @Test
+    fun paramSpecs_jsonMatchesBridgeContract() {
+        val qwen = registered().first { it.id == LocalQwenProvider.ID } as AiTunable
+        val maxTokens = qwen.paramSpecs().first { it.key == AiParamDefaults.KEY_MAX_TOKENS }.toJson()
+        assertEquals("select", maxTokens.getString("kind"))
+        assertEquals(128.0, maxTokens.getDouble("min"), 0.0)
+        assertEquals(512.0, maxTokens.getDouble("max"), 0.0)
+        assertEquals(3, maxTokens.getJSONArray("optionValues").length())
+        assertEquals("call", maxTokens.getString("scope"))
+        assertEquals(3, maxTokens.getJSONArray("options").length())
+        val temp = qwen.paramSpecs().first { it.key == AiGeneratePolicy.KEY_TEMPERATURE }.toJson()
+        assertEquals("prompt", temp.getJSONArray("applyTo").getString(0))
+        assertEquals(false, temp.getBoolean("advanced"))
+    }
+
+    @Test
+    fun paramBridge_unknownOrUntunableProvider_isBadParams() {
+        val all = registered()
+        val store = InMemoryAiParamStore()
+        listOf("nope", IntentHandoffProvider.ID, MattingMode.PORTRAIT.providerId).forEach { id ->
+            assertTrue(id, rejects { AiParams.handleGet(JSONObject().put("provider", id), all, store) })
+        }
+    }
+
+    @Test
+    fun sessionSettings_changeReloadsQwenSession() {
+        var key = "a"
+        var loads = 0
+        val dir = tmp.newFolder()
+        QwenService.REQUIRED_FILES.forEach { java.io.File(dir, it).writeText("x") }
+        val backend = object : QwenBackend {
+            override fun load(configPath: String) { loads++ }
+            override fun unload() {}
+            override fun generate(system: String, prompt: String, maxNewTokens: Int, sampling: Sampling) = "ok"
+            override fun cancel() {}
+        }
+        val svc = QwenService(object : QwenEnv { override fun modelDir() = dir }, backend, settingsKey = { key })
+        runBlocking {
+            svc.run(AiTask.SUMMARIZE, "x")
+            svc.run(AiTask.SUMMARIZE, "x")
+            assertEquals("设置没变不重载", 1, loads)
+            key = "b"
+            svc.run(AiTask.SUMMARIZE, "x")
+            assertEquals("设置指纹变了下次调用重载", 2, loads)
+        }
+    }
+
+    /** 说谎者 9：有 paramSpecs() 却没实现 AiTunable */
+    private class SpecsWithoutInterface : AiProvider {
+        override val id = "liar-specs"
+        override val displayName = "说谎"
+        override val layer = AiLayer.L3
+        override fun capabilities() = setOf(AiTask.SUMMARIZE)
+        override fun offers() = listOf(AiOffer(AiTask.SUMMARIZE))
+        override fun availability() = AiAvailability.AVAILABLE
+        override suspend fun run(task: AiTask, input: String): AiRunResult = AiRunResult.Text("")
+
+        @Suppress("unused")
+        fun paramSpecs(): List<AiParamSpec> = emptyList()
+    }
+
+    /** 说谎者 10：实现了 AiTunable，默认值越界且 applyTo 不在报价里 */
+    private class BadSpecs : AiProvider, AiTunable {
+        override val id = "liar-badspec"
+        override val displayName = "说谎"
+        override val layer = AiLayer.L3
+        override fun capabilities() = setOf(AiTask.SUMMARIZE)
+        override fun offers() = listOf(AiOffer(AiTask.SUMMARIZE))
+        override fun availability() = AiAvailability.AVAILABLE
+        override suspend fun run(task: AiTask, input: String): AiRunResult = AiRunResult.Text("")
+        override fun paramSpecs() = listOf(
+            AiParamSpec("x", "x", "x", AiParamKind.SLIDER, default = 5.0, min = 0.0, max = 1.0, step = 0.1, applyTo = listOf(AiTask.OCR)),
+        )
+    }
+
+    /** 说谎者 11：声明了 SESSION 级参数的提供者（配合“指纹恒定”的假实现） */
+    private class SessionParam : AiProvider, AiTunable {
+        override val id = "liar-session"
+        override val displayName = "说谎"
+        override val layer = AiLayer.L3
+        override fun capabilities() = setOf(AiTask.SUMMARIZE)
+        override fun offers() = listOf(AiOffer(AiTask.SUMMARIZE))
+        override fun availability() = AiAvailability.AVAILABLE
+        override suspend fun run(task: AiTask, input: String): AiRunResult = AiRunResult.Text("")
+        override fun paramSpecs() = listOf(
+            AiParamSpec("threads", "线程", "x", AiParamKind.STEPPER, 4.0, 1.0, 6.0, 1.0, scope = AiParamScope.SESSION),
+        )
+    }
+
+    @Test
+    fun checker_catchesParamLies() {
+        assertEquals(1, tunableViolations(SpecsWithoutInterface()).size)
+        assertTrue(tunableViolations(BadSpecs()).size >= 2)
+        // 真实指纹实现：SESSION 级改值指纹会变，守约
+        assertEquals(emptyList<String>(), fingerprintViolations(SessionParam()))
+        // 指纹恒定的说谎实现要被抓到
+        assertEquals(1, fingerprintViolations(SessionParam()) { _, _, _ -> "" }.size)
     }
 
     @Test

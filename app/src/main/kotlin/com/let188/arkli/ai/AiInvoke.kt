@@ -23,6 +23,7 @@ sealed class AiCall(val task: AiTask, val provider: String?, val port: AiPort<*>
      * @property preset 预设；null 表示按任务
      * @property system 页面额外传的 system 提示；只有 prompt 预设允许
      * @property sampling 页面传的采样参数；null 表示沿用预设默认
+     * @property maxTokens 本次最多生成的 token 数；页面不传，只由用户设置补入（见 [AiParamDefaults]）
      */
     class Run(
         task: AiTask,
@@ -31,9 +32,10 @@ sealed class AiCall(val task: AiTask, val provider: String?, val port: AiPort<*>
         val preset: AiPreset? = null,
         val system: String? = null,
         val sampling: AiSamplingParams? = null,
+        val maxTokens: Int? = null,
     ) : AiCall(task, provider, AiPort.Run) {
-        /** 页面传的文本生成可选项（preset、system、sampling）；一项都没传时为空 */
-        val gen: AiGenOptions get() = AiGenOptions(preset, system, sampling)
+        /** 文本生成可选项（preset、system、sampling、maxTokens）；一项都没有时为空 */
+        val gen: AiGenOptions get() = AiGenOptions(preset, system, sampling, maxTokens)
     }
 
     /**
@@ -227,8 +229,13 @@ data class AiPlan(val provider: AiProvider, val port: AiPort<*>)
  *
  * @param providers 取当前全部提供者（注册顺序）
  * @param resolver 页面缓存路径解析器（识图用），必须拒绝路径穿越
+ * @param paramStore 用户参数存储；分派时把用户设置补进调用里没带的字段（见 [AiParamDefaults]）
  */
-class AiInvoker(private val providers: () -> List<AiProvider>, private val resolver: SourceResolver) {
+class AiInvoker(
+    private val providers: () -> List<AiProvider>,
+    private val resolver: SourceResolver,
+    private val paramStore: AiParamStore = InMemoryAiParamStore(),
+) {
     private companion object {
         /** 页面传的路径解析不到缓存图片时的提示 */
         const val BAD_IMAGE_PATH = "path 不是有效的缓存图片路径"
@@ -266,31 +273,31 @@ class AiInvoker(private val providers: () -> List<AiProvider>, private val resol
      */
     suspend fun dispatch(call: AiCall): JSONObject = when (call) {
         is AiCall.Run -> {
-            val p = route(call, AiPort.Run).port
-            AiPolicy.resultJson(runOnIo(p, call))
+            val (r, c) = route(call, AiPort.Run)
+            AiPolicy.resultJson(runOnIo(r.port, c))
         }
         is AiCall.Translate -> {
-            val t = route(call, AiPort.Translate).port
-            AiTranslatePolicy.resultJson(withContext(Dispatchers.IO) { t.translate(call.req) })
+            val (r, c) = route(call, AiPort.Translate)
+            AiTranslatePolicy.resultJson(withContext(Dispatchers.IO) { r.port.translate(c.req) })
         }
         is AiCall.Classify -> {
-            val c = route(call, AiPort.Classify).port
-            val file = resolver.resolve(call.req.path)?.takeIf { it.isFile }
+            val (r, c) = route(call, AiPort.Classify)
+            val file = resolver.resolve(c.req.path)?.takeIf { it.isFile }
                 ?: throw BridgeException(BridgeErrors.BAD_PARAMS, BAD_IMAGE_PATH)
-            AiClassifyPolicy.resultJson(withContext(Dispatchers.IO) { c.classify(file, call.req.topK) })
+            AiClassifyPolicy.resultJson(withContext(Dispatchers.IO) { r.port.classify(file, c.req.topK ?: AiClassifyPolicy.DEFAULT_TOP_K) })
         }
         is AiCall.Ocr -> {
-            val o = route(call, AiPort.Ocr).port
+            val o = route(call, AiPort.Ocr).first.port
             val file = resolver.resolve(call.req.path)?.takeIf { it.isFile }
                 ?: throw BridgeException(BridgeErrors.BAD_PARAMS, BAD_IMAGE_PATH)
             AiOcrPolicy.resultJson(withContext(Dispatchers.IO) { o.recognize(file) })
         }
         is AiCall.Couplet -> {
-            val c = route(call, AiPort.Couplet).port
-            AiCoupletPolicy.resultJson(withContext(Dispatchers.IO) { c.generate(call.req) })
+            val (r, c) = route(call, AiPort.Couplet)
+            AiCoupletPolicy.resultJson(withContext(Dispatchers.IO) { r.port.generate(c.req) })
         }
         is AiCall.Matting -> {
-            val m = route(call, AiPort.Matting).port
+            val m = route(call, AiPort.Matting).first.port
             val file = resolver.resolve(call.req.path)?.takeIf { it.isFile }
                 ?: throw BridgeException(BridgeErrors.BAD_PARAMS, BAD_IMAGE_PATH)
             AiMattingPolicy.resultJson(withContext(Dispatchers.IO) { m.matte(file) })
@@ -317,14 +324,15 @@ class AiInvoker(private val providers: () -> List<AiProvider>, private val resol
     private fun notGenerative(id: String) =
         BridgeException(BridgeErrors.BAD_PARAMS, "$id 不支持 preset / system / temperature / topK，请去掉这些选项")
 
-    /** 选提供者 → 约束校验 → 查可用性 */
-    private fun <T : Any> route(call: AiCall, port: AiPort<T>): AiRoute<T> {
+    /** 选提供者 → 补用户设置（本次调用快照）→ 约束校验 → 查可用性；返回路由与补完的调用 */
+    private fun <C : AiCall, T : Any> route(call: C, port: AiPort<T>): Pair<AiRoute<T>, C> {
         val r = AiRouter.select(providers(), call.task, port, call.provider, generative = isGenerative(call))
+        val filled = AiParamDefaults.fill(call, r.provider, paramStore)
         val constraints = AiRouter.offerOf(r.provider, call.task)?.constraints
-        constraints?.check(call)
+        constraints?.check(filled)
         // 非生成式提供者（报价没带 Generate 约束）不能静默吞掉预设 / system / 采样参数
         if (call is AiCall.Run && !call.gen.isEmpty && constraints !is AiConstraints.Generate) throw notGenerative(r.provider.id)
         AiRouter.requireAvailable(r.provider)
-        return r
+        return r to filled
     }
 }

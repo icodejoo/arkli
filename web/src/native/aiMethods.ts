@@ -19,4 +19,10 @@ export const AI_METHODS = {
   translate: 'native.ai.translate',
   warmup: 'native.ai.warmup',
   unload: 'native.ai.unload',
+  /** 获取提供者的可调参数定义与当前生效值 */
+  paramsGet: 'native.ai.params.get',
+  /** 设置提供者的可调参数值 */
+  paramsSet: 'native.ai.params.set',
+  /** 重置提供者的可调参数为默认值 */
+  paramsReset: 'native.ai.params.reset',
 } as const

@@ -92,11 +92,14 @@ interface CoupletEnv {
  *
  * @param env 文件环境
  * @param backend Rust 引擎
+ * @param settingsKey 会话级设置指纹，并入重载判定；缺省无设置
  * @param now 单调时钟（毫秒），单测可替换
  */
 class CoupletService(
     private val env: CoupletEnv,
     private val backend: CoupletBackend,
+    /** 会话级设置指纹（SESSION 级参数的 hash）；变了下次调用自动重载，缺省无设置 */
+    private val settingsKey: () -> String = { "" },
     private val now: () -> Long = { System.nanoTime() / NANOS_PER_MS },
 ) {
     /** 当前加载的模型指纹（目录|各文件长度与修改时间） */
@@ -142,7 +145,7 @@ class CoupletService(
         val dir = env.modelDir()
         requireReady(dir)
         val t0 = now()
-        val already = fingerprint(dir) == loadedKey
+        val already = sessionKey(dir) == loadedKey
         ensureLoaded(dir)
         if (!already && !currentCoroutineContext().isActive) {
             backend.unload()
@@ -187,9 +190,12 @@ class CoupletService(
         }
     }
 
+
+    /** 会话指纹：文件指纹并入会话级设置指纹，任一变化都会触发重载 */
+    private fun sessionKey(dir: File): String = fingerprint(dir) + settingsKey()
     /** 确保模型已加载；指纹变化时先释放旧会话再加载 */
     private fun ensureLoaded(dir: File) {
-        val key = fingerprint(dir)
+        val key = sessionKey(dir)
         if (key == loadedKey) return
         if (loadedKey != null) backend.unload()
         backend.load(dir.path)
@@ -234,7 +240,10 @@ class CoupletService(
  * @param models 模型状态来源，对应清单里的 [CoupletService.MODEL_ID]；不传则只看文件是否齐全
  */
 class LocalCoupletProvider(private val service: CoupletService, private val models: ModelStateSource? = null) :
-    AiProvider, CoupletEngine, AiSessionControl {
+    AiProvider, CoupletEngine, AiSessionControl, AiTunable {
+    /** 可调参数：来自 [AiCoupletPolicy.PARAM_SPECS]，范围与默认值不在这里另抄 */
+    override fun paramSpecs(): List<AiParamSpec> = AiCoupletPolicy.PARAM_SPECS
+
     /** 固定 id */
     override val id: String = ID
 

@@ -22,6 +22,7 @@ import org.json.JSONObject
  * - 本地文本模型（Qwen3.5-0.8B，MNN）作为 `local-qwen` 提供者，经 `native.ai.run` 做摘要、校对、改写、提示词问答，经 `native.ai.translate` 做翻译，见 [AiQwenPolicy] 与 [QwenService]；
  * - `native.ai.invoke`：统一入口 `{ task, input, provider?, entry?, options? }`，按任务分派到强类型端口；
  *   `run` / `translate` / `classify` 是它钉死端口的别名，共用 [AiInvoker]；
+ * - `native.ai.params.get/set/reset`：各提供者的可调推理参数（规格随 `native.ai.providers` 的 `params` 下发），见 [AiParams]；
  * - 各入口选提供者统一经 [AiRouter]；
  * - `native.ai.warmup` / `native.ai.unload`：本地模型会话的预热与卸载，见 [AiLifecyclePolicy]；会话的预热、卸载、
  *   删模型前释放、进程级回收（[AiRecycle]）都从 [providers] 里实现了 [AiSessionControl] 的提供者派生，新增模型只登记一处；
@@ -56,6 +57,15 @@ object AiModule {
 
     /** 方法名：本地翻译（NLLB-200 600M） */
     const val METHOD_TRANSLATE = "native.ai.translate"
+
+    /** 方法名：读某个提供者的可调参数规格与当前值 */
+    const val METHOD_PARAMS_GET = "native.ai.params.get"
+
+    /** 方法名：写某个提供者的可调参数（整批原子校验） */
+    const val METHOD_PARAMS_SET = "native.ai.params.set"
+
+    /** 方法名：恢复某个提供者的参数默认值 */
+    const val METHOD_PARAMS_RESET = "native.ai.params.reset"
 
     /** 方法名：预热本地模型会话 */
     const val METHOD_WARMUP = "native.ai.warmup"
@@ -140,8 +150,12 @@ object AiModule {
         }
         AiRecycle.attach(all)
         val registry = ProviderRegistry(all)
-        val invoker = AiInvoker({ registry.all() }) { env.roots.resolveCache(it) }
+        val paramStore = SharedPrefsAiParamStore(env.appContext)
+        val invoker = AiInvoker({ registry.all() }, { env.roots.resolveCache(it) }, paramStore)
         bridge.register(METHOD_PROVIDERS, AiProvidersHandler(registry))
+        bridge.register(METHOD_PARAMS_GET, AiParamsGetHandler(registry, paramStore))
+        bridge.register(METHOD_PARAMS_SET, AiParamsSetHandler(registry, paramStore))
+        bridge.register(METHOD_PARAMS_RESET, AiParamsResetHandler(registry, paramStore))
         bridge.register(METHOD_INVOKE, AiInvokeHandler(invoker))
         bridge.register(METHOD_RUN, AiRunHandler(invoker))
         bridge.register(METHOD_CLASSIFY, AiClassifyHandler(invoker))

@@ -57,14 +57,16 @@ data class AiSamplingParams(val temperature: Float? = null, val topK: Int? = nul
  * @property preset 预设；null 表示按任务
  * @property system 页面额外传的 system 提示；只有 [AiPreset.PROMPT] 允许
  * @property sampling 采样参数；null 表示沿用预设默认
+ * @property maxTokens 本次最多生成的 token 数；null 表示沿用 [AiQwenPolicy.MAX_NEW_TOKENS]（只由用户设置补入，桥上不收）
  */
 data class AiGenOptions(
     val preset: AiPreset? = null,
     val system: String? = null,
     val sampling: AiSamplingParams? = null,
+    val maxTokens: Int? = null,
 ) {
     /** 是否一项都没传 */
-    val isEmpty: Boolean get() = preset == null && system == null && sampling == null
+    val isEmpty: Boolean get() = preset == null && system == null && sampling == null && maxTokens == null
 
     companion object {
         /** 什么都没传 */

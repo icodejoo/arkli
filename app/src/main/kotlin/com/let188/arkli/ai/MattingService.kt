@@ -163,6 +163,7 @@ interface MattingEnv {
  * @param env 文件环境
  * @param backend Rust 引擎
  * @param codec 图片解码器
+ * @param settingsKey 会话级设置指纹，并入重载判定；缺省无设置
  * @param now 单调时钟（毫秒），单测可替换
  */
 class MattingService(
@@ -170,6 +171,8 @@ class MattingService(
     private val env: MattingEnv,
     private val backend: MattingBackend,
     private val codec: ImageCodec,
+    /** 会话级设置指纹（SESSION 级参数的 hash）；变了下次调用自动重载，缺省无设置 */
+    private val settingsKey: () -> String = { "" },
     private val now: () -> Long = { System.nanoTime() / NANOS_PER_MS },
 ) {
     /** 当前加载的模型指纹（路径|各文件长度与修改时间） */
@@ -338,7 +341,7 @@ class MattingService(
     }
 
     /** 计算模型指纹：目录路径加每个必需文件的长度与修改时间，任一变化都会触发重载 */
-    private fun fingerprint(dir: File): String = fingerprintOf(mode, dir)
+    private fun fingerprint(dir: File): String = fingerprintOf(mode, dir) + settingsKey()
 
     companion object {
         /** 纳秒转毫秒 */

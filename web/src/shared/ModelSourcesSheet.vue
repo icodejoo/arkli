@@ -7,6 +7,9 @@ import { copyText } from './clipboard'
 import { formatBytes } from './image-calc'
 import { MANUAL_DIR_HINT, MANUAL_STEPS, MANUAL_STEPS_PACKAGE, allFirstUrls, fileCopyText, footerOf, isSinglePackage, manualDirText, openLink } from './modelSources'
 import type { ModelStateName } from '@/native/model'
+import { useAiProviders } from '@/native/useAiProviders'
+import ModelParamsPanel from './ModelParamsPanel.vue'
+import { paramProvidersOf } from './modelParams'
 
 /** 面板是否显示（v-model） */
 const show = defineModel<boolean>({ required: true })
@@ -21,10 +24,18 @@ const pkg = computed(() => (data.value && isSinglePackage(data.value) ? data.val
 /** 当前底部按钮布局 */
 const footer = computed(() => footerOf(props.state))
 
+/** 提供者探测（用于按 provider.modelId 关联可调参数） */
+const ai = useAiProviders()
+/** 已安装时才展示参数区；没有声明 params 的提供者（语音识别、数据包等）不渲染 */
+const paramProviders = computed(() => (footer.value.primary === 'remove' ? paramProvidersOf(ai.providers.value, props.modelId) : []))
+
 /** 来源数据，未取到为 null */
 const data = ref<ModelSources | null>(null)
 /** 取不到时的提示 */
 const failed = ref('')
+
+/** 参数区默认标题 */
+const PARAMS_TITLE = '参数调整'
 
 /** 没有原生宿主或读取失败的提示 */
 const MSG_UNAVAILABLE = '暂时读不到下载地址（需要在 App 内打开）'
@@ -32,6 +43,7 @@ const MSG_UNAVAILABLE = '暂时读不到下载地址（需要在 App 内打开�
 /** 打开面板时读一次来源（一次性读取，不轮询） */
 watch(show, async (v) => {
   if (!v) return
+  void ai.ensure()
   data.value = null
   failed.value = ''
   try {
@@ -106,6 +118,8 @@ async function open(url: string): Promise<void> {
         </section>
       </template>
       <van-loading v-else class="src__tip" />
+      <!-- 可调参数区：仅已安装且提供者声明了 params 时出现 -->
+      <model-params-panel v-for="p in paramProviders" :key="p.id" :provider-id="p.id" :title="paramProviders.length > 1 ? p.displayName : PARAMS_TITLE" />
     </div>
     <!-- 底部固定按钮：未下载主题色「下载」，已下载 danger 色「删除」 -->
     <div class="src__footer">

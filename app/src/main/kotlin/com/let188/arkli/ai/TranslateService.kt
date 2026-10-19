@@ -73,11 +73,14 @@ interface TranslateEnv {
  *
  * @param env 文件环境
  * @param backend Rust 引擎
+ * @param settingsKey 会话级设置指纹，并入重载判定；缺省无设置
  * @param now 单调时钟（毫秒），单测可替换
  */
 class TranslateService(
     private val env: TranslateEnv,
     private val backend: TranslateBackend,
+    /** 会话级设置指纹（SESSION 级参数的 hash）；变了下次调用自动重载，缺省无设置 */
+    private val settingsKey: () -> String = { "" },
     private val now: () -> Long = { System.nanoTime() / NANOS_PER_MS },
 ) {
     /** 当前加载的模型指纹（目录|各文件长度与修改时间） */
@@ -126,7 +129,7 @@ class TranslateService(
             throw BridgeException(BridgeErrors.NOT_READY, "翻译模型未就绪：${dir.path} 缺文件，请先下载模型")
         }
         val t0 = now()
-        val already = fingerprint(dir) == loadedKey
+        val already = sessionKey(dir) == loadedKey
         ensureLoaded(dir)
         if (!already && !currentCoroutineContext().isActive) {
             backend.unload()
@@ -151,9 +154,12 @@ class TranslateService(
         return TranslateResult(out.text, now() - t0, MODEL_ID, req.src, req.tgt, detected, auto && out.unrecognized)
     }
 
+
+    /** 会话指纹：文件指纹并入会话级设置指纹，任一变化都会触发重载 */
+    private fun sessionKey(dir: File): String = fingerprint(dir) + settingsKey()
     /** 确保模型已加载；指纹变化时先释放旧会话再加载 */
     private fun ensureLoaded(dir: File) {
-        val key = fingerprint(dir)
+        val key = sessionKey(dir)
         if (key == loadedKey) return
         // 模型被替换：先释放旧会话，避免两份模型同时占内存
         if (loadedKey != null) backend.unload()
@@ -197,7 +203,10 @@ class TranslateService(
  * @param models 模型状态来源，对应清单里的 [TranslateService.MODEL_ID]
  */
 class LocalNllbProvider(private val service: TranslateService, private val models: ModelStateSource? = null) :
-    AiProvider, TextTranslator, AiSessionControl {
+    AiProvider, TextTranslator, AiSessionControl, AiTunable {
+    /** 可调参数：来自 [AiTranslatePolicy.PARAM_SPECS]，范围与默认值不在这里另抄 */
+    override fun paramSpecs(): List<AiParamSpec> = AiTranslatePolicy.PARAM_SPECS
+
     /** 固定 id */
     override val id: String = ID
 

@@ -41,12 +41,15 @@ object AiHeavyGate {
  * @param env 文件环境
  * @param backend Rust 引擎
  * @param codec 图片解码器
+ * @param settingsKey 会话级设置指纹，并入重载判定；缺省无设置
  * @param now 单调时钟（毫秒），单测可替换
  */
 class ClipService(
     private val env: ClipEnv,
     private val backend: ClipBackend,
     private val codec: ImageCodec,
+    /** 会话级设置指纹（SESSION 级参数的 hash）；变了下次调用自动重载，缺省无设置 */
+    private val settingsKey: () -> String = { "" },
     private val now: () -> Long = { System.nanoTime() / NANOS_PER_MS },
 ) {
     /** 已设置到 Rust 的词表；null 表示还没设置 */
@@ -98,7 +101,7 @@ class ClipService(
             throw BridgeException(BridgeErrors.NOT_READY, "识物模型未就绪：${model.path} 不存在，请先下载或放置模型")
         }
         val t0 = now()
-        val already = loadedKey != null && loadedKey == "${model.path}|${model.length()}|${model.lastModified()}"
+        val already = loadedKey != null && loadedKey == keyOf(model)
         ensureReady(model)
         if (!already && !currentCoroutineContext().isActive) {
             backend.unload()
@@ -130,10 +133,13 @@ class ClipService(
         return ClassifyResult(meta, outcome, MODEL_ID, elapsedMs = t2 - t0, inferMs = t2 - t1)
     }
 
+    /** 会话指纹：路径|长度|修改时间，再并入会话级设置指纹 */
+    private fun keyOf(model: File): String = "${model.path}|${model.length()}|${model.lastModified()}" + settingsKey()
+
     /** 确保词表与模型都已加载，返回词表元数据 */
     private fun ensureReady(model: File): ClipVocabMeta {
         val meta = vocab ?: loadVocab().also { vocab = it }
-        val key = "${model.path}|${model.length()}|${model.lastModified()}"
+        val key = keyOf(model)
         if (key != loadedKey) {
             // 模型被替换：先释放旧会话，避免两份模型同时占内存
             if (loadedKey != null) backend.unload()
@@ -179,7 +185,10 @@ class ClipService(
  * @param models 模型状态来源，对应清单里的 [ClipService.MODEL_ID]
  */
 class LocalClipProvider(private val service: ClipService, private val models: ModelStateSource? = null) :
-    AiProvider, ImageClassifier, AiSessionControl {
+    AiProvider, ImageClassifier, AiSessionControl, AiTunable {
+    /** 可调参数：来自 [AiClassifyPolicy.PARAM_SPECS]，范围与默认值不在这里另抄 */
+    override fun paramSpecs(): List<AiParamSpec> = AiClassifyPolicy.PARAM_SPECS
+
     /** 固定 id */
     override val id: String = ID
 

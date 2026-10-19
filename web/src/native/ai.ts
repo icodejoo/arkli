@@ -408,6 +408,52 @@ export interface AiOffer {
   constraints?: AiOfferConstraints
 }
 
+/** 参数控件类型 */
+export type AiParamKind = 'slider' | 'stepper' | 'switch' | 'select'
+
+/** 参数生效范围：call 下次调用生效 / session 需重建会话 */
+export type AiParamScope = 'call' | 'session'
+
+/** 可调参数定义（范围、默认值、控件形态、生效范围等） */
+export interface AiParamSpec {
+  /** 稳定标识，如 "temperature"、"numBeams" */
+  key: string
+  /** 展示标签 */
+  label: string
+  /** 一句话说明 */
+  desc: string
+  /** 控件形态 */
+  kind: AiParamKind
+  /** 默认值；switch 为 0/1，select 有 optionValues 时为真实值，否则为选项下标 */
+  default: number
+  /** 最小值 */
+  min: number
+  /** 最大值 */
+  max: number
+  /** 步长 */
+  step: number
+  /** 选项列表，select 专用 */
+  options?: string[]
+  /** select 各档对应的真实值，与 options 等长；有它时存取都用真实值，options 只管显示 */
+  optionValues?: number[]
+  /** 是否折叠进“高级” */
+  advanced: boolean
+  /** 生效范围：call 下次调用生效 / session 需重建会话 */
+  scope: AiParamScope
+  /** 只作用于哪些任务或预设（如 prompt） */
+  applyTo?: string[]
+}
+
+/** `native.ai.params.*` 的返回状态 */
+export interface AiParamsState {
+  /** 提供者 id */
+  provider: string
+  /** 参数定义列表 */
+  specs: AiParamSpec[]
+  /** 全部 key 的当前生效值 */
+  values: Record<string, number>
+}
+
 /** 一个 AI 提供者 */
 export interface AiProviderInfo {
   /** 稳定标识，如 `intent-handoff` */
@@ -434,6 +480,8 @@ export interface AiProviderInfo {
   downloading?: boolean
   /** 是否持有可预热/卸载的模型会话（`native.ai.warmup` / `unload` 能用）；旧原生没有此字段 */
   session?: boolean
+  /** 可调参数定义列表；没有则省略 */
+  params?: AiParamSpec[]
 }
 
 /** `native.ai.providers` 的结果 */
@@ -805,3 +853,56 @@ export async function aiUnload(provider?: string, call: CancelableCallFn = bridg
   if (!isNativeAvailable()) throw new NativeUnavailableError(AI_METHODS.unload)
   return call<UnloadResult>(AI_METHODS.unload, provider === undefined ? {} : { provider })
 }
+
+/**
+ * 读取提供者的可调参数定义与当前值。
+ *
+ * @param provider 提供者 id
+ * @param call 原生调用函数，默认走 bridge（仅测试注入）
+ * @returns 参数定义与当前生效值
+ * @throws NativeUnavailableError 不在 Arkli 容器内
+ * @example const { specs, values } = await aiParamsGet('local-qwen')
+ */
+export async function aiParamsGet(provider: string, call: CancelableCallFn = bridgeCall): Promise<AiParamsState> {
+  if (!isNativeAvailable()) throw new NativeUnavailableError(AI_METHODS.paramsGet)
+  return call<AiParamsState>(AI_METHODS.paramsGet, { provider })
+}
+
+/**
+ * 设置提供者的参数值，整批原子生效。
+ *
+ * @param provider 提供者 id
+ * @param values 要修改的键值对
+ * @param call 原生调用函数，默认走 bridge（仅测试注入）
+ * @returns 修改后的全部参数定义与最新生效值
+ * @throws NativeUnavailableError 不在 Arkli 容器内
+ * @example const next = await aiParamsSet('local-qwen', { temperature: 0.5 })
+ */
+export async function aiParamsSet(
+  provider: string,
+  values: Record<string, number>,
+  call: CancelableCallFn = bridgeCall,
+): Promise<AiParamsState> {
+  if (!isNativeAvailable()) throw new NativeUnavailableError(AI_METHODS.paramsSet)
+  return call<AiParamsState>(AI_METHODS.paramsSet, { provider, values })
+}
+
+/**
+ * 重置提供者的参数为默认值。
+ *
+ * @param provider 提供者 id
+ * @param keys 要重置的键名列表，不传表示重置该提供者的全部参数
+ * @param call 原生调用函数，默认走 bridge（仅测试注入）
+ * @returns 重置后的全部参数定义与最新生效值
+ * @throws NativeUnavailableError 不在 Arkli 容器内
+ * @example const reset = await aiParamsReset('local-qwen', ['temperature'])
+ */
+export async function aiParamsReset(
+  provider: string,
+  keys?: string[],
+  call: CancelableCallFn = bridgeCall,
+): Promise<AiParamsState> {
+  if (!isNativeAvailable()) throw new NativeUnavailableError(AI_METHODS.paramsReset)
+  return call<AiParamsState>(AI_METHODS.paramsReset, keys ? { provider, keys } : { provider })
+}
+

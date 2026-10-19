@@ -15,6 +15,10 @@ AI 工具标题栏右上角的小按钮，点开底部弹层选模型。依据 [
 - 模型选择器：只负责选中，以及对未下载项触发下载（`store.download`）。
 - 业务工具页：只读 `useAiCatalog(toolId).current`（状态来自模型 store）、只使用和展示；未就绪时给一句提示，不写任何下载/删除/校验逻辑。
 
+## 参数调整只在 AI 中心
+
+模型的推理参数（温度、回答长度、束宽等，见 [统一 AI 协议](ai-protocol.md)「参数调整」）只在 AI 中心详情弹窗 `ModelSourcesSheet` 底部的“参数调整区”出现：已安装、且提供者 `modelId` 匹配、`native.ai.providers` 带了 `params` 才显示。**业务工具页与模型选择器都不得读写参数**，不得引用 `native.ai.params.*`、`aiParamsGet/Set/Reset`、`stores/aiParams`；`web/src/shared/aiParamsScan.test.ts` 会扫描 `web/src/tools/` 拦截。工具要自带参数就自己显式传，显式传的值优先于用户设置。
+
 ## AI 中心里的下载地址
 
 AI 中心即 `/ai`（`AiView.vue`）。其「本地模型」区每个模型除「点击下载」外有「下载地址」入口，点开 `ModelSourcesSheet` 面板：文件名、大小、sha256、全部镜像地址（可点开、可复制）、release 页面链接、手动放置说明（放到 `files/<dir>/`，再点「校验」）。数据来自 `native.model.sources`（一次性读取，不轮询），状态仍只读 `stores/models.ts`。选择器与业务工具页不出现这些入口。详见 [模型下载管理](model-download.md)。

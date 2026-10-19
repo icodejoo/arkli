@@ -190,3 +190,45 @@ internal class AiUnloadHandler(private val registry: ProviderRegistry) : BridgeH
         return AiLifecyclePolicy.unloadJson(withContext(Dispatchers.IO) { AiLifecyclePolicy.unloadAll(sessions) })
     }
 }
+
+/**
+ * `native.ai.params.get`：`{ provider }` -> `{ provider, specs, values }`（values 含全部 key 的当前生效值）。
+ *
+ * @param registry 提供者登记处
+ * @param store 用户参数存储
+ */
+internal class AiParamsGetHandler(private val registry: ProviderRegistry, private val store: AiParamStore) : BridgeHandler {
+    /** 校验提供者后读当前值 */
+    override suspend fun handle(ctx: CallContext, params: JSONObject): Any? {
+        requireMainFrame(ctx)
+        return AiParams.handleGet(params, registry.all(), store)
+    }
+}
+
+/**
+ * `native.ai.params.set`：`{ provider, values }` -> 同 get。整批原子：任一项非法整批拒绝（BAD_PARAMS），不夹取。
+ *
+ * @param registry 提供者登记处
+ * @param store 用户参数存储
+ */
+internal class AiParamsSetHandler(private val registry: ProviderRegistry, private val store: AiParamStore) : BridgeHandler {
+    /** 整批校验通过后落盘 */
+    override suspend fun handle(ctx: CallContext, params: JSONObject): Any? {
+        requireMainFrame(ctx)
+        return AiParams.handleSet(params, registry.all(), store)
+    }
+}
+
+/**
+ * `native.ai.params.reset`：`{ provider, keys? }` -> 同 get。缺省 keys 恢复该提供者全部参数的默认值。
+ *
+ * @param registry 提供者登记处
+ * @param store 用户参数存储
+ */
+internal class AiParamsResetHandler(private val registry: ProviderRegistry, private val store: AiParamStore) : BridgeHandler {
+    /** 删掉已存的值即恢复默认 */
+    override suspend fun handle(ctx: CallContext, params: JSONObject): Any? {
+        requireMainFrame(ctx)
+        return AiParams.handleReset(params, registry.all(), store)
+    }
+}

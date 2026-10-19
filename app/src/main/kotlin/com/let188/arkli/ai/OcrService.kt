@@ -117,12 +117,15 @@ interface OcrEnv {
  * @param env 文件环境
  * @param backend Rust 引擎
  * @param codec 图片解码器
+ * @param settingsKey 会话级设置指纹，并入重载判定；缺省无设置
  * @param now 单调时钟（毫秒），单测可替换
  */
 class OcrService(
     private val env: OcrEnv,
     private val backend: OcrBackend,
     private val codec: ImageCodec,
+    /** 会话级设置指纹（SESSION 级参数的 hash）；变了下次调用自动重载，缺省无设置 */
+    private val settingsKey: () -> String = { "" },
     private val now: () -> Long = { System.nanoTime() / NANOS_PER_MS },
 ) {
     /** 当前加载的模型指纹（目录|各文件长度与修改时间） */
@@ -170,7 +173,7 @@ class OcrService(
         val dir = env.modelDir()
         requireReady(dir)
         val t0 = now()
-        val already = fingerprint(dir) == loadedKey
+        val already = sessionKey(dir) == loadedKey
         ensureLoaded(dir)
         if (!already && !currentCoroutineContext().isActive) {
             backend.unload()
@@ -233,9 +236,12 @@ class OcrService(
         }
     }
 
+
+    /** 会话指纹：文件指纹并入会话级设置指纹，任一变化都会触发重载 */
+    private fun sessionKey(dir: File): String = fingerprint(dir) + settingsKey()
     /** 确保模型已加载；指纹变化时先释放旧会话再加载 */
     private fun ensureLoaded(dir: File) {
-        val key = fingerprint(dir)
+        val key = sessionKey(dir)
         if (key == loadedKey) return
         // 模型被替换：先释放旧会话，避免两份模型同时占内存
         if (loadedKey != null) backend.unload()
