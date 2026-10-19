@@ -101,6 +101,9 @@ object ModelModule {
     /** 退役清理每个进程只排一次 */
     private val retiredScheduled = AtomicBoolean(false)
 
+    /** 残留清扫是否已排过（每进程一次） */
+    private val sweepScheduled = AtomicBoolean(false)
+
     /** 事件名：某模型状态或下载进度变化，data 同 `native.model.status` 的返回 */
     const val EVENT_CHANGED = "model.changed"
 
@@ -123,7 +126,21 @@ object ModelModule {
         // 管理器是进程单例、桥是每会话一个：后装的桥接管推送，旧会话的事件本来就会被丢弃
         manager.setListener { bridge.emit(EVENT_CHANGED, ModelPolicy.snapshotJson(it)) }
         scheduleRetiredCleanup(manager.manifest, context.applicationContext.filesDir)
+        scheduleResidueSweep(manager)
         return manager
+    }
+
+    /** 后台清扫单包安装被杀后的解压碎片与已就绪模型遗留的压缩包；每进程一次，失败只记日志 */
+    private fun scheduleResidueSweep(manager: ModelManager) {
+        if (!sweepScheduled.compareAndSet(false, true)) return
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            try {
+                val removed = manager.sweepResidue()
+                if (removed.isNotEmpty()) Log.i(MODEL_LOG_TAG, "已清扫模型残留：$removed")
+            } catch (e: Exception) {
+                Log.w(MODEL_LOG_TAG, "残留清扫异常", e)
+            }
+        }
     }
 
     /** 后台排在 [AiHeavyGate] 之后回收退役模型目录；每进程一次，失败只记日志，不阻塞启动 */

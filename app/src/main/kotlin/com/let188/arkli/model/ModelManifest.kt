@@ -62,7 +62,8 @@ data class ModelFile(val name: String, val bytes: Long, val sha256: String, val 
  * @property totalBytes 全部文件字节数之和
  * @property license 许可证标识，可空
  * @property files 文件列表；数据包（[archive] 非空）里是**解压后**的文件，不带下载源，由解压校验
- * @property archive 数据包的压缩包（zip）：下载的是它，解压出 [files]；普通模型为 null
+ * @property archive 压缩包（zip）：下载的是它，解压出 [files]（逐文件的 bytes/sha256 仍用于解压核对与就绪判断）；
+ *   数据包必有，普通模型可选（旧格式逐文件下载时为 null）
  */
 data class ModelEntry(
     val id: String,
@@ -165,13 +166,12 @@ object ModelManifestParser {
         require(displayName.isNotEmpty()) { "$id 缺 displayName" }
         val kind = o.optString("kind", KIND_MODEL)
         require(kind == KIND_MODEL || kind == KIND_PACK) { "$id 的 kind 不认识：$kind" }
-        val archive = if (kind == KIND_PACK) {
-            file(id, o.optJSONObject("archive") ?: throw IllegalArgumentException("$id 是数据包却缺 archive")).also {
-                require(it.name.endsWith(ARCHIVE_SUFFIX)) { "$id 的压缩包必须是 $ARCHIVE_SUFFIX" }
-            }
-        } else {
-            require(!o.has("archive")) { "$id 不是数据包，不应有 archive" }
-            null
+        // 压缩包：数据包必须有；普通模型可选（带了就是“单个 zip 包”安装，解压结果与逐文件安装完全一致）
+        val rawArchive = o.optJSONObject("archive")
+        require(kind != KIND_PACK || rawArchive != null) { "$id 是数据包却缺 archive" }
+        require(!o.has("archive") || rawArchive != null) { "$id 的 archive 不是对象" }
+        val archive = rawArchive?.let {
+            file(id, it).also { a -> require(a.name.endsWith(ARCHIVE_SUFFIX)) { "$id 的压缩包必须是 $ARCHIVE_SUFFIX" } }
         }
         val arr = o.optJSONArray("files") ?: throw IllegalArgumentException("$id 缺 files")
         require(arr.length() in 1..MAX_FILES) { "$id 的文件数不合法" }

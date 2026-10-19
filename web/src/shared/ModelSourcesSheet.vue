@@ -5,7 +5,7 @@ import { showToast } from 'vant'
 import { modelSources, type ModelSources } from '@/native/model'
 import { copyText } from './clipboard'
 import { formatBytes } from './image-calc'
-import { MANUAL_DIR_HINT, MANUAL_STEPS, allFirstUrls, fileCopyText, footerOf, manualDirText, openLink } from './modelSources'
+import { MANUAL_DIR_HINT, MANUAL_STEPS, MANUAL_STEPS_PACKAGE, allFirstUrls, fileCopyText, footerOf, isSinglePackage, manualDirText, openLink } from './modelSources'
 import type { ModelStateName } from '@/native/model'
 
 /** 面板是否显示（v-model） */
@@ -14,6 +14,9 @@ const show = defineModel<boolean>({ required: true })
 const props = defineProps<{ modelId: string; modelName: string; state: ModelStateName }>()
 /** 底部按钮事件：下载、删除、校验（由 AI 中心页执行） */
 const emit = defineEmits<{ download: []; remove: []; verify: [] }>()
+
+/** 是否“一个包”的新格式 */
+const pkg = computed(() => (data.value && isSinglePackage(data.value) ? data.value : null))
 
 /** 当前底部按钮布局 */
 const footer = computed(() => footerOf(props.state))
@@ -55,18 +58,33 @@ async function open(url: string): Promise<void> {
       <h3 class="src__title">{{ modelName }} · 下载地址</h3>
       <p v-if="failed" class="src__tip">{{ failed }}</p>
       <template v-else-if="data">
-        <section v-for="f in data.files" :key="f.name" class="src__file">
-          <div class="src__name">{{ f.name }} <span class="src__size">{{ formatBytes(f.bytes) }}</span></div>
+        <section v-if="pkg" class="src__file">
+          <div class="src__name">{{ pkg.files[0].name }}</div>
+          <div class="src__kv">包大小：{{ formatBytes(pkg.files[0].bytes) }}　解压后：{{ formatBytes(pkg.unpackedBytes ?? 0) }}<template v-if="pkg.entryCount">　共 {{ pkg.entryCount }} 个文件</template></div>
+          <div v-if="pkg.license" class="src__kv">许可证：{{ pkg.license }}</div>
           <div class="src__row">
-            <span class="src__mono">sha256 {{ f.sha256 }}</span>
-            <van-button size="mini" plain @click="copy(f.sha256, ' sha256')">复制</van-button>
+            <span class="src__mono">sha256 {{ pkg.files[0].sha256 }}</span>
+            <van-button size="mini" plain @click="copy(pkg.files[0].sha256, ' sha256')">复制</van-button>
           </div>
-          <div v-for="u in f.urls" :key="u" class="src__row">
+          <div v-for="u in pkg.files[0].urls" :key="u" class="src__row">
             <span class="src__mono src__link" @click="open(u)">{{ u }}</span>
             <van-button size="mini" plain @click="copy(u, '地址')">复制</van-button>
           </div>
-          <van-button size="mini" plain @click="copy(fileCopyText(f), '文件信息')">复制本文件信息</van-button>
         </section>
+        <template v-else>
+          <section v-for="f in data.files" :key="f.name" class="src__file">
+            <div class="src__name">{{ f.name }} <span class="src__size">{{ formatBytes(f.bytes) }}</span></div>
+            <div class="src__row">
+              <span class="src__mono">sha256 {{ f.sha256 }}</span>
+              <van-button size="mini" plain @click="copy(f.sha256, ' sha256')">复制</van-button>
+            </div>
+            <div v-for="u in f.urls" :key="u" class="src__row">
+              <span class="src__mono src__link" @click="open(u)">{{ u }}</span>
+              <van-button size="mini" plain @click="copy(u, '地址')">复制</van-button>
+            </div>
+            <van-button size="mini" plain @click="copy(fileCopyText(f), '文件信息')">复制本文件信息</van-button>
+          </section>
+        </template>
         <van-button block size="small" plain @click="copy(allFirstUrls(data.files), '全部地址')">复制全部地址（每文件首选）</van-button>
         <section v-if="data.releasePages.length" class="src__file">
           <div class="src__name">release 页面</div>
@@ -78,7 +96,7 @@ async function open(url: string): Promise<void> {
         <section class="src__file">
           <div class="src__name">手动放置</div>
           <ol class="src__steps">
-            <li v-for="s in MANUAL_STEPS" :key="s">{{ s }}</li>
+            <li v-for="s in pkg ? MANUAL_STEPS_PACKAGE : MANUAL_STEPS" :key="s">{{ s }}</li>
           </ol>
           <div class="src__row">
             <span class="src__mono">{{ manualDirText(data.dir) }}</span>
@@ -120,6 +138,11 @@ async function open(url: string): Promise<void> {
   &__name {
     margin-bottom: $space-2;
     font-weight: 500;
+  }
+
+  &__kv {
+    margin-bottom: $space-2;
+    font-size: 13px;
   }
 
   &__size {

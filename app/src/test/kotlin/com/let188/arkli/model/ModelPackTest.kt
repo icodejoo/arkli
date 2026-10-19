@@ -283,4 +283,156 @@ class ModelPackTest {
         assertEquals(setOf("lines.txt", "offsets.u32", "flags.u32", "pools.u32", "meta.json"), e.files.map { it.name }.toSet())
         assertTrue(e.archive!!.urls.single().endsWith("/couplet-corpus.zip"))
     }
+
+    // ---- 普通模型的“单个 zip 包”安装（kind 缺省、带 archive）----
+
+    /** 自转模型的 id，随包清单里必须全部是单包安装 */
+    private val ownModelIds = listOf(
+        "siglip2-mnn-w8", "nllb600m-un6-mnn-w6", "asr-zipformer-zh-en-mnn-w8", "ppocrv6-small-mnn-fp16",
+        "couplet-gpt2-mnn-w6", "matting-modnet-mnn-fp32", "matting-u2netp-mnn-f16",
+    )
+
+    /** 把 [pack] 的条目改成不带 kind 的普通模型清单（单包安装） */
+    private fun plainManifestJson(): String = manifestJson { it.remove("kind") }
+
+    /** 轮询到管理器进入 [want] 状态，最多等 10 秒 */
+    private fun awaitState(m: ModelManager, want: ModelState) {
+        val deadline = System.currentTimeMillis() + 10_000
+        while (m.status("p1").state != want && System.currentTimeMillis() < deadline) Thread.sleep(20)
+    }
+
+    @Test
+    fun manifest_plainModelWithArchiveIsSinglePackage() {
+        val m = ModelManifestParser.parse(plainManifestJson()).models.single()
+        assertTrue(m.isPack)
+        assertEquals("p.zip", m.archive!!.name)
+        assertTrue(m.files.all { it.urls.isEmpty() })
+    }
+
+    @Test
+    fun manifest_legacyFilesFormatStillParses() {
+        val e = entryOf(content(1000))
+        val o = JSONObject().put("id", e.id).put("displayName", "旧").put("version", "1").put("dir", e.dir).put("totalBytes", e.totalBytes)
+            .put("files", JSONArray(e.files.map { JSONObject().put("name", it.name).put("bytes", it.bytes).put("sha256", it.sha256).put("urls", JSONArray(it.urls)) }))
+        val m = ModelManifestParser.parse(JSONObject().put("schema", 1).put("models", JSONArray().put(o)).toString()).models.single()
+        assertFalse(m.isPack)
+        assertNull(m.archive)
+    }
+
+    @Test
+    fun manifest_archiveMustBeObjectAndZip() {
+        assertThrows(IllegalArgumentException::class.java) { ModelManifestParser.parse(manifestJson { it.remove("kind"); it.put("archive", "x") }) }
+        assertThrows(IllegalArgumentException::class.java) { ModelManifestParser.parse(manifestJson { it.remove("kind"); it.getJSONObject("archive").put("name", "p.tar") }) }
+    }
+
+    @Test
+    fun shippedManifest_ownModelsAreAllSinglePackage() {
+        val m = ModelManifestParser.parse(File("src/main/assets/ai/models.json").readText())
+        ownModelIds.forEach { id ->
+            val e = m.find(id) ?: error("清单缺 $id")
+            assertTrue("$id 应是单包安装", e.isPack)
+            assertTrue("$id 的包名应为 <id>-<version>.zip", e.archive!!.name == "$id-${e.version}.zip")
+            assertTrue("$id 解压文件不应带 urls", e.files.all { it.urls.isEmpty() })
+        }
+    }
+
+    @Test
+    fun sources_singlePackageCarriesUnpackedInfo() {
+        val s = ModelPolicy.sourcesJson(ModelManifestParser.parse(plainManifestJson()).models.single())
+        assertEquals("zip", s.getString("format"))
+        assertEquals((a.size + b.size).toLong(), s.getLong("unpackedBytes"))
+        assertEquals(2, s.getInt("entryCount"))
+        assertEquals(1, s.getJSONArray("files").length())
+    }
+
+    @Test
+    fun legacyInstalledLayout_staysInstalledUnderSinglePackageManifest() {
+        val z = zipBytes
+        val legacy = ModelEntry("p1", "旧", "1", "models/p1", (a.size + b.size).toLong(), null, listOf(
+            ModelFile("a.bin", a.size.toLong(), sha256(a), "data", listOf("$T_URL/a.bin")),
+            ModelFile("b.bin", b.size.toLong(), sha256(b), "data", listOf("$T_URL/b.bin")),
+        ))
+        val t1 = FakeTransport { u, h, _ -> serve(if (u.path.endsWith("a.bin")) a else b, h) }
+        val m1 = ModelManager(ModelManifest(listOf(legacy)), tmp.root, downloader(t1), scope)
+        m1.ensure("p1")
+        awaitState(m1, ModelState.INSTALLED)
+        assertEquals(ModelState.INSTALLED, m1.status("p1").state)
+        // 换成单包清单后，已装的旧布局不重下、仍就绪
+        val t2 = FakeTransport { _, _, _ -> error("不应发请求") }
+        val m2 = ModelManager(ModelManifest(listOf(pack(z))), tmp.root, downloader(t2), scope)
+        assertEquals(ModelState.INSTALLED, m2.status("p1").state)
+        m2.ensure("p1")
+        assertEquals(0, t2.count)
+    }
+
+    @Test
+    fun ensureTwice_isIdempotent() {
+        val z = zipBytes
+        val t = FakeTransport { _, h, _ -> serve(z, h) }
+        val m = ModelManager(ModelManifest(listOf(pack(z))), tmp.root, downloader(t), scope)
+        m.ensure("p1")
+        awaitState(m, ModelState.INSTALLED)
+        m.ensure("p1")
+        assertEquals(ModelState.INSTALLED, m.status("p1").state)
+        assertEquals(1, t.count)
+        assertFalse(File(dir, "p.zip").exists())
+    }
+
+    @Test
+    fun download_resumesPartialZipThenUnpacks() {
+        val z = zipBytes
+        dir.mkdirs()
+        File(dir, "p.zip.part").writeBytes(z.copyOf(z.size / 2))
+        val ranges = mutableListOf<Long>()
+        val t = FakeTransport { _, h, _ -> ranges += rangeStart(h); serve(z, h) }
+        run(downloader(t), pack(z))
+        assertEquals(listOf((z.size / 2).toLong()), ranges)
+        assertArrayEquals(a, File(dir, "a.bin").readBytes())
+        assertFalse(File(dir, "p.zip.part").exists())
+    }
+
+    @Test
+    fun extract_cancelMidwayLeavesNoPartFiles() {
+        val z = zipBytes
+        dir.mkdirs()
+        val zip = File(dir, "p.zip").also { it.writeBytes(z) }
+        var calls = 0
+        assertThrows(kotlinx.coroutines.CancellationException::class.java) {
+            PackExtractor.extract(zip, dir, pack(z).files, setOf("a.bin", "b.bin")) { ++calls < 3 }
+        }
+        assertTrue(dir.listFiles()!!.none { it.name.endsWith(".part") })
+        // 取消后下一次完整解压仍能成功（会话不残留）
+        PackExtractor.extract(zip, dir, pack(z).files, setOf("a.bin", "b.bin"))
+        assertArrayEquals(b, File(dir, "b.bin").readBytes())
+    }
+
+    @Test
+    fun download_noSpaceForUnpackedFiles_failsBeforeUnpack() {
+        val z = zipBytes
+        dir.mkdirs()
+        File(dir, "p.zip").writeBytes(z)
+        // 包已在盘上，只差解压空间：空闲不足解压后总字节时直接 NO_SPACE
+        assertFails(ModelErrorCode.NO_SPACE) { run(downloader(FakeTransport { _, _, _ -> error("不应发请求") }, free = 100), pack(z)) }
+        assertFalse(File(dir, "a.bin").exists())
+    }
+
+    @Test
+    fun sweepResidue_removesUnpackFragmentsAndKeepsResumableZip() {
+        val z = zipBytes
+        val m = ModelManager(ModelManifest(listOf(pack(z))), tmp.root, downloader(FakeTransport { _, _, _ -> error("不应发请求") }), scope)
+        dir.mkdirs()
+        File(dir, "p.zip").writeBytes(z)
+        File(dir, "a.bin.part").writeBytes(ByteArray(10))
+        File(dir, "p.zip.part").writeBytes(ByteArray(5))
+        // 未就绪：只清解压碎片，压缩包与 .zip.part 留给续传
+        assertEquals(listOf("p1/a.bin.part"), m.sweepResidue())
+        assertTrue(File(dir, "p.zip").exists() && File(dir, "p.zip.part").exists())
+        // 就绪后：遗留的压缩包也清掉
+        m.ensure("p1")
+        awaitState(m, ModelState.INSTALLED)
+        File(dir, "p.zip").writeBytes(z)
+        File(dir, "b.bin.part").writeBytes(ByteArray(3))
+        assertEquals(setOf("p1/p.zip", "p1/p.zip.part", "p1/b.bin.part"), m.sweepResidue().toSet())
+        assertEquals(ModelState.INSTALLED, m.status("p1").state)
+    }
 }

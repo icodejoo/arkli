@@ -210,6 +210,9 @@ object ModelPolicy {
     /** 数据包解压阶段名 */
     const val PHASE_UNPACK = "unpack"
 
+    /** 压缩包格式名，目前只有 zip */
+    const val ARCHIVE_FORMAT = "zip"
+
     /**
      * 解析 `{ id }` 参数，id 必须在清单里。
      *
@@ -428,7 +431,8 @@ object ModelPolicy {
      * 因此不会回显带 token 的地址；debug 的 URL 覆盖不在这里，永远不会出现。不含磁盘绝对路径，`dir` 是相对 filesDir 的目录。
      *
      * @param entry 清单里的模型
-     * @return `{ id, dir, files: [{ name, bytes, sha256, urls }], releasePages: [string] }`
+     * @return `{ id, dir, files: [{ name, bytes, sha256, urls }], releasePages: [string] }`；单包安装的模型 `files` 只含压缩包一项，
+     *   另有 `format`（`zip`）、`unpackedBytes`（解压后总字节）、`entryCount`（包内文件数）、`license`（可空）
      *
      * 使用示例：`sourcesJson(entry).getJSONArray("releasePages")`
      */
@@ -444,6 +448,12 @@ object ModelPolicy {
             }
             files.put(JSONObject().put("name", f.name).put("bytes", f.bytes).put("sha256", f.sha256).put("urls", urls))
         }
-        return JSONObject().put("id", entry.id).put("dir", entry.dir).put("files", files).put("releasePages", JSONArray(pages.toList()))
+        val out = JSONObject().put("id", entry.id).put("dir", entry.dir).put("files", files).put("releasePages", JSONArray(pages.toList()))
+        // 单包安装：补解压后总字节、条目数、格式、许可证，供“一个包”的详情展示；旧格式清单不带这些字段
+        if (entry.archive != null) {
+            out.put("format", ARCHIVE_FORMAT).put("unpackedBytes", entry.totalBytes).put("entryCount", entry.files.size)
+            entry.license?.let { out.put("license", it) }
+        }
+        return out
     }
 }

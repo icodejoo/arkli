@@ -52,6 +52,18 @@ summary: native.model.* 的清单格式、下载器安全设计（白名单、�
 - 状态：`totalBytes`/`downloadedBytes` 以压缩包字节算（用户关心的下载量），`diskBytes` 含解压文件与压缩包；`installed` 由解压文件的校验标记判定。`remove` 同时清掉 zip 与 `.part`；`native.model.sources` 的 `files` 只列压缩包。
 - adb 模拟“已下载”：`scripts/device-push-models.sh` 对只含 `.zip` 的目录推送后触发 `native.model.ensure`。
 
+## 单包安装（自转模型，2026-10-19）
+
+我们自己转换的 7 个模型（识物、NLLB、语音、OCR v6、对联 GPT-2、MODNet、U2Net-p）改为**一个 zip 包**：清单里 `archive`（`name` 为 `<id>-<version>.zip`，带 `bytes`/`sha256`/`urls`）+ `files`（解压后各文件的 `bytes`/`sha256`，不带 `urls`），`kind` 缺省即可（`archive` 对任意模型可选，数据包 `kind:"pack"` 仍必须有）。**解压后的目录布局与旧的逐文件安装完全一致**，各 Service 的加载代码未动。旧格式（只有 `files[]` 带 `urls`）仍能解析与安装。第三方现成模型（Qwen3.5）、已退役项保持旧格式。
+
+- 流程沿用数据包：多镜像续传下载 zip（0 到约 90%，`download`）→ 整包 sha256（`verify`）→ 空间预检（压缩包剩余 ×1.2 + 待解出字节，不足报 `NO_SPACE`，不发请求）→ 解压（`unpack`，IO 线程，响应取消）→ 逐文件边写边算 sha256，对上才从 `.part` 原子改名 → 写完成标记 → 删 zip。
+- 安全：解压只认清单里的文件名，其余条目（含 `..`、绝对路径、目录）、重复条目、声明长度不符、写超一律 `UNPACK_FAILED`；条目数与总解压大小被清单封顶。**与最初设想的差异**：没有单独的“临时目录再整体 rename”，而是逐文件 `.part` + 原子改名，完成标记最后写；没标记即不算就绪，所以半途被杀不会被当成已安装，且避免同分区多一份拷贝。
+- 迁移：旧多文件已装用户的文件名、sha 与完成标记不变，清单切包后仍判 `installed`，不重下（真机实测，见下）。
+- 残留：取消只保留 `.zip.part`（续传）；`ModelManager.sweepResidue()` 每次启动清扫一次：解压中被杀的 `<文件>.part` 一律删，模型已就绪时遗留的 zip 与 `.zip.part` 也删，未就绪的 zip 保留供下次直接解压。
+- 打包：`scripts/mnn/pack.py <目录> --tag <tag> --zip <输出目录> --apply app/src/main/assets/ai/models.json`，zip 可复现（条目按名排序、时间戳固定）；deflate 收益 <3% 的条目用 stored（只有 NLLB 的 3 个小文件命中，权重 deflate 能省 3%~9%）。
+- 线上（release 新增资产，旧资产未动）：`siglip2-mnn-w8-1.zip` 86,502,640 B；`nllb600m-un6-mnn-w6-1.zip` 385,862,916 B；`asr-zipformer-zh-en-mnn-w8-1.zip` 155,227,742 B；`ppocrv6-small-mnn-fp16-1.zip` 13,102,305 B；`couplet-gpt2-mnn-w6-1.zip` 91,288,958 B；`matting-modnet-mnn-fp32-1.zip` 24,039,813 B；`matting-u2netp-mnn-f16-1.zip` 2,173,631 B（两个 matting release 为本次新建）。均用 aria2c 从线上重下，大小与 sha256 和清单一致。
+- 真机实测（STG-AL00，debug 包，真实 GitHub 链路）：OCR 总 2.2 s；对联总 10.1 s（下载 9.0、校验 0.2、解压 0.85），峰值 PSS 355MB；NLLB 续传 23.5 s + 校验 0.4 + 解压 1.5，峰值目录占用 749MB（zip + 解压后），峰值 PSS 494MB（基线 428MB）。取消后只留 `.zip.part`，续传到完成；解压中途 force-stop 后重启，不联网、2.3 s 完成；人造残留重启即清；伪造 300GB 包得到 `NO_SPACE`；旧布局的两个抠图模型仍 `installed` 且 provider `available`。
+
 ## 退役模型回收（`retired`）
 
 清单顶层可选字段 `retired: [{ "id": "...", "dir": "models/<单段名>" }]`，表示已退役、设备上应当回收的旧模型目录（换格式或换模型后，用户机上遗留的旧文件靠它清掉）。
@@ -106,4 +118,4 @@ summary: native.model.* 的清单格式、下载器安全设计（白名单、�
 - **多连接分片**：用户在菲律宾，单连接慢、多连接可叠加。当前每个文件单连接。后续可做 aria2 式多段并发（按 Range 切成 4~8 段并行写入同一 `.part` 的不同偏移，需要每段独立的续传记录），属下一步优化。
 - **前台服务**：下载跑在应用进程的协程里，应用被系统杀掉就停（`.part` 保留，重开后 `ensure` 续传）。大模型（Qwen）下载时间长，需要时再接前台服务与通知。
 - 清单签名与远程更新、模型版本升级时自动清理旧版本、`pack.progress` 事件推送（`native.pack.*` 规划里的）。
-- 托管位置确认后，替换清单 URL、补镜像，并实测一次真实重定向。
+- 补镜像。（真实 302 链路已随单包安装实测通过。）

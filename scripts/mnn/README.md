@@ -39,6 +39,8 @@ $py = "E:\venv\arkli-mnn\Scripts\python.exe"
 & $py -I scripts\mnn\eval_couplet.py mnn_w6=<产物目录>\model.mnn
 & $py -I scripts\mnn\ocr_case.py --out <目录>   # （可选）Rust 真库 OCR 测试用例：case.rgb + expect.txt
 & $py -I scripts\mnn\pack.py siglip2-mnn-w8       # 登记字节数与 sha256，生成 models.json 条目片段
+# 单包发布：打可复现 zip 并把 archive/files 回写清单，再 gh release upload <tag> <zip>（只新增资产，别删旧的）
+& $py -I scripts\mnn\pack.py <产物目录> --tag siglip2-mnn-v1 --zip E:\workspacesrkli-models\_zip --apply app\src\mainssetsi\models.json
 ```
 
 - 目录：默认全放 `native/mnn/.work/convert/`（已被 `.gitignore` 忽略）。环境变量 `ARKLI_MNN_WORK`（根）、`ARKLI_MNN_DL`、`ARKLI_MNN_SPLIT`、`ARKLI_MNN_OUT` 可分别改。
@@ -86,7 +88,7 @@ $py = "E:\venv\arkli-mnn\Scripts\python.exe"
 | `fetch.py ocr ocr6` / `convert_all.py ocr6` | HF 官方 PP-OCRv6 small 的 det/rec ONNX 与 rec 的 `inference.yml` | `ppocrv6-small-mnn-fp16`（det/rec fp16，cls 沿用 v5 的） | 字典取自 yml（需 PyYAML）；评测见 migration 文档“M8 升级”一节 |
 | `couplet_prepare.py` | 对联 fp32 ONNX（带 past） | 无 KV cache、词嵌入 int8 的 `model_e8.onnx` | 去掉 24 个 past 与 present，Concat 改 Identity，past_len 换常量 0；`--int8-embed` 把 wte 改成图内 int8 + 逐行 scale（MNN 的权重量化不量化 Gather 常量），lm_head 用独立 fp32 副本交给 MNN 量化；`convert_all.py couplet` 会自动调用 |
 | `eval_couplet.py` | 产物 `.mnn`/`.onnx`、`data/couplet/pairs.tsv`（52 条自写上联+真下联） | 对 ORT fp32 的 logits 余弦/top-1、等长约束贪心一致率、困惑度涨幅、7 字耗时 | MNN 经 ctypes 调 `arkli-mnn.dll`（同 Rust 的 C ABI，memory=low）；门槛：余弦均值 >= 0.999、top-1 >= 0.95、困惑度涨幅 <= 2% |
-| `pack.py` | 产物目录 | 字节数、sha256、`models.json` 条目片段 | 只读；上传 release 由人执行；`ppocr_keys.txt` 登记为 `tokenizer` |
+| `pack.py` | 产物目录 | 字节数、sha256、`models.json` 条目片段；`--zip` 另出可复现 zip 与 `<zip>.json`，`--apply` 回写清单 | 默认只读；上传 release 由人执行；`ppocr_keys.txt` 登记为 `tokenizer` |
 | `data/sentences.tsv` | - | - | NLLB 评测句子（原 29 句） |
 | `data/sentences_m6.tsv` | - | - | NLLB 评测集（149 句，30 个有向语言对；门槛判定用） |
 | `data/sentences_zhchars.tsv` | - | - | “丢字”专项（28 句：含懒、媚、妈、汤、哎等原版缺字，只比译文，不判门槛） |

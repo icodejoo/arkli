@@ -214,6 +214,27 @@ class ModelManager internal constructor(
     }
 
     /**
+     * 清扫单包安装的残留（启动时调一次）：解压被杀留下的 `<文件>.part` 碎片一律删除；模型已就绪时，
+     * 遗留的压缩包与 `.zip.part` 也删。未就绪时压缩包与 `.zip.part` 保留，供下次 `ensure` 续传或直接解压。
+     * 正在下载的模型跳过。失败只吞掉，不影响启动。
+     *
+     * @return 被删除的文件名（`<id>/<文件名>`）
+     */
+    fun sweepResidue(): List<String> {
+        val removed = ArrayList<String>()
+        for (entry in manifest.models) {
+            val archive = entry.archive ?: continue
+            if (tasks.containsKey(entry.id)) continue
+            val dir = dir(entry)
+            if (!dir.isDirectory) continue
+            val names = entry.files.map { it.name + PART_SUFFIX } +
+                if (snapshot(entry).state == ModelState.INSTALLED) listOf(archive.name, archive.name + PART_SUFFIX) else emptyList()
+            names.forEach { n -> File(dir, n).let { f -> if (f.isFile && runCatching { f.delete() }.getOrDefault(false)) removed += "${entry.id}/$n" } }
+        }
+        return removed
+    }
+
+    /**
      * 删除模型：先取消任务、释放资源，再删文件、.part 与校验标记。只删清单里列出的文件，不递归。
      *
      * @param id 清单里的模型 id

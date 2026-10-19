@@ -192,6 +192,14 @@ export interface ModelSources {
   files: ModelSourceFile[]
   /** 由下载地址推出的 GitHub release 页面，已去重 */
   releasePages: string[]
+  /** 单包安装时的包格式（目前只有 `zip`）；旧格式（逐文件下载）没有此字段 */
+  format?: 'zip'
+  /** 单包安装：解压后全部文件的总字节数 */
+  unpackedBytes?: number
+  /** 单包安装：包内文件数 */
+  entryCount?: number
+  /** 许可证标识（单包安装时给出） */
+  license?: string
 }
 
 /**

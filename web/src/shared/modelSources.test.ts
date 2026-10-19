@@ -44,6 +44,23 @@ describe('文本拼装', () => {
   })
 })
 
+describe('isSinglePackage', () => {
+  const base = { id: 'm', dir: 'models/m', releasePages: [] }
+  it('带 unpackedBytes 且只有一个文件才是“一个包”', async () => {
+    const { isSinglePackage } = await load()
+    expect(isSinglePackage({ ...base, files: [FILE], format: 'zip', unpackedBytes: 10 })).toBe(true)
+  })
+  it('旧格式（无 unpackedBytes）或多文件不是', async () => {
+    const { isSinglePackage } = await load()
+    expect(isSinglePackage({ ...base, files: [FILE] })).toBe(false)
+    expect(isSinglePackage({ ...base, files: [FILE, FILE], unpackedBytes: 10 })).toBe(false)
+  })
+  it('单包的手动放置步骤只提一个 zip 且不含逐文件校验', async () => {
+    const { MANUAL_STEPS_PACKAGE } = await load()
+    expect(MANUAL_STEPS_PACKAGE.join('')).toContain('zip')
+  })
+})
+
 describe('openLink', () => {
   it('无宿主：走 window.open', async () => {
     const open = vi.fn(() => ({}))

@@ -1,13 +1,20 @@
 // 模型下载地址面板的纯逻辑：手动放置说明、复制文本、打开链接；状态与下载动作仍只走 stores/models.ts
 import { isNativeAvailable } from '@/native/bridge'
 import { openIntent } from '@/native/system'
-import type { ModelSourceFile, ModelStateName } from '@/native/model'
+import type { ModelSourceFile, ModelSources, ModelStateName } from '@/native/model'
 
 /** 手动放置说明里的步骤文案（目录由原生给出） */
 export const MANUAL_STEPS: readonly string[] = [
   '在能联网的设备上下载下面的全部文件，并核对 sha256。',
   '把文件原样（不改名）放进应用私有目录下的模型目录，目录见下方。',
   '回到本页点「校验」，通过后状态变为已安装。',
+]
+
+/** 单包安装的手动放置步骤：只有一个 zip，原样放入后点「下载」由 App 校验并解压 */
+export const MANUAL_STEPS_PACKAGE: readonly string[] = [
+  '在能联网的设备上下载下面这一个 zip 包，并核对 sha256。',
+  '把 zip 原样（不改名、不解压）放进应用私有目录下的模型目录，目录见下方。',
+  '回到本页点「下载」，App 会校验整包并自动解压，不会再联网。',
 ]
 
 /** 手动放置的目录提示（私有目录需要 adb 的 run-as 或 root，普通手机无法直接访问） */
@@ -36,6 +43,17 @@ export function canDownload(state: ModelStateName): boolean {
  */
 export function manualDirText(dir: string): string {
   return `files/${dir.replace(/^\/+|\/+$/g, '')}/`
+}
+
+/**
+ * 来源是否为“一个包”（单 zip 安装）：原生给了解压后总字节数且只有一个文件。
+ *
+ * @param data 原生返回的来源
+ * @returns 单包安装为 true；旧格式（逐文件）为 false
+ * @example isSinglePackage({ ...data, unpackedBytes: 10, files: [f] }) // true
+ */
+export function isSinglePackage(data: ModelSources): boolean {
+  return typeof data.unpackedBytes === 'number' && data.files.length === 1
 }
 
 /**

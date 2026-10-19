@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "note": "随包信任锚：下载地址只能来自这里，页面不能传 URL。M9（2026-10-16）已把旧 ONNX 模型整体退役，目录登记在 retired，启动后台回收：siglip2-q4_half（旧识物）、nllb600m-un6-ccm-int4（旧翻译）、asr-zipformer-zh-en-int8（旧语音，此前靠手动放置）、ppocrv5-mnn-fp16（OCR v5，已被 v6 取代）；这些目录名不要再复用给新模型。siglip2-mnn-w8 的 release siglip2-mnn-v1 待用户上传（model.mnn），上传前下载会失败；上传后需核对 sha256 与清单一致。nllb600m-un6-mnn-w6 的 release nllb-mnn-v1 待用户上传（12 个文件，清单见 docs/research/onnx-to-mnn-migration.md M6c 一节），上传前下载会失败；上传后需逐个核对 sha256；该模型为 CC-BY-NC-4.0，仅限非商业使用，署名与授权说明见 docs/design/bridge-protocol.md。asr-zipformer-zh-en-mnn-w8（语音输入，原模型 X-ASR 480ms 流式 zipformer 中英，Apache-2.0）的 release asr-mnn-v1 待用户上传（4 个文件：encoder.mnn、decoder.mnn、joiner.mnn、tokens.txt），上传前下载会失败；上传后需逐个核对 sha256。ppocrv6-small-mnn-fp16（文字识别，PP-OCRv6 small 的 det/rec 来自官方 HF 仓库 PaddlePaddle/PP-OCRv6_small_{det,rec}_onnx，cls 沿用 PP-OCRv5 方向分类，MNN fp16 版，Apache-2.0，两个 HF 模型页均标 apache-2.0）的 release ocr-mnn-v2 待用户上传（6 个文件：det.mnn、rec.mnn、cls.mnn、ppocr_keys.txt、NOTICE.txt、LICENSE-Apache-2.0.txt），上传前下载会失败；上传后需逐个核对 sha256。couplet-gpt2-mnn-w6（对联，uer/gpt2-chinese-couplet 的 MNN 6-bit 版）的 release couplet-mnn-v1 已上传并逐个核对 sha256 与清单一致（7 个文件：model.mnn、model.mnn.weight、vocab.txt、model.json、NOTICE.txt、UER-py_LICENSE_Apache-2.0.txt、couplet-clean-dataset_LICENSE_MIT.txt）。该模型的许可证无法确认可再分发（HF 模型卡无 license 字段，训练数据上游为 AGPL-3.0 且授权链不明），license 字段如实标注，风险自负，两份 LICENSE 文件只作来源留痕，不代表对权重的授权，详见包内 NOTICE.txt。 couplet-corpus（对联语料库，数据包：下载 couplet-corpus.zip，解压出 5 个文件并逐个核对 sha256）的 release couplet-corpus-v1 待用户上传；语料由 couplet 训练集经 scripts/couplet 推导分类与横批得到，分类与横批质量未达验收线，数据集来源许可（MIT/AGPL 链条）存疑，风险自负。",
+  "note": "随包信任锚：下载地址只能来自这里，页面不能传 URL。M9（2026-10-16）已把旧 ONNX 模型整体退役，目录登记在 retired，启动后台回收：siglip2-q4_half（旧识物）、nllb600m-un6-ccm-int4（旧翻译）、asr-zipformer-zh-en-int8（旧语音，此前靠手动放置）、ppocrv5-mnn-fp16（OCR v5，已被 v6 取代）；这些目录名不要再复用给新模型。siglip2-mnn-w8 的 release siglip2-mnn-v1 待用户上传（model.mnn），上传前下载会失败；上传后需核对 sha256 与清单一致。nllb600m-un6-mnn-w6 的 release nllb-mnn-v1 待用户上传（12 个文件，清单见 docs/research/onnx-to-mnn-migration.md M6c 一节），上传前下载会失败；上传后需逐个核对 sha256；该模型为 CC-BY-NC-4.0，仅限非商业使用，署名与授权说明见 docs/design/bridge-protocol.md。asr-zipformer-zh-en-mnn-w8（语音输入，原模型 X-ASR 480ms 流式 zipformer 中英，Apache-2.0）的 release asr-mnn-v1 待用户上传（4 个文件：encoder.mnn、decoder.mnn、joiner.mnn、tokens.txt），上传前下载会失败；上传后需逐个核对 sha256。ppocrv6-small-mnn-fp16（文字识别，PP-OCRv6 small 的 det/rec 来自官方 HF 仓库 PaddlePaddle/PP-OCRv6_small_{det,rec}_onnx，cls 沿用 PP-OCRv5 方向分类，MNN fp16 版，Apache-2.0，两个 HF 模型页均标 apache-2.0）的 release ocr-mnn-v2 待用户上传（6 个文件：det.mnn、rec.mnn、cls.mnn、ppocr_keys.txt、NOTICE.txt、LICENSE-Apache-2.0.txt），上传前下载会失败；上传后需逐个核对 sha256。couplet-gpt2-mnn-w6（对联，uer/gpt2-chinese-couplet 的 MNN 6-bit 版）的 release couplet-mnn-v1 已上传并逐个核对 sha256 与清单一致（7 个文件：model.mnn、model.mnn.weight、vocab.txt、model.json、NOTICE.txt、UER-py_LICENSE_Apache-2.0.txt、couplet-clean-dataset_LICENSE_MIT.txt）。该模型的许可证无法确认可再分发（HF 模型卡无 license 字段，训练数据上游为 AGPL-3.0 且授权链不明），license 字段如实标注，风险自负，两份 LICENSE 文件只作来源留痕，不代表对权重的授权，详见包内 NOTICE.txt。 matting-modnet-mnn-fp32（人像抠图，MODNet fp32，Apache-2.0，权重来自第三方转存 Xenova/modnet，未与官方逐字节核对）与 matting-u2netp-mnn-f16（通用抠图，U2Net-p f16，Apache-2.0，权重来自 rembg release 的 u2netp.onnx，未与官方逐字节核对）的 release matting-modnet-mnn-v1 / matting-u2netp-mnn-v1 **均未发布，清单里的 URL 是占位**，待用户确认后上传（各 3 个文件：模型、NOTICE.txt、LICENSE-Apache-2.0.txt），上传前下载会失败；上传后需逐个核对 sha256。 couplet-corpus（对联语料库，数据包：下载 couplet-corpus.zip，解压出 5 个文件并逐个核对 sha256）的 release couplet-corpus-v1 待用户上传；语料由 couplet 训练集经 scripts/couplet 推导分类与横批得到，分类与横批质量未达验收线，数据集来源许可（MIT/AGPL 链条）存疑，风险自负。",
   "retired": [
     {
       "id": "siglip2-q4_half",
@@ -27,15 +27,21 @@
       "dir": "models/siglip2-mnn-w8",
       "totalBytes": 94775452,
       "license": "apache-2.0",
+      "archive": {
+        "name": "siglip2-mnn-w8-1.zip",
+        "bytes": 86502640,
+        "sha256": "ef833a0f48d79674312f69589e48b39892924b7b3292552a3daeba431209a148",
+        "role": "archive",
+        "urls": [
+          "https://github.com/icodejoo/arkli/releases/download/siglip2-mnn-v1/siglip2-mnn-w8-1.zip"
+        ]
+      },
       "files": [
         {
           "name": "model.mnn",
           "bytes": 94775452,
           "sha256": "8af99950b0fb39c2df90e66d67181eecc4e538617fbfdc0242ee420b36ac60d5",
-          "role": "model",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/siglip2-mnn-v1/model.mnn"
-          ]
+          "role": "model"
         }
       ]
     },
@@ -46,114 +52,87 @@
       "dir": "models/nllb600m-un6-mnn-w6",
       "totalBytes": 392177035,
       "license": "cc-by-nc-4.0",
+      "archive": {
+        "name": "nllb600m-un6-mnn-w6-1.zip",
+        "bytes": 385862916,
+        "sha256": "e2cae117e4d81e5b390d9130869a90e6d34d41c95d1843a1700d9ac0abacb6c4",
+        "role": "archive",
+        "urls": [
+          "https://github.com/icodejoo/arkli/releases/download/nllb-mnn-v1/nllb600m-un6-mnn-w6-1.zip"
+        ]
+      },
       "files": [
         {
           "name": "LICENSE-CC-BY-NC-4.0.txt",
           "bytes": 19347,
           "sha256": "41003d4a74749c0220e33dd415042164b5a1093ed401f36277234f772d22d3d0",
-          "role": "aux",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/nllb-mnn-v1/LICENSE-CC-BY-NC-4.0.txt"
-          ]
+          "role": "aux"
         },
         {
           "name": "NOTICE.txt",
           "bytes": 2136,
           "sha256": "a4188346a1266d3d9547558f08ef8893a9d077c3772b4aa6934457bafd52f4a3",
-          "role": "aux",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/nllb-mnn-v1/NOTICE.txt"
-          ]
+          "role": "aux"
         },
         {
           "name": "cross_kv.mnn",
           "bytes": 28784,
           "sha256": "8a860332b7dab8c63e0d5b1a405d98bae1cc3156a85113a301fb8ab7b6422ab8",
-          "role": "model",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/nllb-mnn-v1/cross_kv.mnn"
-          ]
+          "role": "model"
         },
         {
           "name": "cross_kv.mnn.weight",
           "bytes": 19170960,
           "sha256": "8236984b2cebaac9104599553a2e916a3d67f0cb1ef55bcc03b77aefe914126e",
-          "role": "weights",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/nllb-mnn-v1/cross_kv.mnn.weight"
-          ]
+          "role": "weights"
         },
         {
           "name": "decoder_step.mnn",
           "bytes": 624080,
           "sha256": "09e231235a3938d40c86d7a9bcb09db096669c927613c036f4b2f1a44e838f5d",
-          "role": "model",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/nllb-mnn-v1/decoder_step.mnn"
-          ]
+          "role": "model"
         },
         {
           "name": "decoder_step.mnn.weight",
           "bytes": 186455862,
           "sha256": "ca32acd63cd3d6d129cac220f673d4c2c4b7b88ac2b0d20953908d67dd1a66d5",
-          "role": "weights",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/nllb-mnn-v1/decoder_step.mnn.weight"
-          ]
+          "role": "weights"
         },
         {
           "name": "embed.i8",
           "bytes": 63279104,
           "sha256": "d1dc9511201a86481b84dfd3404e6c919da2fdb57b41482b22d6ce13324bef23",
-          "role": "weights",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/nllb-mnn-v1/embed.i8"
-          ]
+          "role": "weights"
         },
         {
           "name": "embed.scale",
           "bytes": 247184,
           "sha256": "7e49a46dedb9a5bed0669a905b538ea451b8d139fb793c451d1cfee346d42591",
-          "role": "weights",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/nllb-mnn-v1/embed.scale"
-          ]
+          "role": "weights"
         },
         {
           "name": "encoder.mnn",
           "bytes": 380896,
           "sha256": "497f3e7cd5e6ae1de396d4fc17b803e0cd2b1d946fea66a0fc5cbc569cb0479f",
-          "role": "model",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/nllb-mnn-v1/encoder.mnn"
-          ]
+          "role": "model"
         },
         {
           "name": "encoder.mnn.weight",
           "bytes": 118985648,
           "sha256": "dafaee96b607b9c93532b53ab92f4e557eae6a7c9bc86e61e6a7288451e3c135",
-          "role": "weights",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/nllb-mnn-v1/encoder.mnn.weight"
-          ]
+          "role": "weights"
         },
         {
           "name": "model.json",
           "bytes": 1218,
           "sha256": "1db584251cde24fc8570f393f019ede6e7c6d58225b40ed0e71c330e16a14d36",
-          "role": "config",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/nllb-mnn-v1/model.json"
-          ]
+          "role": "config"
         },
         {
           "name": "tokenizer.json",
           "bytes": 2981816,
           "sha256": "d93881797f945c189dd89a9fee75764e8a8d564e780fc66dac30c0d3747044f2",
-          "role": "tokenizer",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/nllb-mnn-v1/tokenizer.json"
-          ]
+          "role": "tokenizer"
         }
       ]
     },
@@ -164,42 +143,39 @@
       "dir": "models/asr-zipformer-zh-en-mnn-w8",
       "totalBytes": 168813626,
       "license": "apache-2.0",
+      "archive": {
+        "name": "asr-zipformer-zh-en-mnn-w8-1.zip",
+        "bytes": 155227742,
+        "sha256": "01d5de427b2a199e2a7f0630a134c11143ffb8e0c3ac1fac923f850e148688f8",
+        "role": "archive",
+        "urls": [
+          "https://github.com/icodejoo/arkli/releases/download/asr-mnn-v1/asr-zipformer-zh-en-mnn-w8-1.zip"
+        ]
+      },
       "files": [
         {
           "name": "decoder.mnn",
           "bytes": 10603880,
           "sha256": "bf91f6513a4d05b3c1c4f06c034e51caddda8d503caba3ad6250bd016950e018",
-          "role": "model",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/asr-mnn-v1/decoder.mnn"
-          ]
+          "role": "model"
         },
         {
           "name": "encoder.mnn",
           "bytes": 155527912,
           "sha256": "982314ac18794997a4e5d0ae8ff52bfcbf0299503caed8256fe469cab6b7af8f",
-          "role": "model",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/asr-mnn-v1/encoder.mnn"
-          ]
+          "role": "model"
         },
         {
           "name": "joiner.mnn",
           "bytes": 2623028,
           "sha256": "47b490b2ae3abb402f54a35183ec07cd50bde180b5c55f12dd5241a116bba2e9",
-          "role": "model",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/asr-mnn-v1/joiner.mnn"
-          ]
+          "role": "model"
         },
         {
           "name": "tokens.txt",
           "bytes": 58806,
           "sha256": "b818a60878b9aae978cbb8ad594acbd403d76d1af2e31ef4197c84e2dbdba27c",
-          "role": "tokenizer",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/asr-mnn-v1/tokens.txt"
-          ]
+          "role": "tokenizer"
         }
       ]
     },
@@ -274,60 +250,125 @@
       "dir": "models/ppocrv6-small-mnn-fp16",
       "totalBytes": 16221760,
       "license": "apache-2.0",
+      "archive": {
+        "name": "ppocrv6-small-mnn-fp16-1.zip",
+        "bytes": 13102305,
+        "sha256": "816ffc79d517ef7703ddb18b5918df600789b49d31aa2bcf1084c2a3897fa314",
+        "role": "archive",
+        "urls": [
+          "https://github.com/icodejoo/arkli/releases/download/ocr-mnn-v2/ppocrv6-small-mnn-fp16-1.zip"
+        ]
+      },
       "files": [
-        {
-          "name": "cls.mnn",
-          "bytes": 516824,
-          "sha256": "58ac0a454c0414352e41450220f4249d7c542eef3dbcf62290756a0815480d7c",
-          "role": "model",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/ocr-mnn-v2/cls.mnn"
-          ]
-        },
-        {
-          "name": "det.mnn",
-          "bytes": 4967972,
-          "sha256": "211314cc3cdfefb0b7589cd9126ef017f17688242934b7d1681625bcc9d1a487",
-          "role": "model",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/ocr-mnn-v2/det.mnn"
-          ]
-        },
-        {
-          "name": "rec.mnn",
-          "bytes": 10648948,
-          "sha256": "68195df0fef601a25ffe1ff1f5d412211563be52d18b1fb4840394e7a9d14bd2",
-          "role": "model",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/ocr-mnn-v2/rec.mnn"
-          ]
-        },
-        {
-          "name": "ppocr_keys.txt",
-          "bytes": 74947,
-          "sha256": "b5f2bfe2bdd9448429e3e82b51c789775d9b42f2403d082b00662eb77e401c5d",
-          "role": "tokenizer",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/ocr-mnn-v2/ppocr_keys.txt"
-          ]
-        },
         {
           "name": "LICENSE-Apache-2.0.txt",
           "bytes": 11376,
           "sha256": "3840c5c0c61c294264d2dd77b8777be6ddd90121ef4e0e64abcd22edea581d6e",
-          "role": "aux",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/ocr-mnn-v2/LICENSE-Apache-2.0.txt"
-          ]
+          "role": "aux"
         },
         {
           "name": "NOTICE.txt",
           "bytes": 1693,
           "sha256": "a1e05b9cecc18868145e32543fd5fa034fbdd8a4865f9b18abb975f296308dab",
-          "role": "aux",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/ocr-mnn-v2/NOTICE.txt"
-          ]
+          "role": "aux"
+        },
+        {
+          "name": "cls.mnn",
+          "bytes": 516824,
+          "sha256": "58ac0a454c0414352e41450220f4249d7c542eef3dbcf62290756a0815480d7c",
+          "role": "model"
+        },
+        {
+          "name": "det.mnn",
+          "bytes": 4967972,
+          "sha256": "211314cc3cdfefb0b7589cd9126ef017f17688242934b7d1681625bcc9d1a487",
+          "role": "model"
+        },
+        {
+          "name": "ppocr_keys.txt",
+          "bytes": 74947,
+          "sha256": "b5f2bfe2bdd9448429e3e82b51c789775d9b42f2403d082b00662eb77e401c5d",
+          "role": "tokenizer"
+        },
+        {
+          "name": "rec.mnn",
+          "bytes": 10648948,
+          "sha256": "68195df0fef601a25ffe1ff1f5d412211563be52d18b1fb4840394e7a9d14bd2",
+          "role": "model"
+        }
+      ]
+    },
+    {
+      "id": "matting-modnet-mnn-fp32",
+      "displayName": "本地人像抠图模型（MODNet，MNN 版）",
+      "version": "1",
+      "dir": "models/matting-modnet-mnn-fp32",
+      "totalBytes": 25899500,
+      "license": "apache-2.0",
+      "archive": {
+        "name": "matting-modnet-mnn-fp32-1.zip",
+        "bytes": 24039813,
+        "sha256": "3aa496bc798e21fa8282f58b92b0d8ff0b2134980acffe9984591c3682d4acb4",
+        "role": "archive",
+        "urls": [
+          "https://github.com/icodejoo/arkli/releases/download/matting-modnet-mnn-v1/matting-modnet-mnn-fp32-1.zip"
+        ]
+      },
+      "files": [
+        {
+          "name": "LICENSE-Apache-2.0.txt",
+          "bytes": 11577,
+          "sha256": "8ae60061cdd89d5b70a5d71b2816ecc0da0bee21947688bff4b39928512a45af",
+          "role": "aux"
+        },
+        {
+          "name": "NOTICE.txt",
+          "bytes": 1151,
+          "sha256": "d466798d37a9f70fbb1bdb0902d315325835ba05768a90f986db1197847a14e9",
+          "role": "aux"
+        },
+        {
+          "name": "modnet512_fp32.mnn",
+          "bytes": 25886772,
+          "sha256": "290f093b2a074b2bd6db6f549e83fa4151e6b75900e34605850b1c8b99e900c1",
+          "role": "model"
+        }
+      ]
+    },
+    {
+      "id": "matting-u2netp-mnn-f16",
+      "displayName": "本地通用抠图模型（U2Net-p，MNN 版）",
+      "version": "1",
+      "dir": "models/matting-u2netp-mnn-f16",
+      "totalBytes": 2406863,
+      "license": "apache-2.0",
+      "archive": {
+        "name": "matting-u2netp-mnn-f16-1.zip",
+        "bytes": 2173631,
+        "sha256": "9fb67d66adb0f59588ce062f634bbd4a45eb93e7b972ca4ed08f3063423066df",
+        "role": "archive",
+        "urls": [
+          "https://github.com/icodejoo/arkli/releases/download/matting-u2netp-mnn-v1/matting-u2netp-mnn-f16-1.zip"
+        ]
+      },
+      "files": [
+        {
+          "name": "LICENSE-Apache-2.0.txt",
+          "bytes": 11577,
+          "sha256": "8ae60061cdd89d5b70a5d71b2816ecc0da0bee21947688bff4b39928512a45af",
+          "role": "aux"
+        },
+        {
+          "name": "NOTICE.txt",
+          "bytes": 1122,
+          "sha256": "c10133996dd3b6a6c50e8984ff1801c20927be81a5f505a4c06aae47af19dadf",
+          "role": "aux"
+        },
+        {
+          "name": "u2netp_f16.mnn",
+          "bytes": 2394164,
+          "sha256": "9ccd77f57f157e17117ed273629c40f13cd6a28681418583821f328d2a34d8f2",
+          "role": "model"
         }
       ]
     },
@@ -338,69 +379,57 @@
       "dir": "models/couplet-gpt2-mnn-w6",
       "totalBytes": 97149159,
       "license": "无法确认可再分发，风险自负",
+      "archive": {
+        "name": "couplet-gpt2-mnn-w6-1.zip",
+        "bytes": 91288958,
+        "sha256": "6f55c3012a80734a17bca24478ce00ed2b90eebba7ea1b2e5e9120a74028cb8b",
+        "role": "archive",
+        "urls": [
+          "https://github.com/icodejoo/arkli/releases/download/couplet-mnn-v1/couplet-gpt2-mnn-w6-1.zip"
+        ]
+      },
       "files": [
         {
           "name": "NOTICE.txt",
           "bytes": 3147,
           "sha256": "ceaa7daf30e0dc6ccc2c91dab5aa98c9940c03cdb6e3ebdd191219a8e2e9f9ad",
-          "role": "aux",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/couplet-mnn-v1/NOTICE.txt"
-          ]
+          "role": "aux"
         },
         {
           "name": "UER-py_LICENSE_Apache-2.0.txt",
           "bytes": 11357,
           "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
-          "role": "aux",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/couplet-mnn-v1/UER-py_LICENSE_Apache-2.0.txt"
-          ]
+          "role": "aux"
         },
         {
           "name": "couplet-clean-dataset_LICENSE_MIT.txt",
           "bytes": 1068,
           "sha256": "e5ba66a650e1701d75ba5706af41b6dfaca7297c97ae8c93d7458db9c90d1e05",
-          "role": "aux",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/couplet-mnn-v1/couplet-clean-dataset_LICENSE_MIT.txt"
-          ]
+          "role": "aux"
         },
         {
           "name": "model.json",
           "bytes": 1449,
           "sha256": "d9986046c4a906046f705256228eb4e440048fb3f08fdbc240c063f2a12202e2",
-          "role": "config",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/couplet-mnn-v1/model.json"
-          ]
+          "role": "config"
         },
         {
           "name": "model.mnn",
           "bytes": 289464,
           "sha256": "57219ebd5bbed80140437396b8bbb85dba5991e7c5b20f0d39db4012ec29173e",
-          "role": "model",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/couplet-mnn-v1/model.mnn"
-          ]
+          "role": "model"
         },
         {
           "name": "model.mnn.weight",
           "bytes": 96733158,
           "sha256": "93f3c05e50b9b8860cbf8c92c4b0b556578a04111e1a94bc6fba3b7e7cdddd71",
-          "role": "model",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/couplet-mnn-v1/model.mnn.weight"
-          ]
+          "role": "weights"
         },
         {
           "name": "vocab.txt",
           "bytes": 109516,
           "sha256": "3db3f345cf52a1102831aa1fe7ddeb031dd5f117412f91ad11645c4e71fc8f4b",
-          "role": "tokenizer",
-          "urls": [
-            "https://github.com/icodejoo/arkli/releases/download/couplet-mnn-v1/vocab.txt"
-          ]
+          "role": "tokenizer"
         }
       ]
     },
