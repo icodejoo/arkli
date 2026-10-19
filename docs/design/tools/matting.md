@@ -2,12 +2,12 @@
 title: 抠图（人像 / 通用）
 status: active
 updated: 2026-10-19
-summary: 本地抠图工具：MODNet 人像与 U2Net-p 通用两个 MNN 模型、选型依据与真机数据、边缘细化（引导滤波 + 前景色去污染）、native.ai.matting 协议、取消限制、模型许可与未发布的 release、已知局限与待办
+summary: 本地抠图工具：MODNet 人像与 U2Net-p 通用两个 MNN 模型、选型依据与真机数据、边缘细化（引导滤波 + 前景色去污染）、native.ai.matting 协议、取消限制、模型许可与已发布的 release、已知局限与待办
 ---
 ## TL;DR
 - 新工具 `matting`（图片类，AI 标签）：选图 → 本地模型出 alpha → 合成**带透明通道的 PNG**；页面棋盘格预览，可选透明 / 纯白 / 自定义底色，保存 PNG（透明）或 JPG（带底色）、分享。
 - 两个模型各是一个提供者（与 NLLB / Qwen 各自一个提供者的做法一致）：`local-matting-portrait`（MODNet fp32）、`local-matting-general`（U2Net-p f16）。页面的「人像 / 通用」标签页就是在切提供者，与右上角模型选择器共用同一个选择值。
-- **模型 release 未发布，`models.json` 里的 URL 是占位，等用户确认后上传**（`matting-modnet-mnn-v1`、`matting-u2netp-mnn-v1`）。真机验证走 `scripts/device-push-models.sh` 推送。
+- **模型 release 已发布**：单包 zip 已上传各自 release（`matting-modnet-mnn-fp32-1.zip`、`matting-u2netp-mnn-f16-1.zip`），线上回验通过，见 [模型下载管理](../model-download.md)「单包安装」。真机验证走 `scripts/device-push-models.sh` 推送。
 - 一次前向无法中途打断：取消最迟约 0.5~0.8 秒后生效（实测 0.5 秒）。
 - **边缘细化（2026-10-19）**：输出 PNG 的 RGB 不再是原图像素而是去污染后的前景色，alpha 也经引导滤波收紧，发丝换底色不再发亮发色边，见下文「边缘细化」。
 
@@ -63,7 +63,7 @@ summary: 本地抠图工具：MODNet 人像与 U2Net-p 通用两个 MNN 模型�
 
 ## 已知局限与待办
 - MODNet 深色对深色会镂空；U2Net-p 发丝粗；两者都不是通用高精度分割。待评估 PP-MattingV2、BiRefNet-lite。
-- **模型 release 未发布**，下载在发布前会失败。
+- 边缘细化四档的默认已改为“强”，真机已验（`a09cbbd`）；已出图时切档自动重抠仍待手点。浅色背景加头发高光时前景去污染洗不干净（黑底发丝泛米白）是算法上限，另起一项。
 - 大图会被收敛到 3072 再抠，成品不是原分辨率。
 - `native.media.preview` 尚未实现，页面预览用现有 `native.image.preview`（透明）或 `previewBlob`（带底色）。
 - 证件照页（`id-photo`）仍读旧的 `native.ai.status` 桩 `matte`，可后续改接本任务（`mode: 'portrait'`）。
