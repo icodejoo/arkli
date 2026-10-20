@@ -1,6 +1,9 @@
 <script setup lang="ts">
 // 对象计数：纯 JS 实现（灰度 → Otsu → 连通域 → 面积过滤），点击画面可手动加/删计数点
 import BottomActions from '@/shared/BottomActions.vue'
+import CellPicker from '@/shared/CellPicker.vue'
+import ModelPicker from '@/shared/ModelPicker.vue'
+import type { CellOption } from '@/shared/cellPicker'
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { showToast } from 'vant'
 import { fitMaxEdge } from '@/shared/image-calc'
@@ -23,6 +26,9 @@ import {
   type Marker,
   type ObjectMode,
 } from './logic'
+
+/** 本工具 id（模型选择器用） */
+const TOOL_ID = 'object-count'
 
 /** 滑杆防抖毫秒数 */
 const DEBOUNCE_MS = 120
@@ -54,6 +60,11 @@ const gray = shallowRef<Uint8Array | null>(null)
 const threshold = ref(128)
 /** Otsu 自动阈值 */
 const autoThreshold = ref(128)
+/** 物体亮暗选项 */
+const MODE_OPTIONS: readonly CellOption[] = [
+  { value: 'dark', label: '暗物体（浅底）' },
+  { value: 'bright', label: '亮物体（深底）' },
+]
 /** 物体亮暗 */
 const mode = ref<ObjectMode>('dark')
 /** 最小面积 */
@@ -222,14 +233,7 @@ onBeforeUnmount(() => {
 
     <tool-group v-if="base" :title="`共 ${markers.length} 个`">
       <van-cell-group :border="false">
-        <van-cell title="物体颜色" center>
-          <template #value>
-            <van-radio-group v-model="mode" direction="horizontal" class="is-radios">
-              <van-radio name="dark">暗物体（浅底）</van-radio>
-              <van-radio name="bright">亮物体（深底）</van-radio>
-            </van-radio-group>
-          </template>
-        </van-cell>
+        <cell-picker v-model="mode" title="物体颜色" :options="MODE_OPTIONS" />
         <van-cell title="阈值" :value="String(threshold)" />
       </van-cell-group>
       <div class="is-slider"><van-slider v-model="threshold" :min="0" :max="255" /></div>
@@ -250,15 +254,13 @@ onBeforeUnmount(() => {
     </tool-group>
 
     <!-- 底部动作栏：选图后自动检测，没有单独的开始按钮；右边主按钮是拍照 -->
-    <bottom-actions album main main-text="拍照" main-type="danger" :disabled="{ album: loading, main: loading }" @album="choose" @main="shoot" />
+    <bottom-actions ai album main main-text="拍照" main-type="danger" :disabled="{ album: loading, main: loading }" @album="choose" @main="shoot">
+      <template #ai><model-picker :tool-id="TOOL_ID" variant="bar" /></template>
+    </bottom-actions>
   </div>
 </template>
 
 <style lang="scss" scoped>
-.is-radios {
-  justify-content: flex-end;
-}
-
 /* 画布按宽度自适应，点按可加点 */
 .stage {
   display: block;

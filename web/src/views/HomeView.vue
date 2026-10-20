@@ -57,10 +57,10 @@ function hardReload(): void {
 .home {
   max-width: 720px;
   margin: 0 auto;
-  padding: calc(var(--safe-top) + #{$space-4}) 0 calc(var(--tabbar-total) + #{$space-4});
+  padding: calc(var(--safe-top) + var(--page-pad)) 0 calc(var(--tabbar-total) + var(--page-pad));
 
   &__head {
-    padding: $space-2 $space-4 0;
+    padding: $space-2 var(--page-pad) 0;
   }
 
   // 状态栏遮罩：固定在顶部，高度等于顶部安全区，颜色同页面底色
@@ -88,7 +88,7 @@ function hardReload(): void {
   }
 
   &__block {
-    padding: 0 $space-4;
+    padding: 0 var(--page-pad);
     margin-top: $space-2;
   }
 

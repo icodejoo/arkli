@@ -19,7 +19,6 @@ import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -80,6 +79,7 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.abs
 import kotlin.math.min
 import kotlin.math.roundToInt
+import com.let188.arkli.theme.isAppDarkTheme
 
 /**
  * 图片编辑页：双指缩放平移；裁剪框可拖四边和四角（自由或固定比例）；预设形状（圆、心形等）与手绘套索；
@@ -131,7 +131,7 @@ class ImageEditActivity : ComponentActivity() {
     /** 编辑主界面：顶栏 + 画布 + 底部工具栏 */
     @Composable
     private fun EditScreen() {
-        val dark = isSystemInDarkTheme()
+        val dark = isAppDarkTheme()
         val bg = if (dark) Color(0xFF121212) else Color.White
         val fg = if (dark) Color(0xFFEEEEEE) else Color(0xFF222222)
         val muted = fg.copy(alpha = MUTED_ALPHA)

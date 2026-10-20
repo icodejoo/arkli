@@ -2,6 +2,7 @@
 // GIF 合成/分解：多图合成动图（自写编码器）；动图拆成逐帧 PNG（优先 ImageDecoder，没有则用内置解码）
 import BottomActions from '@/shared/BottomActions.vue'
 import ColorPicker from '@/shared/ColorPicker.vue'
+import CellPicker from '@/shared/CellPicker.vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { showFailToast, showToast } from 'vant'
 import ImageThumbList from '@/shared/ImageThumbList.vue'
@@ -64,6 +65,19 @@ type ImageDecoderCtor = new (init: { data: Uint8Array; type: string }) => ImageD
 const tab = ref<'compose' | 'split'>('compose')
 
 // ---------- 合成 ----------
+
+/** 尺寸方式选项 */
+const FIT_OPTIONS = [
+  { value: 'contain', label: '适应' },
+  { value: 'cover', label: '填充' },
+  { value: 'stretch', label: '拉伸' },
+]
+/** 播放顺序选项 */
+const ORDER_OPTIONS = [
+  { value: 'normal', label: '正放' },
+  { value: 'reverse', label: '倒放' },
+  { value: 'pingpong', label: '来回' },
+]
 
 /** 已选图片（顺序即基础帧顺序） */
 const images = ref<PickedImage[]>([])
@@ -373,15 +387,7 @@ onBeforeUnmount(() => {
 
       <tool-group>
         <van-cell-group :border="false">
-          <van-cell title="尺寸方式" center>
-            <template #value>
-              <van-radio-group v-model="fit" direction="horizontal" class="is-radios">
-                <van-radio name="contain">适应</van-radio>
-                <van-radio name="cover">填充</van-radio>
-                <van-radio name="stretch">拉伸</van-radio>
-              </van-radio-group>
-            </template>
-          </van-cell>
+          <cell-picker :model-value="fit" title="尺寸方式" :options="FIT_OPTIONS" @update:model-value="fit = $event as FitMode" />
           <van-cell title="长边上限" :value="`${maxEdge} px`" />
         </van-cell-group>
         <div class="is-slider"><van-slider :model-value="maxEdge" :min="MIN_MAX_EDGE" :max="DEFAULT_MAX_EDGE" @update:model-value="onEdge" /></div>
@@ -402,15 +408,7 @@ onBeforeUnmount(() => {
           </van-cell>
         </van-cell-group>
         <van-cell-group :border="false">
-          <van-cell title="播放顺序" center>
-            <template #value>
-              <van-radio-group v-model="order" direction="horizontal" class="is-radios">
-                <van-radio name="normal">正放</van-radio>
-                <van-radio name="reverse">倒放</van-radio>
-                <van-radio name="pingpong">来回</van-radio>
-              </van-radio-group>
-            </template>
-          </van-cell>
+          <cell-picker :model-value="order" title="播放顺序" :options="ORDER_OPTIONS" @update:model-value="order = $event as PlayOrder" />
           <van-cell title="无限循环" center>
             <template #right-icon><van-switch v-model="loopForever" size="22" /></template>
           </van-cell>
@@ -473,10 +471,6 @@ onBeforeUnmount(() => {
 </template>
 
 <style lang="scss" scoped>
-.is-radios {
-  justify-content: flex-end;
-}
-
 /* 滑杆留出触控空间 */
 .is-slider {
   padding: $space-2 $space-3 $space-3;

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 // 摩斯电码：文本与摩斯互转，可调 WPM 与频率，用 WebAudio 发声播放
 import BottomActions from '@/shared/BottomActions.vue'
+import CellPicker from '@/shared/CellPicker.vue'
+import type { CellOption } from '@/shared/cellPicker'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { showFailToast, showSuccessToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
@@ -12,6 +14,12 @@ const RAMP_S = 0.005
 const GAIN = 0.3
 /** 播放前的缓冲（秒） */
 const LEAD_S = 0.05
+
+/** 转换方向选项 */
+const MODE_OPTIONS: readonly CellOption[] = [
+  { value: 'encode', label: '文本 → 摩斯' },
+  { value: 'decode', label: '摩斯 → 文本' },
+]
 
 /** 方向：文本转摩斯，或摩斯转文本 */
 const mode = ref<'encode' | 'decode'>('encode')
@@ -130,10 +138,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="tool-page">
     <tool-group>
-      <van-radio-group v-model="mode" direction="horizontal">
-        <van-radio name="encode">文本 → 摩斯</van-radio>
-        <van-radio name="decode">摩斯 → 文本</van-radio>
-      </van-radio-group>
+      <cell-picker v-model="mode" title="模式" :options="MODE_OPTIONS" />
     </tool-group>
 
     <tool-group>

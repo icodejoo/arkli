@@ -49,7 +49,7 @@ summary: 调研手机端能跑的 logo 生成方案：位图扩散（MNN diffusi
 | Hyper-SD（SD1.5 1/2 步 LoRA） | 文件大小模型卡未列 | 1~2 步 | 位图 | 少步下质量下降 | 英文 | 未能从页面确认，待核 | 可合并后转 |
 | Google MobileDiffusion | 论文称 UNet 约 520M | 论文称 Pixel 8 Pro 约 0.2 秒（GPU，非 CPU） | 位图 512² | 未知 | 未知 | **未见公开代码/权重**（未核实到官方发布页） | 无 |
 | Snap SnapFusion | 论文称 UNet 约 0.8B 级（未核） | iPhone 14 Pro 约 2 秒（论文，非 CPU） | 位图 | 未知 | 未知 | 仓库只有主页/图，**没有代码与权重**，也没有许可文件 | 无 |
-| Logo.Redmond（logo LoRA） | LoRA 文件大小模型卡未写 | 随底模 | 位图，扁平矢量风 | 目前最接近“logo 专用”，但**只有 SDXL 版本**，SDXL（2.6B 参数级）对手机 CPU 太重 | 英文；字不可靠 | OpenRAIL-M（模型卡标签；无明确商用声明） | 底模 SDXL，MNN 无现成管线；**不能挂到 SD1.5** |
+| Logo.Redmond（logo LoRA） | LoRA 文件大小模型卡未写 | 随底模 | 位图，扁平矢量风 | 目前最接近“logo 专用”。SDXL 版（2.6B 参数级）对手机 CPU 太重；**另有 SD1.5 版**（2026-10-20 更正，见 [第二轮调研](logo-small-models.md)） | 英文；字不可靠 | SDXL 版：OpenRAIL-M（模型卡标签）；SD1.5 版：bespoke-lora-trained-license，商用条款未核 | SDXL 版 MNN 无现成管线；SD1.5 版可走 MNN 官方 SD 管线 |
 
 **高通/联发科公开数据**：高通 2023-02 官方演示，骁龙 8 Gen 2 参考机、INT8 量化、20 步 512² 少于 15 秒，跑的是 Hexagon NPU，不是 CPU（来源：Qualcomm OnQ）。联发科的“秒出图”同样是 NPU 方案。这些数字对我们的 CPU-only 测试机**没有参考意义**。
 
@@ -102,7 +102,7 @@ summary: 调研手机端能跑的 logo 生成方案：位图扩散（MNN diffusi
 
 ## 4. 许可风险汇总
 
-- **OpenRAIL-M（SD1.5、太乙、BK-SDM、tiny-sd、Logo.Redmond）**：允许商用，但有“使用限制”条款，且要求下游分发时带上同样限制。放进 App 并让用户下载时，需在 App 内附许可与使用限制说明。
+- **OpenRAIL-M（SD1.5、太乙、BK-SDM、tiny-sd、Logo.Redmond SDXL 版）**：允许商用，但有“使用限制”条款，且要求下游分发时带上同样限制。放进 App 并让用户下载时，需在 App 内附许可与使用限制说明。
 - **SD-Turbo / SD3.5**：Stability AI 自家许可，商用要看收入门槛或会员，**别直接上**。
 - **Sana 的 Gemma 文本编码器**：Gemma 使用条款不是 Apache，分发有附加条件。
 - **OmniSVG**：数据集 CC BY-NC-SA，权重许可不清，避开。
@@ -153,7 +153,7 @@ summary: 调研手机端能跑的 logo 生成方案：位图扩散（MNN diffusi
 ## 8. 来源清单
 
 - MNN 钉死提交源码：`native/mnn/.work/MNN-478c10e8…/transformers/diffusion/README.md`、`docs/transformers/diffusion.md`
-- Logo.Redmond：https://huggingface.co/artificialguybr/LogoRedmond-LogoLoraForSDXL
+- Logo.Redmond：https://huggingface.co/artificialguybr/LogoRedmond-LogoLoraForSDXL ；SD1.5 版：https://huggingface.co/artificialguybr/logo-redmond-1-5v-logo-lora-for-liberteredmond-sd-1-5
 - SD-Turbo：https://huggingface.co/stabilityai/sd-turbo
 - BK-SDM-Tiny：https://huggingface.co/nota-ai/bk-sdm-tiny
 - segmind tiny-sd：https://huggingface.co/segmind/tiny-sd
@@ -182,4 +182,4 @@ summary: 调研手机端能跑的 logo 生成方案：位图扩散（MNN diffusi
 - Remix Icon、Tabler、Phosphor、Material Symbols、IconPark 的许可与图标数量（凭已知信息，本次未逐一打开官方页）；站酷各字体许可；思源字体裁剪后体积。
 - Sana 的 MNN 官方成品包是否存在、体积；Sana 文本编码器用 Qwen3-0.6B 还是 Gemma（MNN README 的 `llm/` 目录写 Qwen3-0.6B，社区版用 Gemma-2-2B，两者不一致）。
 - Qwen3.5-0.8B 实际写 SVG 的成功率（本次验证失败，见 5.3）。
-- antigravity 报告中的下列内容**已被一手来源否定或查无出处，未采用**：太乙许可为 Apache-2.0（实为 OpenRAIL-M）；Logo.Redmond 可挂 SD1.5（实为 SDXL 专用）；MNN README 要求“至少 4GB 内存”；Potrace/VTracer 耗时、各图标库 Brotli 体积、站酷/思源子集体积等一批无来源数字；IconShop“模型约 350MB”等。
+- antigravity 报告中的下列内容**已被一手来源否定或查无出处，未采用**：太乙许可为 Apache-2.0（实为 OpenRAIL-M）；Logo.Redmond 可挂 SD1.5（SDXL 版 LoRA 确实不能挂 SD1.5，但作者另发了 SD1.5 版，第二轮已更正）；MNN README 要求“至少 4GB 内存”；Potrace/VTracer 耗时、各图标库 Brotli 体积、站酷/思源子集体积等一批无来源数字；IconShop“模型约 350MB”等。

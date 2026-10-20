@@ -54,14 +54,17 @@
   --van-search-content-background: var(--c-surface);
   --van-grid-item-content-background: var(--c-surface);
   --van-grid-item-content-active-color: var(--c-surface-active);
-  --van-cell-group-inset-radius: var(--van-radius-lg);
+  --van-cell-group-inset-radius: var(--tool-card-radius);
 
   // 底栏总高度（Vant 默认 50px + 底部安全区）；四个 tab 页的内容底部留这么多（底栏不用 placeholder），免得被底栏盖住
   --tabbar-total: calc(var(--van-tabbar-height, 50px) + var(--safe-bottom));
 
+  // 页面四周内边距（工具页与底栏各 tab 页统一）
+  --page-pad: 12px;
   // 工具页公共尺寸
   --tool-gap: 12px;
-  --tool-card-radius: 14px;
+  // 卡片圆角：tool-group（van-cell-group）、inset 分组与同风格卡片共用
+  --tool-card-radius: 8px;
 }
 
 // 深色：由 index.html 内联脚本与 App.vue 切换 van-theme-dark 类（选择器权重高于 Vant 自带暗色）
@@ -248,6 +251,21 @@ $page-fade-duration: 0.18s; // 底栏 tab 之间淡入淡出的时长
   font-size: 13px;
   font-weight: 500;
   line-height: 1.5;
+}
+
+// 单元格：标题占满剩余宽度，右侧值按内容宽度、不被压缩（Vant 默认两者 flex: 1 各占一半）；
+// 值最多占 60%，超长（如 User-Agent）在这个宽度内换行，不顶出屏幕；
+// van-field 的输入框也在 __value 里，必须继续伸展，所以排除；只有值没有标题的单元格也照旧占满；
+// 用 :where() 把权重压到 (0,2,0)，页面自己定的单元格布局（如设备信息页）能直接覆盖
+.van-cell:where(:not(.van-field)) {
+  > .van-cell__title {
+    flex: 1;
+  }
+
+  > .van-cell__value:where(:not(.van-cell__value--alone)) {
+    flex: 0 0 auto;
+    max-width: 60%;
+  }
 }
 
 // 横向单选 / 复选组折行时 Vant 只给了 margin-right、没有行距，上下会贴在一起；全站统一补行距

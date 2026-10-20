@@ -1,6 +1,8 @@
 <script setup lang="ts">
 // 小费 / AA 分账 / 折扣：金额内部用分计算
 import { computed, ref } from 'vue'
+import CellPicker from '@/shared/CellPicker.vue'
+import type { CellOption } from '@/shared/cellPicker'
 import { formatCents, yuanToCents } from '../mortgage/logic'
 import { calcAa, calcDiscount, calcTip, type AaItem } from './logic'
 
@@ -74,6 +76,11 @@ const zhe = ref('8.5')
 const reduce = ref('50')
 /** 叠加顺序 */
 const order = ref<'rate-first' | 'reduce-first'>('rate-first')
+/** 折扣与立减的先后顺序选项 */
+const ORDER_OPTIONS: CellOption[] = [
+  { value: 'rate-first', label: '先打折再立减' },
+  { value: 'reduce-first', label: '先立减再打折' },
+]
 /** 折扣结果 */
 const disc = computed(() =>
   calcDiscount({ originalCents: cents(original.value), zhe: Number(zhe.value) || 10, reduceCents: cents(reduce.value), order: order.value }),
@@ -145,10 +152,7 @@ const disc = computed(() =>
           <template #button>折</template>
         </van-field>
         <van-field v-model="reduce" type="number" label="立减" input-align="right"><template #button>元</template></van-field>
-        <van-radio-group v-model="order" direction="horizontal" class="mt">
-          <van-radio name="rate-first">先打折再立减</van-radio>
-          <van-radio name="reduce-first">先立减再打折</van-radio>
-        </van-radio-group>
+        <cell-picker :model-value="order" title="优惠顺序" :options="ORDER_OPTIONS" @update:model-value="order = $event as 'rate-first' | 'reduce-first'" />
       </tool-group>
       <tool-group title="结果">
         <van-cell title="实付" :value="`${formatCents(disc.finalCents)} 元`" />

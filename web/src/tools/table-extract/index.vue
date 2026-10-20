@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 图片提取表格：OCR 文字框 → 行列聚类 → 可编辑表格 → 复制 TSV / 下载 CSV；另有「粘贴文字拆表」入口
 import BottomActions from '@/shared/BottomActions.vue'
+import ModelPicker from '@/shared/ModelPicker.vue'
 import { computed, onBeforeUnmount, onDeactivated, ref, shallowRef } from 'vue'
 import { showFailToast, showSuccessToast, showToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
@@ -178,7 +179,7 @@ onBeforeUnmount(cleanup)
     </tool-group>
 
     <!-- 底部动作栏：图片页有相册 / 拍照，复制 TSV、下载 CSV，主按钮识别或拆表 -->
-    <bottom-actions
+    <bottom-actions ai
       :album="tab === 'image'"
       :photo="tab === 'image'"
       main
@@ -190,7 +191,9 @@ onBeforeUnmount(cleanup)
       :actions="{ copy: { disabled: !rows.length }, save: { disabled: !rows.length, text: 'CSV' } }"
       @copy="copyTsv"
       @save="downloadCsv"
-    />
+    >
+      <template #ai><model-picker :tool-id="TOOL_ID" variant="bar" /></template>
+    </bottom-actions>
   </div>
 </template>
 

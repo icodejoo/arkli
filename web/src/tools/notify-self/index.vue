@@ -1,6 +1,8 @@
 <script setup lang="ts">
 // 通知自己：给自己发一条通知，可立即、N 分钟后或指定时间；待触发的提醒可在列表里取消
 import BottomActions from '@/shared/BottomActions.vue'
+import CellPicker from '@/shared/CellPicker.vue'
+import type { CellOption } from '@/shared/cellPicker'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { showFailToast, showSuccessToast, showToast } from 'vant'
 import { isNativeAvailable } from '@/native/bridge'
@@ -19,6 +21,12 @@ const TIP_NO_HOST = '通知和闹钟只能在 Arkli 应用里使用，浏览器�
 
 /** 是否在容器内 */
 const hosted = isNativeAvailable()
+/** 提醒方式选项 */
+const MODE_OPTIONS: readonly CellOption[] = [
+  { value: 'now', label: '立即' },
+  { value: 'delay', label: 'N 分钟后' },
+  { value: 'at', label: '指定时间' },
+]
 /** 提醒方式 */
 const mode = ref<Mode>('delay')
 /** 标题 */
@@ -118,12 +126,8 @@ onBeforeUnmount(() => clearInterval(timer))
       <van-field v-model="text" label="内容" type="textarea" rows="2" autosize placeholder="可选，补充说明" :maxlength="MAX_TEXT" />
     </tool-group>
 
-    <tool-group title="什么时候提醒">
-      <van-radio-group v-model="mode" direction="horizontal">
-        <van-radio name="now">立即</van-radio>
-        <van-radio name="delay">N 分钟后</van-radio>
-        <van-radio name="at">指定时间</van-radio>
-      </van-radio-group>
+    <tool-group>
+      <cell-picker v-model="mode" title="什么时候提醒" :options="MODE_OPTIONS" />
 
       <div v-if="mode === 'delay'" class="ns-row">
         <van-button v-for="n in DELAY_PRESETS" :key="n" size="small" :type="Number(delayMin) === n ? 'primary' : 'default'" @click="delayMin = n">

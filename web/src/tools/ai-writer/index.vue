@@ -6,6 +6,7 @@ import { showFailToast, showSuccessToast, showToast } from 'vant'
 import BottomActions from '@/shared/BottomActions.vue'
 import ModelMissingNotice from '@/shared/ModelMissingNotice.vue'
 import ModelPicker from '@/shared/ModelPicker.vue'
+import CellPicker from '@/shared/CellPicker.vue'
 import { copyText } from '@/shared/clipboard'
 import { AiNotReadyError, aiInvoke, isAiCancelled } from '@/native/ai'
 import { AI_METHODS } from '@/native/aiMethods'
@@ -48,6 +49,8 @@ const catalog = useAiCatalog(TOOL_ID)
 const mode = ref<WriterMode>('name')
 /** 起名类别 */
 const nameKind = ref<NameKind>('person')
+/** 起名类别选项 */
+const NAME_KIND_OPTIONS = NAME_KINDS.map((k) => ({ value: k.key, label: k.label }))
 /** 风格 */
 const style = ref('')
 /** 输入 */
@@ -148,13 +151,7 @@ onBeforeUnmount(() => abort?.abort())
     <model-missing-notice v-if="missing" />
 
     <tool-group :title="mode === 'name' ? '起名要求' : '原文'">
-      <van-cell v-if="mode === 'name'" title="类别" center>
-        <template #value>
-          <van-radio-group v-model="nameKind" direction="horizontal">
-            <van-radio v-for="k in NAME_KINDS" :key="k.key" :name="k.key">{{ k.label }}</van-radio>
-          </van-radio-group>
-        </template>
-      </van-cell>
+      <cell-picker v-if="mode === 'name'" :model-value="nameKind" title="类别" :options="NAME_KIND_OPTIONS" @update:model-value="nameKind = $event as NameKind" />
       <van-field v-if="mode === 'name'" v-model="style" label="风格" placeholder="可选，如：文艺、可爱、国风" :maxlength="STYLE_INPUT_MAX" clearable />
       <van-field v-model="input" type="textarea" rows="4" autosize :maxlength="limit" show-word-limit :placeholder="PLACEHOLDERS[mode]" />
       <p class="tool-hint">{{ MODE_NOTE }}。</p>

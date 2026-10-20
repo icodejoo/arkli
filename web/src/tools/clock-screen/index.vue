@@ -3,6 +3,7 @@
 import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { showToast } from 'vant'
+import CellPicker from '@/shared/CellPicker.vue'
 import { burnInOffset, clockParts, formatDateLine, lunarText, startSecondTicker, type LunarLib } from './logic'
 import { createAppAwake } from './awake'
 
@@ -13,8 +14,16 @@ const TIP_NO_WAKE = '常亮没打开，请在系统设置里调长息屏时间'
 /** 农历库加载失败提示 */
 const TIP_LUNAR_FAIL = '农历数据加载失败了'
 
+/** 时钟样式类型：数字或翻页 */
+type ClockStyle = 'digital' | 'flip'
+/** 样式选项 */
+const STYLE_OPTIONS = [
+  { value: 'digital', label: '数字' },
+  { value: 'flip', label: '翻页' },
+]
+
 /** 显示样式：数字或翻页 */
-const style = ref<'digital' | 'flip'>('digital')
+const style = ref<ClockStyle>('digital')
 /** 是否显示秒 */
 const showSeconds = ref(true)
 /** 是否显示日期与星期 */
@@ -124,10 +133,7 @@ onUnmounted(() => {
     </div>
 
     <tool-group title="样式">
-      <van-radio-group v-model="style" direction="horizontal">
-        <van-radio name="digital">数字</van-radio>
-        <van-radio name="flip">翻页</van-radio>
-      </van-radio-group>
+      <cell-picker :model-value="style" title="时钟样式" :options="STYLE_OPTIONS" @update:model-value="style = $event as ClockStyle" />
       <van-cell-group :border="false">
         <van-cell title="显示秒" center><template #value><van-switch v-model="showSeconds" size="22" /></template></van-cell>
         <van-cell title="显示日期与星期" center><template #value><van-switch v-model="showDate" size="22" /></template></van-cell>

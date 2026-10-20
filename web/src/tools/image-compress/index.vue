@@ -5,6 +5,8 @@ import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, reactive, ref, shallowRef } from 'vue'
 import { showFailToast, showSuccessToast, showToast } from 'vant'
 import ImageThumbList from '@/shared/ImageThumbList.vue'
+import CellPicker from '@/shared/CellPicker.vue'
+import type { CellOption } from '@/shared/cellPicker'
 import { shootPhoto } from '@/shared/shootPhoto'
 import { changeText, fitMaxEdge, FORMAT_MIME, formatBytes, outputName } from '@/shared/image-calc'
 import {
@@ -21,6 +23,8 @@ import { isNativeAvailable } from '@/native/bridge'
 import { useNative } from '@/native/useNative'
 import {
   buildParams,
+  type CompressFormat,
+  type PngMode,
   capabilities,
   COLORS_MAX,
   COLORS_MIN,
@@ -83,10 +87,23 @@ const native = isNativeAvailable()
 const { call, on, cancelAll } = useNative()
 /** 已选图片 */
 const images = ref<PickedImage[]>([])
+/** 最长边选项：0 表示不限 */
+const EDGE_OPTIONS = EDGE_PRESETS.map((e) => ({ value: e, label: e ? String(e) : '不限' }))
 /** 选项 */
 const opts = reactive(defaultOptions())
 /** 当前 WebView 能否编码 WebP（原生路径恒可） */
 const webpOk = native || webpEncodeSupported()
+/** 输出格式选项；WebP 在不支持编码时禁用 */
+const FORMAT_OPTIONS = computed<CellOption[]>(() => [
+  { value: 'jpeg', label: 'JPEG' },
+  { value: 'webp', label: 'WebP', disabled: !webpOk },
+  { value: 'png', label: 'PNG' },
+])
+/** PNG 模式选项；缩色在无原生能力时禁用 */
+const PNG_MODE_OPTIONS = computed<CellOption[]>(() => [
+  { value: 'lossless', label: '无损' },
+  { value: 'palette', label: '缩色', disabled: !caps.value.pngPalette },
+])
 /** 结果 */
 const rows = shallowRef<Row[]>([])
 /** 失败项 */
@@ -307,28 +324,14 @@ onBeforeUnmount(() => {
 
     <tool-group>
       <van-cell-group :border="false">
-        <van-cell title="输出格式" center>
-          <template #value>
-            <van-radio-group v-model="opts.format" direction="horizontal" class="ic-radios">
-              <van-radio name="jpeg">JPEG</van-radio>
-              <van-radio name="webp" :disabled="!webpOk">WebP</van-radio>
-              <van-radio name="png">PNG</van-radio>
-            </van-radio-group>
-          </template>
-        </van-cell>
+        <cell-picker :model-value="opts.format" title="输出格式" :options="FORMAT_OPTIONS" @update:model-value="opts.format = $event as CompressFormat" />
         <van-cell v-if="opts.format !== 'png'" title="质量" :value="`${opts.quality}%`" />
       </van-cell-group>
       <div v-if="opts.format !== 'png'" class="ic-slider">
         <van-slider v-model="opts.quality" :min="QUALITY_MIN" :max="QUALITY_MAX" />
       </div>
       <van-cell-group :border="false">
-        <van-cell title="最长边" center>
-          <template #value>
-            <van-radio-group v-model="opts.maxEdge" direction="horizontal" class="ic-radios">
-              <van-radio v-for="e in EDGE_PRESETS" :key="e" :name="e">{{ e || '不限' }}</van-radio>
-            </van-radio-group>
-          </template>
-        </van-cell>
+        <cell-picker :model-value="opts.maxEdge" title="最长边" :options="EDGE_OPTIONS" @update:model-value="opts.maxEdge = $event as number" />
         <template v-if="opts.format !== 'png'">
           <van-cell title="目标体积" center :label="caps.target ? '' : '仅 App 内可用'">
             <template #value><van-switch v-model="opts.useTarget" size="22" :disabled="!caps.target" /></template>
@@ -343,14 +346,8 @@ onBeforeUnmount(() => {
           />
         </template>
         <template v-else>
-          <van-cell title="PNG 模式" center :label="caps.pngPalette ? '' : '缩色仅 App 内可用'">
-            <template #value>
-              <van-radio-group v-model="opts.pngMode" direction="horizontal" class="ic-radios">
-                <van-radio name="lossless">无损</van-radio>
-                <van-radio name="palette" :disabled="!caps.pngPalette">缩色</van-radio>
-              </van-radio-group>
-            </template>
-          </van-cell>
+          <cell-picker :model-value="opts.pngMode" title="PNG 模式" :options="PNG_MODE_OPTIONS" @update:model-value="opts.pngMode = $event as PngMode" />
+          <p v-if="!caps.pngPalette" class="tool-hint">缩色仅 App 内可用</p>
           <template v-if="opts.pngMode === 'palette'">
             <van-cell title="颜色数" :value="`${opts.colors}`" />
             <div class="ic-slider"><van-slider v-model="colorsModel" :min="COLORS_MIN" :max="COLORS_MAX" /></div>
@@ -410,11 +407,6 @@ onBeforeUnmount(() => {
 </template>
 
 <style lang="scss" scoped>
-.ic-radios {
-  justify-content: flex-end;
-  row-gap: $space-2;
-}
-
 /* 滑杆留出触控空间 */
 .ic-slider {
   padding: $space-2 $space-3 $space-3;

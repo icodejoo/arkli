@@ -1,6 +1,8 @@
 <script setup lang="ts">
 // 时间计算器：两个标签页——时刻加减、时刻之差（附时长换算）
 import { computed, ref } from 'vue'
+import CellPicker from '@/shared/CellPicker.vue'
+import type { CellOption } from '@/shared/cellPicker'
 import { addClock, clockDiff, durationUnits, formatDuration, parseHms } from './logic'
 
 /** 一天的秒数 */
@@ -15,6 +17,11 @@ const baseText = ref('')
 const deltaText = ref('')
 /** 加减页：加还是减 */
 const sign = ref<1 | -1>(1)
+/** 运算选项：加 / 减 */
+const SIGN_OPTIONS: CellOption[] = [
+  { value: 1, label: '加' },
+  { value: -1, label: '减' },
+]
 /** 之差页：起时刻 */
 const aText = ref('')
 /** 之差页：止时刻 */
@@ -58,14 +65,7 @@ const diffResult = computed(() => {
       <tool-group>
         <van-cell-group>
           <van-field v-model="baseText" label="起始时刻" inputmode="numeric" placeholder="23:30:00" clearable />
-          <van-field label="运算">
-            <template #input>
-              <van-radio-group v-model="sign" direction="horizontal">
-                <van-radio :name="1">加</van-radio>
-                <van-radio :name="-1">减</van-radio>
-              </van-radio-group>
-            </template>
-          </van-field>
+          <cell-picker :model-value="sign" title="运算" :options="SIGN_OPTIONS" @update:model-value="sign = $event as 1 | -1" />
           <van-field v-model="deltaText" label="时长" inputmode="numeric" placeholder="02:15:00" clearable />
         </van-cell-group>
         <p class="tool-hint hint">格式 时:分:秒，时长的小时可超过 24。</p>

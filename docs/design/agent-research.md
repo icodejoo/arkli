@@ -64,7 +64,7 @@
 
 单测共 20 个：`research.test.ts` 覆盖解析清洗、选句、去重合并、全流程、无结果不调模型、单搜索失败、取消；`search.test.ts` 覆盖实体解码、用真实页面夹具解析 Brave、维基 URL 与排序、Brave 失败或空时退维基、取消不兜底。
 
-**还没有页面。** 要接成工具页，要遵守项目约定：模型状态只读 `stores/models.ts`；未就绪只提示先下载；标题栏用默认的 `<model-picker>`；取消走 `AbortSignal`。
+**还没有页面。** 要接成工具页，要遵守项目约定：模型状态只读 `stores/models.ts`；未就绪只提示先下载；操作栏里用默认的 `<model-picker variant="bar">`；取消走 `AbortSignal`。
 
 ## 5. 如果以后要做更「智能」的版本
 

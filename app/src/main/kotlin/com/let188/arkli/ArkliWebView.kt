@@ -35,6 +35,7 @@ import com.let188.arkli.shortcut.ShortcutModule
 import com.let188.arkli.speech.SpeechModule
 import com.let188.arkli.splash.SplashGate
 import com.let188.arkli.system.SystemModule
+import com.let188.arkli.theme.ThemeModule
 import com.let188.arkli.tts.TtsModule
 import com.let188.arkli.dircleaner.DirModule
 import com.let188.arkli.net.NetModule
@@ -251,6 +252,7 @@ class ArkliPage(context: Context, private val files: FileEnv, startRoute: String
         MediaModule.install(created, files, fileHandles)
         ImageModule.install(created, files)
         SystemModule.install(created, files)
+        ThemeModule.install(created, files)
         ReminderModule.install(created, files)
         TtsModule.install(created, files)
         ShortcutModule.install(created, files)

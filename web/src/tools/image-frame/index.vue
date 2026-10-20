@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 带壳截图：把截图套进通用手机外壳 / 浏览器窗口 / 纯卡片，Canvas 自绘，不带任何品牌机框
 import BottomActions from '@/shared/BottomActions.vue'
+import CellPicker from '@/shared/CellPicker.vue'
 import ColorPicker from '@/shared/ColorPicker.vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { showToast } from 'vant'
@@ -9,6 +10,7 @@ import { useImageResults } from '@/shared/useImageResults'
 import { baseName } from '@/shared/image-calc'
 import { shootPhoto } from '@/shared/shootPhoto'
 import { canvasToBlob, createCanvas, drawScaled, loadBitmap, EDIT_FULL, pickImages, releaseCanvas, type PickedImage } from '@/shared/image-io'
+import type { CellOption } from '@/shared/cellPicker'
 import { BG_PRESETS, DEFAULT_ANGLE, frameLayout, gradientLine, type CutoutKind, type FrameLayout, type FrameStyle } from './logic'
 
 /** 手机机身 / 刘海 / 挖孔颜色 */
@@ -29,6 +31,19 @@ const PILL_TEXT_PAD = 0.5
 const DEFAULT_ADDRESS = 'https://example.com'
 /** 输出文件名后缀 */
 const NAME_SUFFIX = '-framed'
+
+/** 外壳样式选项 */
+const STYLE_OPTIONS: readonly CellOption[] = [
+  { value: 'phone', label: '手机' },
+  { value: 'browser', label: '浏览器' },
+  { value: 'card', label: '卡片' },
+]
+/** 手机缺口选项 */
+const CUTOUT_OPTIONS: readonly CellOption[] = [
+  { value: 'none', label: '无' },
+  { value: 'notch', label: '刘海' },
+  { value: 'punch', label: '挖孔' },
+]
 
 /** 当前截图 */
 const image = ref<PickedImage | null>(null)
@@ -214,24 +229,8 @@ onBeforeUnmount(() => image.value?.release())
 
     <tool-group>
       <van-cell-group :border="false">
-        <van-cell title="外壳" center>
-          <template #value>
-            <van-radio-group v-model="style" direction="horizontal" class="is-radios">
-              <van-radio name="phone">手机</van-radio>
-              <van-radio name="browser">浏览器</van-radio>
-              <van-radio name="card">卡片</van-radio>
-            </van-radio-group>
-          </template>
-        </van-cell>
-        <van-cell v-if="style === 'phone'" title="缺口" center>
-          <template #value>
-            <van-radio-group v-model="cutout" direction="horizontal" class="is-radios">
-              <van-radio name="none">无</van-radio>
-              <van-radio name="notch">刘海</van-radio>
-              <van-radio name="punch">挖孔</van-radio>
-            </van-radio-group>
-          </template>
-        </van-cell>
+        <cell-picker v-model="style" title="外壳" :options="STYLE_OPTIONS" />
+        <cell-picker v-if="style === 'phone'" v-model="cutout" title="缺口" :options="CUTOUT_OPTIONS" />
         <van-field v-if="style === 'browser'" v-model="address" label="地址栏" placeholder="显示在地址栏里的文字" />
         <van-cell title="边距" :value="`${padPct}%`" />
       </van-cell-group>
@@ -281,10 +280,6 @@ onBeforeUnmount(() => image.value?.release())
 </template>
 
 <style lang="scss" scoped>
-.is-radios {
-  justify-content: flex-end;
-}
-
 /* 滑杆留出触控空间 */
 .is-slider {
   padding: $space-2 $space-3 $space-3;

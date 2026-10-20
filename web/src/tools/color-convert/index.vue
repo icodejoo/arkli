@@ -3,6 +3,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { showFailToast, showSuccessToast } from 'vant'
+import CellPicker from '@/shared/CellPicker.vue'
 import { copyText } from '@/shared/clipboard'
 import ColorFullscreen from '@/shared/ColorFullscreen.vue'
 import {
@@ -22,6 +23,8 @@ const CHANNELS = [
 const tab = ref<'convert' | 'contrast' | 'palette'>('convert')
 /** 配色方案列表 */
 const SCHEMES = Object.keys(SCHEME_LABEL) as PaletteScheme[]
+/** 配色方案的选择器选项 */
+const SCHEME_OPTIONS = SCHEMES.map((s) => ({ value: s, label: SCHEME_LABEL[s] }))
 /** 对比度默认前景色 */
 const DEFAULT_FG = '#1B1D22'
 /** 对比度默认背景色 */
@@ -166,10 +169,7 @@ async function copy(value: string): Promise<void> {
     <template v-else-if="tab === 'palette'">
       <tool-group title="基色">
         <van-field v-model="text" clearable autocomplete="off" :spellcheck="false" placeholder="#3b6cf6" :error-message="error" />
-        <h3 class="tool-group__title cc-gap">方案</h3>
-        <van-radio-group v-model="scheme" direction="horizontal">
-          <van-radio v-for="s in SCHEMES" :key="s" :name="s">{{ SCHEME_LABEL[s] }}</van-radio>
-        </van-radio-group>
+        <cell-picker :model-value="scheme" title="配色方案" :options="SCHEME_OPTIONS" @update:model-value="scheme = $event as PaletteScheme" />
       </tool-group>
       <div class="swatches">
         <button v-for="(s, i) in swatches" :key="i" type="button" class="swatch" :style="{ background: s.hex, color: s.fg }" @click="copyHex(s.hex)">

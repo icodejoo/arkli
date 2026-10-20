@@ -1,6 +1,8 @@
 <script setup lang="ts">
 // 房贷计算器：商贷 / 公积金 / 组合贷，等额本息或等额本金，附逐月还款表（分批加载，长表不卡）
 import { computed, ref } from 'vue'
+import CellPicker from '@/shared/CellPicker.vue'
+import type { CellOption } from '@/shared/cellPicker'
 import {
   calcCombined,
   calcLoan,
@@ -30,6 +32,12 @@ interface LoanForm {
   /** 年限 */
   years: string
 }
+
+/** 还款方式选项 */
+const METHOD_OPTIONS: readonly CellOption[] = [
+  { value: 'equal-payment', label: '等额本息' },
+  { value: 'equal-principal', label: '等额本金' },
+]
 
 /** 贷款类型 */
 const kind = ref<Kind>('biz')
@@ -120,11 +128,8 @@ function more(): void {
       </van-field>
     </tool-group>
 
-    <tool-group title="还款方式">
-      <van-radio-group v-model="method" direction="horizontal">
-        <van-radio name="equal-payment">等额本息</van-radio>
-        <van-radio name="equal-principal">等额本金</van-radio>
-      </van-radio-group>
+    <tool-group>
+      <cell-picker v-model="method" title="还款方式" :options="METHOD_OPTIONS" />
       <p class="tool-hint mt">利率请按自己的合同填写，这里不内置 LPR。</p>
     </tool-group>
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 黑白上色：选一张黑白照片 → 本地模型上色 → 结果展示/保存
 import BottomActions from '@/shared/BottomActions.vue'
+import ModelPicker from '@/shared/ModelPicker.vue'
 import { computed, onBeforeUnmount, ref, shallowRef } from 'vue'
 import { showToast } from 'vant'
 import ImageResultList from '@/shared/ImageResultList.vue'
@@ -13,6 +14,9 @@ import AiGapNotice from '@/tools/_ai/AiGapNotice.vue'
 import { useAiModel } from '@/tools/_ai/useAiModel'
 import { aiErrorText, resolveImagePath } from '@/tools/_ai/aiImage'
 import { isColorful, validateColorize } from './logic'
+
+/** 本工具 id（模型选择器用） */
+const TOOL_ID = 'colorize'
 
 /** 检测是否已有颜色用的缩略图最长边 */
 const PROBE_EDGE = 64
@@ -119,7 +123,9 @@ onBeforeUnmount(() => image.value?.release())
     </tool-group>
 
     <!-- 底部动作栏：相册 / 拍照选图，保存结果，主按钮开始上色 -->
-    <bottom-actions :actions="{ save: { disabled: !results.length || saving } }" album photo main :main-text="busy ? '上色中' : '开始上色'" :disabled="{ album: busy, photo: busy, main: busy || !!problem || !image || !ready }" @album="choose" @photo="shoot" @main="run" @save="saveAll" />
+    <bottom-actions ai :actions="{ save: { disabled: !results.length || saving } }" album photo main :main-text="busy ? '上色中' : '开始上色'" :disabled="{ album: busy, photo: busy, main: busy || !!problem || !image || !ready }" @album="choose" @photo="shoot" @main="run" @save="saveAll">
+      <template #ai><model-picker :tool-id="TOOL_ID" variant="bar" /></template>
+    </bottom-actions>
   </div>
 </template>
 

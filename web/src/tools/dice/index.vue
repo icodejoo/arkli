@@ -2,6 +2,7 @@
 // 掷骰子：选个数与面数，六面骰画点阵，其余面数直接显示数字
 import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import CellPicker from '@/shared/CellPicker.vue'
 import { prefersReducedMotion } from '@/shared/motion'
 import { loadFlag, saveFlag, SOUND_KEY, VIBRATE_KEY, VIBRATE_LAND, VIBRATE_START } from '../coin-flip/logic'
 import { createSoundPlayer, tryVibrate } from '../coin-flip/feedback'
@@ -16,6 +17,8 @@ const TUMBLE_MS = 90
 const count = ref(2)
 /** 面数 */
 const sides = ref<number>(6)
+/** 面数选项 */
+const SIDES_PICKER_OPTIONS = SIDES_OPTIONS.map((s) => ({ value: s, label: `${s} 面` }))
 /** 最近一次结果 */
 const result = ref<RollResult | null>(null)
 /** 是否正在滚动 */
@@ -111,11 +114,8 @@ onBeforeUnmount(() => {
             <van-stepper v-model="count" :min="MIN_DICE" :max="MAX_DICE" integer :disabled="rolling" />
           </template>
         </van-cell>
+        <cell-picker :model-value="sides" title="面数" :options="SIDES_PICKER_OPTIONS" :disabled="rolling" @update:model-value="sides = $event as number" />
       </van-cell-group>
-      <h3 class="tool-group__title dice-sides-title">面数</h3>
-      <van-radio-group v-model="sides" direction="horizontal" :disabled="rolling">
-        <van-radio v-for="s in SIDES_OPTIONS" :key="s" :name="s">{{ s }} 面</van-radio>
-      </van-radio-group>
     </tool-group>
 
     <tool-group>
@@ -142,11 +142,6 @@ onBeforeUnmount(() => {
   font-size: 20px;
   font-weight: 600;
   color: var(--c-text);
-}
-
-/* 面数标题与上方留距 */
-.dice-sides-title {
-  margin-top: $space-3;
 }
 
 /* 骰子排布区 */

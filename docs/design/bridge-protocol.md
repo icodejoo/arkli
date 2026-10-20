@@ -116,7 +116,7 @@ summary: 小工具页与原生/Rust 之间的消息格式（v2）、会话与取
 
 | 项 | 说明 |
 |---|---|
-| params | `{ mime?: string = "image/*", multiple?: boolean = false, max?: number = 20, keepSource?: boolean = false, camera?: boolean = false, edit?: ("crop"\|"rotate"\|"shape"\|"lasso")[] }`。`edit` 是选图页预览里「编辑」按钮允许的模式（`crop` 裁剪、`rotate` 旋转翻转、`shape` 预设形状、`lasso` 手绘套索）：不传默认全部四种，传 `[]` 关闭，非法值被过滤；仅图片选择有编辑，视频没有，单选多选都支持。用户编辑过的图以编辑后的结果替换原图返回（方向已摆正、`orientation` 为 1）：矩形是 JPEG，用了形状或套索时是带透明的 PNG（`mime` 为 `image/png`）；这类项不带 `sourceHandle`；在编辑页取消只回到选图页，不影响选择。细节见 platform-infrastructure.md「选图页内的编辑」。`camera` 为 true（仅图片）时单选多选一律走自带选图页，页内右下固定一个拍照圆钮，点它丢弃已选并返回 `camera: true`；权限被拒回退系统选择器时没有该按钮。`keepSource` 为 true 时图片项多返回 `sourceHandle`（见下方 `native.file.overwrite`）。`mime` 取值：`image/*`、`video/*`、`image/*,video/*`、具体媒体类型（如 `image/png`）走 Photo Picker；其他（如 `text/plain`、`*/*`）走系统文档选择器。`max` 上限 50 |
+| params | `{ mime?: string = "image/*", multiple?: boolean = false, max?: number = 20, keepSource?: boolean = false, camera?: boolean = false, edit?: ("crop"\|"rotate"\|"shape"\|"lasso")[] }`。`edit` 是选图页预览里「编辑」按钮允许的模式（`crop` 裁剪、`rotate` 旋转翻转、`shape` 预设形状、`lasso` 手绘套索）：不传默认全部四种，传 `[]` 关闭，非法值被过滤；仅图片选择有编辑，视频没有，单选多选都支持。用户编辑过的图以编辑后的结果替换原图返回（方向已摆正、`orientation` 为 1）：矩形是 JPEG，用了形状或套索时是带透明的 PNG（`mime` 为 `image/png`）；这类项不带 `sourceHandle`；在编辑页取消只回到选图页，不影响选择。细节见 platform-infrastructure.md「选图页内的编辑」。`camera` 为 true（仅图片）时单选多选一律走自带选图页，页内右下固定一个拍照圆钮，点它丢弃已选并返回 `camera: true`；权限被拒回退系统选择器时没有该按钮。`keepSource` 为 true 时图片项多返回 `sourceHandle`（见下方 `native.file.overwrite`）。`mime` 取值：`image/*`、`video/*`、`image/*,video/*`、具体媒体类型（如 `image/png`）走 Photo Picker；其他（如 `text/plain`、`*/*`）走系统文档选择器；文档选择器可传逗号分隔的多个 mime（如 `text/*,application/json`），原生拆成数组交给 `OpenDocument`（除 `image/*,video/*` 外，含逗号的一律走文档选择器）。`max` 上限 50 |
 | 返回 | `{ items: Item[], failed: { name, message }[] }` |
 | 图片 Item | `{ kind: "image", path, url, name, mime, size, width?, height?, orientation }`。文件原样拷进 `cache/pick/`（保留 EXIF），≤ 128MB，超过进 `failed`。`width/height` 是按 EXIF 方向摆正后的显示尺寸，`orientation` 为 EXIF 方向值 1~8；页面用 `createImageBitmap(..., { imageOrientation: 'from-image' })` 摆正 |
 | `sourceHandle` | 仅 `keepSource: true` 的图片 Item 才有：`"uri:<随机 id>"`，不透明句柄，真实 URI 只留在原生侧的会话句柄表里（与视频句柄同一张表），随会话失效；只能交给 `native.file.overwrite` |
@@ -316,6 +316,17 @@ await call('native.file.save', { items: [{ path, name: 'out.bin' }] })
 - **刻意没声明 `CAMERA` / `RECORD_AUDIO`**：等对应工具（扫码、录音等）落地时再加。在此之前 `native.permission` 对 camera / microphone 返回 `not_declared`，不会崩。
 - 分享用的 FileProvider（authority `<applicationId>.fileprovider`）只暴露缓存的 `arkli/out/`（页面产出的成品）。要分享别处的文件，先写进缓存 `out/`。
 - `startIntent` 一律直接 `startActivity`，找不到处理者（`ActivityNotFoundException`）或被系统拒绝返回 false，所以系统能力方法本身不需要 `<queries>`。清单里的 `<queries>` 是后面应用管理和 TTS 引擎要用的，见各自章节。
+
+### `native.theme.set`
+页面切换主题（亮色 / 暗色 / 跟随系统）后通知原生。只接受主 frame。
+
+| 项 | 说明 |
+|---|---|
+| params | `{ mode: "light" \| "dark" \| "system" }` |
+| 返回 | `{ mode }` |
+| 错误 | `BAD_PARAMS`（mode 缺失或不是三个取值之一）、`PERMISSION_DENIED`（非主 frame） |
+
+原生用 SharedPreferences（`arkli_theme`）记住模式（`ThemePrefs`），WebView 加载前就能读到。据此：状态栏、导航栏图标深浅（亮 / 暗显式指定，跟随系统沿用 `SystemBarStyle.auto`，`MainActivity.onThemeChanged` 立即重设）；Compose 原生页（选图页、图片编辑页）用 `isAppDarkTheme()` 取代 `isSystemInDarkTheme()`，跟随系统时仍随系统配置重组。不用 `UiModeManager` / `AppCompatDelegate`，各 API 级别通用。前端 `shared/theme.ts` 把模式存 localStorage（键 `arkli.theme`），`public/theme-init.js` 首帧读取，所以冷启动不闪；每次启动页面也会把当前模式推给原生，旧存档与原生偏好丢失时能自愈。无宿主或旧包没有这个方法时，前端 `native/theme.ts` 静默忽略。
 
 ## 提醒方法
 

@@ -10,6 +10,8 @@ import { stateToStatus } from './modelPicker'
 
 /** 过渡项（还没有原生提供者的清单模型）选择值的前缀，后接清单模型 id */
 export const MODEL_KEY_PREFIX = 'model:'
+/** 系统应用交接提供者的 id（与 native/ai 的 HANDOFF_PROVIDER_ID 一致；本模块要保持纯逻辑，不引入带 window 依赖的 native/ai 值导入） */
+const HANDOFF_ID = 'intent-handoff'
 /** L4 占位项的选择值（不可选） */
 export const L4_OPENAI_ID = 'l4-openai'
 /** L4 占位项的名称 */
@@ -175,6 +177,7 @@ export function sessionProviderOf(item: CatalogItem | null | undefined): string 
 
 /**
  * 构建一个工具的 AI 目录。适用性全由原生报价决定：
+ * - 系统应用交接（`HANDOFF_PROVIDER_ID`）不进目录：它只是把文本丢给第三方应用、拿不回结果，不算「本机AI」（仅指系统级端侧模型）；
  * - 提供者的报价里含工具需要的任务（入口也对得上）才出现；
  * - 依赖本地模型的提供者按下载状态给 ready/missing/loading；不依赖模型的（本机 AI）不可用就**隐藏**（决策 0005）；
  * - 工具声明的过渡清单模型：原生已有同 `modelId` 的提供者就并进去（沿用工具的文案），没有就按清单状态单独出一项；
@@ -191,6 +194,7 @@ export function buildCatalog(input: CatalogInput): CatalogItem[] {
   const legacy = new Map(input.models.map((m) => [m.modelId, m] as const))
   const out: CatalogItem[] = []
   for (const p of input.providers) {
+    if (p.id === HANDOFF_ID) continue
     const offers = (p.offers ?? []).filter((o) => needs.some((n) => n.task === o.task && (!n.entry || n.entry === o.entry)))
     if (!offers.length) continue
     if (!p.modelId && !p.available) continue

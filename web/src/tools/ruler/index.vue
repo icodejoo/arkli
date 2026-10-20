@@ -2,6 +2,8 @@
 // 尺子：App 固定竖屏，尺子竖着贴在屏幕长边（左或右），Canvas 画刻度，靠实物（银行卡/硬币/自定义长度）校准像素与毫米的比例。
 // 另有一条可上下拖动的游标，实时预览读数，并可在游标处打下任意多条彩色标记。
 import ColorPicker from '@/shared/ColorPicker.vue'
+import CellPicker from '@/shared/CellPicker.vue'
+import type { CellOption } from '@/shared/cellPicker'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { showToast } from 'vant'
 import { deviceDisplay } from '@/native/system'
@@ -111,6 +113,22 @@ function getStorage(): Storage | undefined {
 
 /** 当前单位 */
 const unit = ref<RulerUnit>('cm')
+/** 单位选项 */
+const UNIT_OPTIONS: CellOption[] = [
+  { value: 'cm', label: '厘米' },
+  { value: 'inch', label: '英寸' },
+]
+/** 尺子靠边选项 */
+const SIDE_OPTIONS: CellOption[] = [
+  { value: 'right', label: '靠右' },
+  { value: 'left', label: '靠左' },
+]
+/** 校准参照物选项 */
+const REF_OPTIONS: CellOption[] = [
+  { value: 'card', label: '银行卡 85.6mm' },
+  { value: 'coin', label: '一元硬币 25mm' },
+  { value: 'custom', label: '自定义' },
+]
 /** 尺子靠右还是靠左 */
 const side = ref<EdgeSide>('right')
 /** 尺子顶端离视口顶部的距离（像素），即顶栏下沿 */
@@ -673,14 +691,8 @@ onUnmounted(() => {
     </tool-group>
 
     <tool-group title="单位与位置">
-      <van-radio-group v-model="unit" direction="horizontal">
-        <van-radio name="cm">厘米</van-radio>
-        <van-radio name="inch">英寸</van-radio>
-      </van-radio-group>
-      <van-radio-group v-model="side" direction="horizontal" class="ruler-gap">
-        <van-radio name="right">靠右</van-radio>
-        <van-radio name="left">靠左</van-radio>
-      </van-radio-group>
+      <cell-picker :model-value="unit" title="单位" :options="UNIT_OPTIONS" @update:model-value="unit = $event as RulerUnit" />
+      <cell-picker :model-value="side" title="尺子位置" :options="SIDE_OPTIONS" @update:model-value="side = $event as EdgeSide" />
     </tool-group>
 
     <tool-group title="校准">
@@ -692,11 +704,7 @@ onUnmounted(() => {
         </div>
       </template>
       <template v-else>
-        <van-radio-group v-model="refKind" direction="horizontal">
-          <van-radio name="card">银行卡 85.6mm</van-radio>
-          <van-radio name="coin">一元硬币 25mm</van-radio>
-          <van-radio name="custom">自定义</van-radio>
-        </van-radio-group>
+        <cell-picker :model-value="refKind" title="参照物" :options="REF_OPTIONS" @update:model-value="refKind = $event as RefKind" />
         <van-field v-if="refKind === 'custom'" v-model="customMm" type="number" label="已知长度" placeholder="毫米" />
         <p class="tool-hint">把实物沿屏幕边缘的蓝线放好（蓝线从零点起），调整蓝线长度，直到与实物两端对齐。</p>
         <p v-if="!calFits" class="tool-hint ruler-warn">当前尺子放不下这个参照物，换小一点的参照物。</p>

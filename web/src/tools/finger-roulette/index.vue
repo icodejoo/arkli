@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 指尖轮盘：多人手指按在屏幕上，稳定 3 秒后随机选人 / 排先手 / 分两队
 import { computed, onBeforeUnmount, ref } from 'vue'
+import CellPicker from '@/shared/CellPicker.vue'
 import { assignRoles, canCountdown, colorFor, COUNTDOWN_MS, hasMoved, MAX_FINGERS, MODE_LABEL, type Assignment, type Mode, type Point } from './logic'
 
 /** 一个正在按着的手指 */
@@ -13,6 +14,8 @@ interface Finger extends Point {
 
 /** 模式选项 */
 const MODES = Object.keys(MODE_LABEL) as Mode[]
+/** 玩法的选择器选项 */
+const MODE_OPTIONS = MODES.map((m) => ({ value: m, label: MODE_LABEL[m] }))
 
 /** 当前模式 */
 const mode = ref<Mode>('one')
@@ -164,9 +167,7 @@ onBeforeUnmount(cancelTimer)
 <template>
   <div class="tool-page">
     <tool-group>
-      <van-radio-group v-model="mode" direction="horizontal" :disabled="counting">
-        <van-radio v-for="m in MODES" :key="m" :name="m">{{ MODE_LABEL[m] }}</van-radio>
-      </van-radio-group>
+      <cell-picker :model-value="mode" title="玩法" :options="MODE_OPTIONS" :disabled="counting" @update:model-value="mode = $event as Mode" />
     </tool-group>
 
     <div

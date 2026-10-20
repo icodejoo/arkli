@@ -18,7 +18,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -64,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.let188.arkli.theme.isAppDarkTheme
 
 /**
  * 自带的多选图片页：相册网格，点图即选（右上角圆圈显示选中序号），点完按“完成”返回。
@@ -147,7 +147,7 @@ class ImagePickerActivity : ComponentActivity() {
     /** 选图主界面：顶栏 + 缩略图网格 */
     @Composable
     private fun PickerScreen() {
-        val dark = isSystemInDarkTheme()
+        val dark = isAppDarkTheme()
         val bg = if (dark) Color(0xFF121212) else Color.White
         val fg = if (dark) Color(0xFFEEEEEE) else Color(0xFF222222)
         val muted = fg.copy(alpha = MUTED_ALPHA)

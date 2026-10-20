@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 文字识别：选图 → 本地 OCR → 按阅读顺序排行 → 逐行/全文复制，识别框叠加在原图上
 import BottomActions from '@/shared/BottomActions.vue'
+import ModelPicker from '@/shared/ModelPicker.vue'
 import { computed, onBeforeUnmount, onDeactivated, ref, shallowRef } from 'vue'
 import { showToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
@@ -155,7 +156,9 @@ onBeforeUnmount(cleanup)
     </tool-group>
 
     <!-- 底部动作栏：相册 / 拍照选图，复制全文，主按钮开始识别 -->
-    <bottom-actions :actions="{ copy: { disabled: !lines.length, text: '复制全文' } }" album photo main :main-text="busy ? '识别中' : '开始识别'" :disabled="{ album: busy, photo: busy, main: busy || !image || !modelReady }" @album="choose" @photo="shoot" @main="run" @copy="copy(fullText, '已复制全文')" />
+    <bottom-actions ai :actions="{ copy: { disabled: !lines.length, text: '复制全文' } }" album photo main :main-text="busy ? '识别中' : '开始识别'" :disabled="{ album: busy, photo: busy, main: busy || !image || !modelReady }" @album="choose" @photo="shoot" @main="run" @copy="copy(fullText, '已复制全文')">
+      <template #ai><model-picker :tool-id="TOOL_ID" variant="bar" /></template>
+    </bottom-actions>
   </div>
 </template>
 

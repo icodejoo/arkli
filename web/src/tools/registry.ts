@@ -28,10 +28,8 @@ export interface ToolMeta {
    * @example models: [{ modelId: 'siglip2-mnn-w8', title: '识物 SigLIP2（MNN）', desc: '识别垃圾品类' }]
    */
   models?: ToolModelOption[]
-  /** 为 true 时标题栏显示摄像头按钮，可在普通模式与拍照识别模式间切换；模型选择器仅在识别模式出现 */
+  /** 为 true 时标题栏显示摄像头按钮，可在普通模式与拍照识别模式间切换；模型选择器在页面操作栏里 */
   camera?: boolean
-  /** 为 true 时模型选择器由工具页自己放在页面里，标题栏不再自动显示 */
-  pickerInPage?: boolean
   /** 懒加载组件，每个工具会被打成独立 chunk */
   load: () => Promise<{ default: Component }>
 }
@@ -138,7 +136,6 @@ export const tools: ToolMeta[] = [
     name: '对联生成',
     description: '随机抽 73 万副对联不重复，本地模型对下联、按要求写对联，可导出图',
     tags: [TAG_AI],
-    pickerInPage: true,
     // 对下联走 native.ai.couplet；大模型（Qwen）走 native.ai.run 的 prompt；随机用的语料库是数据包，不在模型选择器里
     tasks: [
       { task: 'couplet', entry: AI_METHODS.couplet },
@@ -153,7 +150,6 @@ export const tools: ToolMeta[] = [
     name: '翻译',
     description: '本地模型离线翻译，中英法西俄阿互译',
     tags: [TAG_AI],
-    pickerInPage: true,
     // 页面调 native.ai.translate（要语言对），所以只要走该入口的翻译；交接类的 translate 经 run，不在此列
     tasks: [{ task: 'translate', entry: AI_METHODS.translate }],
     load: () => import('./translate/index.vue'),
@@ -203,8 +199,8 @@ export const tools: ToolMeta[] = [
   { id: 'roll-call', name: '随机点名', description: '粘贴名单随机抽人，可选不重复', load: () => import('./roll-call/index.vue') },
   { id: 'torch', name: '手电筒', description: '后置闪光灯常亮，支持 SOS 和限频频闪', load: () => import('./torch/index.vue') },
   { id: 'speech-to-text', name: '语音转文字', description: '本地模型离线听写，边说边出字，可复制、存成文本', tags: [TAG_AI], models: [{ modelId: 'asr-zipformer-zh-en-mnn-w8', title: '语音识别 zipformer（MNN）', desc: '中英文流式听写' }], load: () => import('./speech-to-text/index.vue') },
-  { id: 'logo', name: 'logo 设计', description: '输入品牌名，智能排版出 6 个 logo 方案，可换版式、配色、图标，存成 PNG', tags: [TAG_AI], pickerInPage: true, tasks: [{ task: 'prompt', entry: AI_METHODS.run }], load: () => import('./logo/index.vue') },
-  { id: 'ai-writer', name: 'AI 写作助手', description: '本地模型起名、起标题、润色、扩写、缩写', tags: [TAG_AI], pickerInPage: true, tasks: [{ task: 'prompt', entry: AI_METHODS.run }], load: () => import('./ai-writer/index.vue') },
+  { id: 'logo', name: 'logo 设计', description: '输入品牌名，智能排版出 6 个 logo 方案，可换版式、配色、图标，存成 PNG', tags: [TAG_AI], tasks: [{ task: 'prompt', entry: AI_METHODS.run }], load: () => import('./logo/index.vue') },
+  { id: 'ai-writer', name: 'AI 写作助手', description: '本地模型起名、起标题、润色、扩写、缩写', tags: [TAG_AI], tasks: [{ task: 'prompt', entry: AI_METHODS.run }], load: () => import('./ai-writer/index.vue') },
 ]
 
 /**

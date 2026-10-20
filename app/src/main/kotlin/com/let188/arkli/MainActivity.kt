@@ -39,6 +39,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.let188.arkli.ai.AiLifecyclePolicy
 import com.let188.arkli.ai.AiRecycle
 import com.let188.arkli.system.TorchSwitch
+import com.let188.arkli.theme.ThemeMode
+import com.let188.arkli.theme.ThemePrefs
 import com.let188.arkli.bridge.ArkliBridge
 import com.let188.arkli.files.ActivityHost
 import com.let188.arkli.files.FileEnv
@@ -165,12 +167,19 @@ class MainActivity : ComponentActivity(), ActivityHost {
         page?.webView?.evaluateJavascript("location.hash=" + org.json.JSONObject.quote("#$route"), null)
     }
 
-    /** 边到边：状态栏、导航栏透明，图标深浅按当前深色模式取（浅色主题黑字，深色主题白字） */
+    /** 边到边：状态栏、导航栏透明，图标深浅按用户主题偏好取（亮/暗显式指定，跟随系统沿用 auto） */
     private fun applySystemBars() {
-        enableEdgeToEdge(
-            statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT),
-            navigationBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT),
-        )
+        val style = when (ThemePrefs.mode(this)) {
+            ThemeMode.LIGHT -> SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+            ThemeMode.DARK -> SystemBarStyle.dark(Color.TRANSPARENT)
+            else -> SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT)
+        }
+        enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+    }
+
+    /** 页面切了主题偏好：回主线程重设系统栏，立即生效 */
+    override fun onThemeChanged() {
+        runOnUiThread { applySystemBars() }
     }
 
     /** 系统深浅色切换（本页自己处理 uiMode，不会重建）：重设一遍状态栏，图标颜色才跟得上 */
@@ -363,7 +372,7 @@ class MainActivity : ComponentActivity(), ActivityHost {
             val req = PickVisualMediaRequest(media)
             if (multiple) pickMany.launch(req) else pickOne.launch(req)
         } else {
-            val types = arrayOf(mime)
+            val types = PickKind.documentTypes(mime)
             if (multiple) docMany.launch(types) else docOne.launch(types)
         }
     }

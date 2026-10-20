@@ -1,7 +1,9 @@
 <script setup lang="ts">
 // 图片水印：文字水印，九宫格单个或整图平铺，可调字号/颜色/透明度/旋转，支持多图批量
 import BottomActions from '@/shared/BottomActions.vue'
+import CellPicker from '@/shared/CellPicker.vue'
 import ColorPicker from '@/shared/ColorPicker.vue'
+import type { CellOption } from '@/shared/cellPicker'
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { showToast } from 'vant'
 import ImageResultList from '@/shared/ImageResultList.vue'
@@ -21,6 +23,16 @@ const PREVIEW_EDGE = 480
 const NAME_SUFFIX = '-wm'
 /** 水印字体（只用系统字体） */
 const FONT_FAMILY = 'sans-serif'
+/** 水印模式选项 */
+const MODE_OPTIONS: readonly CellOption[] = [
+  { value: 'single', label: '单个' },
+  { value: 'tile', label: '全图平铺' },
+]
+/** 输出格式选项 */
+const FORMAT_OPTIONS: readonly CellOption[] = [
+  { value: 'jpeg', label: 'JPEG' },
+  { value: 'png', label: 'PNG' },
+]
 /** 九宫格位置文案（行优先） */
 const POSITION_LABELS = ['左上', '上中', '右上', '左中', '居中', '右中', '左下', '下中', '右下']
 /** 字号占短边百分比范围 */
@@ -217,14 +229,7 @@ onBeforeUnmount(() => {
     <tool-group>
       <van-field v-model="text" label="水印文字" placeholder="如：仅供办理业务使用" maxlength="40" clearable />
       <van-cell-group :border="false">
-        <van-cell title="模式" center>
-          <template #value>
-            <van-radio-group v-model="mode" direction="horizontal" class="is-radios">
-              <van-radio name="single">单个</van-radio>
-              <van-radio name="tile">全图平铺</van-radio>
-            </van-radio-group>
-          </template>
-        </van-cell>
+        <cell-picker v-model="mode" title="模式" :options="MODE_OPTIONS" />
         <van-cell title="颜色" center>
           <template #value><color-picker v-model="color" label="水印颜色" /></template>
         </van-cell>
@@ -261,14 +266,7 @@ onBeforeUnmount(() => {
         </van-cell>
       </template>
 
-      <van-cell title="输出格式" center>
-        <template #value>
-          <van-radio-group v-model="format" direction="horizontal" class="is-radios">
-            <van-radio name="jpeg">JPEG</van-radio>
-            <van-radio name="png">PNG</van-radio>
-          </van-radio-group>
-        </template>
-      </van-cell>
+      <cell-picker v-model="format" title="输出格式" :options="FORMAT_OPTIONS" />
     </tool-group>
 
     <tool-group v-if="results.length" title="结果（点击预览）">
@@ -293,10 +291,6 @@ onBeforeUnmount(() => {
 
 .wm-tip {
   margin-top: $space-2;
-}
-
-.is-radios {
-  justify-content: flex-end;
 }
 
 .is-slider {

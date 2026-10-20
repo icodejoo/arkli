@@ -2,7 +2,7 @@
 
 状态：active（2026-10-15 第 2 步改为由 AI 目录生成；Web 端单测已过，真机未验证）
 
-AI 工具标题栏右上角的小按钮，点开底部弹层选模型。依据 [0005 AI 四层约束](../decisions/0005-ai-four-layers.md)，可选项由 [统一 AI 协议](ai-protocol.md) 的 AI 目录算出。
+AI 工具页底部操作栏最左边的「cpu-ai 图标 + Ai」按钮，点开底部弹层选模型。依据 [0005 AI 四层约束](../decisions/0005-ai-four-layers.md)，可选项由 [统一 AI 协议](ai-protocol.md) 的 AI 目录算出。
 
 ## 范围
 
@@ -32,7 +32,7 @@ AI 中心即 `/ai`（`AiView.vue`）。其「本地模型」区每个模型除�
 
 ## 交互
 
-- 挂载点：`ToolView` 标题栏右侧，工具带 `ai` 标签（`TAG_AI`）且声明了 `tasks` 或过渡 `models`（`hasAiChoices`）时自动出现，工具页不用自己写。
+- 挂载点：各工具页自己的底部操作栏最左边（`<bottom-actions ai>` 的 `#ai` 插槽放 `<model-picker :tool-id="TOOL_ID" variant="bar" />`；用原生 `van-action-bar` 的页面直接放在最左）。`ToolView` 标题栏不再自动渲染选择器，新增带 `ai` 标签的工具要自己在操作栏里放。
 - 触发器一律用组件默认的 AI 图标按钮，调用方不传插槽（除非明确指定要自定义）。点开 `van-action-sheet` 底部面板，标题「选择模型」，底部的取消位改名「查看Ai中心」（带右箭头，文字与箭头为 danger 红），用 `cancel` 插槽接管点击（`.stop` 防冒泡）跳转 AI 中心，右上角关闭图标仍走默认 `@cancel` 只关面板。每行：标题「层名-模型名」+ 备注 + 状态图标。
 - 组件只收 `tool-id`：`<model-picker :tool-id="TOOL_ID" />`，不再传 `models`。
 
@@ -72,7 +72,7 @@ ToolMeta.models?: ToolModelOption[]  // 过渡：{ modelId, title, desc }，L1 �
 - `tasks`：只写任务名表示任何入口都行；写对象可限定入口。翻译页调 `native.ai.translate`（要语言对），所以声明 `{ task: 'translate', entry: AI_METHODS.translate }`，交接类（经 `native.ai.run`）就不会混进来。
 - `models`：过渡字段。原生已有提供者的（识物）按 `modelId` 并进提供者项、沿用这里的文案；原生还没有提供者的按清单状态单独出项（不伪造提供者），各工具接入原生提供者时并入、再删掉过渡声明（OCR 已于 M8 完成，改为只声明 `tasks`）。
 - 约束（翻译的 `languages` / `sourceAuto`）只来自原生报价，`registry.ts` 不再写语言清单；`shared/languages.ts` 的 `supportedOf` / `allowsAuto` 吃的就是 `constraints`。
-- `ToolMeta.pickerInPage`：为 true 的工具把选择器放在页面里（如翻译页中间一行），`ToolView` 标题栏不再重复显示（摄像头工具同理）。
+- 已移除 `ToolMeta.pickerInPage`：选择器统一放页面操作栏，不再有标题栏自动挂载这条路。
 
 当前各工具的声明（`aiCatalog.test.ts` 有快照断言，改了要同步这里）：
 
@@ -121,7 +121,7 @@ ToolMeta.models?: ToolModelOption[]  // 过渡：{ modelId, title, desc }，L1 �
 
 ## 文字识别页的接法（M8，第一个只读目录的新任务页）
 
-`ocr` 与 `table-extract` 页：`useAiCatalog(TOOL_ID)`，`modelReady = current.status === 'ready'`，探测完（`catalog.ready`）仍没有就绪模型时显示共用的 `<model-missing-notice />`（文案 `MSG_NO_MODEL`「无可用模型，去查看」，点击去 AI 中心，只提示、不指定下载入口）；识别按钮在 `modelReady` 为假时禁用。**页面不再读 `native.ai.status` 桩，也不调任何 `native.model.*`**，下载、取消、删除、校验都在 AI 中心。模型选择器由 `ToolView` 标题栏按工具声明自动显示，用默认插槽（组件自带的 AI 图标按钮）。识别撞上 `NOT_READY`（`AiNotReadyError`）时页面只重新探测目录（`catalog.refresh()`），不弹下载相关文案。
+`ocr` 与 `table-extract` 页：`useAiCatalog(TOOL_ID)`，`modelReady = current.status === 'ready'`，探测完（`catalog.ready`）仍没有就绪模型时显示共用的 `<model-missing-notice />`（文案 `MSG_NO_MODEL`「无可用模型，去查看」，点击去 AI 中心，只提示、不指定下载入口）；识别按钮在 `modelReady` 为假时禁用。**页面不再读 `native.ai.status` 桩，也不调任何 `native.model.*`**，下载、取消、删除、校验都在 AI 中心。模型选择器放在页面底部操作栏最左（`variant="bar"`），用默认插槽（组件自带的 cpu-ai 图标按钮）。识别撞上 `NOT_READY`（`AiNotReadyError`）时页面只重新探测目录（`catalog.refresh()`），不弹下载相关文案。
 
 ## 翻译页的拍照翻译（只改前端，真机未验证）
 

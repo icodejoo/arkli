@@ -2,6 +2,8 @@
 // 打字板（含原手持弹幕）：输入文字后全屏横屏展示，文字没超出屏幕就静止，超出就横向滚动
 import BottomActions from '@/shared/BottomActions.vue'
 import ColorPicker from '@/shared/ColorPicker.vue'
+import CellPicker from '@/shared/CellPicker.vue'
+import type { CellOption } from '@/shared/cellPicker'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { showToast } from 'vant'
 import ExitIcon from '~icons/cil/fullscreen-exit?width=1em&height=1em'
@@ -36,6 +38,14 @@ import {
 const TIP_NO_WAKE = '常亮没打开，请在系统设置里调长息屏时间'
 /** 粗细名称 */
 const WEIGHT_NAMES: Record<number, string> = { 400: '常规', 700: '加粗', 900: '特粗' }
+/** 粗细选项 */
+const WEIGHT_OPTIONS: CellOption[] = WEIGHTS.map((w) => ({ value: w, label: WEIGHT_NAMES[w] }))
+/** 对齐选项 */
+const ALIGN_OPTIONS: CellOption[] = [
+  { value: 'left', label: '居左' },
+  { value: 'center', label: '居中' },
+  { value: 'right', label: '居右' },
+]
 
 /** 取本地存储，不可用时为 undefined */
 function getStorage(): Storage | undefined {
@@ -187,16 +197,9 @@ onUnmounted(() => {
       <van-slider v-model="fontSize" :min="FONT_MIN" :max="FONT_MAX" :step="4" />
       <h3 class="tool-group__title tb-gap">滚动速度 {{ speed }}（文字超出屏幕时才滚动）</h3>
       <van-slider v-model="speed" :min="SPEED_MIN" :max="SPEED_MAX" :step="10" />
-      <h3 class="tool-group__title tb-gap">粗细</h3>
-      <van-radio-group v-model="weight" direction="horizontal">
-        <van-radio v-for="w in WEIGHTS" :key="w" :name="w">{{ WEIGHT_NAMES[w] }}</van-radio>
-      </van-radio-group>
-      <h3 class="tool-group__title tb-gap">对齐（没超出屏幕时）</h3>
-      <van-radio-group v-model="align" direction="horizontal">
-        <van-radio name="left">居左</van-radio>
-        <van-radio name="center">居中</van-radio>
-        <van-radio name="right">居右</van-radio>
-      </van-radio-group>
+      <cell-picker v-model="weight" title="粗细" :options="WEIGHT_OPTIONS" />
+      <cell-picker :model-value="align" title="对齐" :options="ALIGN_OPTIONS" @update:model-value="align = $event as Align" />
+      <p class="tool-hint">对齐只在文字没超出屏幕时生效。</p>
     </tool-group>
 
     <tool-group>

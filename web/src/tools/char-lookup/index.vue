@@ -2,6 +2,7 @@
 // 查字：输入汉字，看读音（多音字全列）、Unicode 码点、UTF-8 / UTF-16 字节与所在区段
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { showFailToast, showSuccessToast } from 'vant'
+import CellPicker from '@/shared/CellPicker.vue'
 import { copyText } from '@/shared/clipboard'
 import { infoToText, loadPinyin, lookupChar, MAX_CHARS, splitChars, type CharInfo, type PinyinLib, type Readings } from './logic'
 
@@ -13,6 +14,8 @@ const TONE_OPTIONS: ReadonlyArray<{ key: keyof Readings; label: string }> = [
   { key: 'num', label: '数字调' },
   { key: 'none', label: '无调' },
 ]
+/** 读音写法的选择器选项 */
+const TONE_PICKER_OPTIONS = TONE_OPTIONS.map((o) => ({ value: o.key, label: o.label }))
 
 /** 输入文本 */
 const input = ref('')
@@ -78,9 +81,7 @@ onBeforeUnmount(() => clearTimeout(timer))
     <tool-group>
       <van-field v-model="input" type="textarea" rows="2" autosize placeholder="输入一个或多个汉字，如：长、𠮷" />
       <p v-if="truncated" class="tool-hint">一次最多查 {{ MAX_CHARS }} 个不同的字，多的已忽略。</p>
-      <van-radio-group v-model="tone" direction="horizontal" class="cl-tone">
-        <van-radio v-for="o in TONE_OPTIONS" :key="o.key" :name="o.key">{{ o.label }}</van-radio>
-      </van-radio-group>
+      <cell-picker :model-value="tone" title="读音写法" :options="TONE_PICKER_OPTIONS" @update:model-value="tone = $event as keyof Readings" />
       <p v-if="loading" class="tool-hint">正在加载拼音词典…</p>
       <p v-if="failed" class="tool-hint">拼音词典加载失败，读音暂时查不了，改改输入再试一次。</p>
     </tool-group>
@@ -109,11 +110,6 @@ onBeforeUnmount(() => clearTimeout(timer))
 </template>
 
 <style lang="scss" scoped>
-/* 写法选择与输入框之间留距 */
-.cl-tone {
-  margin-top: $space-2;
-}
-
 /* 头部：大字 + 读音 + 复制按钮 */
 .cl-head {
   display: flex;

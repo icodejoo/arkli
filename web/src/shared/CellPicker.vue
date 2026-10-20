@@ -9,13 +9,13 @@ const ACTIVE_COLOR = 'var(--c-primary)'
 /**
  * 属性：
  * - modelValue 当前值（v-model）
- * - options 选项列表
+ * - options 选项列表（单项可设 disabled 置灰不可选）
  * - title 单元格标题，同时作为弹层标题
  * - disabled 是否禁用
  *
  * 事件：update:modelValue(value) 选定了一项。
  *
- * @example <cell-picker v-model="size" title="规格" :options="[{ value: 29, label: '29×29' }]" />
+ * @example <cell-picker v-model="size" title="规格" :options="[{ value: 29, label: '29×29' }, { value: 58, label: '58×58', disabled: true }]" />
  */
 const props = defineProps<{ modelValue: string | number; options: readonly CellOption[]; title: string; disabled?: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: string | number] }>()
@@ -33,7 +33,8 @@ function show(): void {
 }
 
 /** 选定一项并关闭 */
-function onSelect(a: { value: string | number }): void {
+function onSelect(a: { value: string | number; disabled?: boolean }): void {
+  if (a.disabled) return
   emit('update:modelValue', a.value)
   open.value = false
 }

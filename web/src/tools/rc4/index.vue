@@ -4,12 +4,24 @@ import BottomActions from '@/shared/BottomActions.vue'
 import { computed, ref } from 'vue'
 import { showFailToast, showSuccessToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
+import CellPicker from '@/shared/CellPicker.vue'
+import type { CellOption } from '@/shared/cellPicker'
 import { decryptText, encryptText, type Encoding } from './logic'
 
 /** 方向：加密或解密 */
 const mode = ref<'encrypt' | 'decrypt'>('encrypt')
 /** 编码：Base64 或十六进制 */
 const enc = ref<Encoding>('base64')
+/** 方向选项 */
+const MODE_OPTIONS: CellOption[] = [
+  { value: 'encrypt', label: '加密' },
+  { value: 'decrypt', label: '解密' },
+]
+/** 密文编码选项 */
+const ENC_OPTIONS: CellOption[] = [
+  { value: 'base64', label: 'Base64' },
+  { value: 'hex', label: '十六进制' },
+]
 /** 密钥文本 */
 const key = ref('')
 /** 输入文本 */
@@ -45,15 +57,8 @@ async function copy(): Promise<void> {
     <p class="tool-hint">RC4 已不安全，仅用于兼容旧系统与学习，别拿它保护重要数据。</p>
 
     <tool-group>
-      <van-radio-group v-model="mode" direction="horizontal">
-        <van-radio name="encrypt">加密</van-radio>
-        <van-radio name="decrypt">解密</van-radio>
-      </van-radio-group>
-      <h3 class="tool-group__title rc4-gap">密文编码</h3>
-      <van-radio-group v-model="enc" direction="horizontal">
-        <van-radio name="base64">Base64</van-radio>
-        <van-radio name="hex">十六进制</van-radio>
-      </van-radio-group>
+      <cell-picker :model-value="mode" title="方向" :options="MODE_OPTIONS" @update:model-value="mode = $event as 'encrypt' | 'decrypt'" />
+      <cell-picker :model-value="enc" title="密文编码" :options="ENC_OPTIONS" @update:model-value="enc = $event as Encoding" />
     </tool-group>
 
     <tool-group title="密钥（UTF-8 文本）">

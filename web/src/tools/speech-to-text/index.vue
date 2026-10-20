@@ -4,6 +4,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { showFailToast, showSuccessToast, showToast } from 'vant'
 import BottomActions from '@/shared/BottomActions.vue'
+import ModelPicker from '@/shared/ModelPicker.vue'
 import ModelMissingNotice from '@/shared/ModelMissingNotice.vue'
 import { copyText } from '@/shared/clipboard'
 import { saveBlob } from '@/shared/image-io'
@@ -22,6 +23,9 @@ import {
   transcriptText,
   type SttState,
 } from './logic'
+
+/** 本工具 id（模型选择器用） */
+const TOOL_ID = 'speech-to-text'
 
 /** 模型 store（只读） */
 const store = useModelsStore()
@@ -149,7 +153,7 @@ onBeforeUnmount(() => {
       <p class="tool-hint">本机识别，音频不落盘不上传；小模型识别有误差，请自己校对。</p>
     </tool-group>
 
-    <bottom-actions
+    <bottom-actions ai
       :actions="{ clear: { disabled: listening || empty }, copy: { disabled: empty }, save: { disabled: empty } }"
       main
       :main-text="mainText"
@@ -158,7 +162,9 @@ onBeforeUnmount(() => {
       @clear="clear"
       @copy="copy"
       @save="save"
-    />
+    >
+      <template #ai><model-picker :tool-id="TOOL_ID" variant="bar" /></template>
+    </bottom-actions>
   </div>
 </template>
 

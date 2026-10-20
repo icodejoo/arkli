@@ -213,24 +213,37 @@ enum class PickKind {
         /** mime 的基本格式，防止乱传 */
         private val MIME_RE = Regex("""^(\*|[\w.+-]+)/(\*|[\w.+*-]+)$""")
 
+        /** 多个 mime 之间的分隔符 */
+        private const val MIME_SEP = ','
+
         /**
-         * 校验 mime 参数是否合法。
+         * 校验 mime 参数是否合法：单个 mime，或逗号分隔的多个（每个都要合法）。
          *
          * @param mime 页面传来的 mime 过滤
          * @return 合法返回 true
          */
-        fun isValid(mime: String): Boolean = mime == MIME_IMAGE_VIDEO || MIME_RE.matches(mime)
+        fun isValid(mime: String): Boolean = mime == MIME_IMAGE_VIDEO || mime.split(MIME_SEP).all { MIME_RE.matches(it.trim()) }
+
+        /**
+         * 拆出交给系统文档选择器的 mime 列表（逗号分隔、去空白）。
+         *
+         * @param mime 如 `text/plain`、`text/plain,application/json`
+         * @return mime 数组
+         */
+        fun documentTypes(mime: String): Array<String> = mime.split(MIME_SEP).map { it.trim() }.filter { it.isNotEmpty() }.toTypedArray()
 
         /**
          * 由 mime 过滤决定选择器种类。
          *
-         * @param mime 如 image 通配、video 通配、两者逗号并列（见 [MIME_IMAGE_VIDEO]）、`image/png`、`text/plain`、全通配
+         * @param mime 如 image 通配、video 通配、两者逗号并列（见 [MIME_IMAGE_VIDEO]）、`image/png`、`text/plain`、全通配；
+         *   其他逗号分隔的多个 mime 一律走文档选择器
          * @return 选择器种类
          */
         fun of(mime: String): PickKind = when {
             mime == FileConst.MIME_IMAGE -> IMAGE
             mime == "video/*" -> VIDEO
             mime == MIME_IMAGE_VIDEO -> IMAGE_VIDEO
+            MIME_SEP in mime -> DOCUMENT
             mime.startsWith("image/") || mime.startsWith("video/") -> SINGLE_MEDIA
             else -> DOCUMENT
         }

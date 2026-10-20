@@ -14,4 +14,5 @@
 - 模型选择器 `<model-picker>` 一律用默认插槽（组件自带的 AI 图标按钮），不要传自定义触发器插槽，除非用户明确指定。
 - 只改了 `web/` 下前端代码时，不要 `build:app`、重装 APK、重启 App，直接用 web 的 HMR 热更新（用户常开着 `pnpm dev:device`，5173 端口，先 `curl` 确认在不在；在就只改文件，页面没连上 vite 时只 `location.reload()` 一次）。只有改了 Kotlin、manifest、原生资源才重新装机。详见 docs/status.md 的「真机热更新」。
 - `<van-notice-bar>` 一律写 `wrapable :scrollable="false"`（多行显示、不滚动）。注意 prop 名是 `wrapable`，写成 `wrap-able` 无效；`vant-usage.test.ts` 会拦截。
+- 单选一律用 `web/src/shared/CellPicker.vue`（`<cell-picker v-model title :options />`，单项禁用用 `option.disabled`），布尔开关用 `van-cell` + `van-switch`，禁止 `van-radio` / `van-checkbox`；`vant-usage.test.ts` 会扫描拦截。
 - 引入新第三方依赖前先问用户，待确认清单在 docs/status.md。

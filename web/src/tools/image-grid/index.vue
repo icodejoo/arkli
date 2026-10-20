@@ -1,6 +1,8 @@
 <script setup lang="ts">
 // 九宫格切图：选网格规格，可先居中裁成正方形，预览切线后逐张导出
 import BottomActions from '@/shared/BottomActions.vue'
+import CellPicker from '@/shared/CellPicker.vue'
+import type { CellOption } from '@/shared/cellPicker'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { showToast } from 'vant'
 import ImageResultList from '@/shared/ImageResultList.vue'
@@ -11,6 +13,13 @@ import { canvasToBlob, createCanvas, ImageTooLargeError, loadBitmap, EDIT_BASIC,
 
 /** 网格规格：键为 `行x列` */
 const GRID_PRESETS = ['3x3', '2x2', '1x3', '3x1', '2x3', '3x2']
+/** 网格规格选项（显示用 × 号） */
+const GRID_OPTIONS: readonly CellOption[] = GRID_PRESETS.map((g) => ({ value: g, label: g.replace('x', '×') }))
+/** 输出格式选项 */
+const FORMAT_OPTIONS: readonly CellOption[] = [
+  { value: 'png', label: 'PNG' },
+  { value: 'jpeg', label: 'JPEG' },
+]
 /** 输出 JPEG 质量 */
 const JPEG_QUALITY = 0.92
 /** 文件名与序号之间的分隔符 */
@@ -121,24 +130,11 @@ onBeforeUnmount(() => image.value?.release())
 
     <tool-group>
       <van-cell-group :border="false">
-        <van-cell title="规格" center>
-          <template #value>
-            <van-radio-group v-model="grid" direction="horizontal" class="ig-radios">
-              <van-radio v-for="g in GRID_PRESETS" :key="g" :name="g">{{ g.replace('x', '×') }}</van-radio>
-            </van-radio-group>
-          </template>
-        </van-cell>
+        <cell-picker v-model="grid" title="规格" :options="GRID_OPTIONS" />
         <van-cell title="居中裁成正方形" center>
           <template #right-icon><van-switch v-model="square" size="22" /></template>
         </van-cell>
-        <van-cell title="输出格式" center>
-          <template #value>
-            <van-radio-group v-model="format" direction="horizontal" class="ig-radios">
-              <van-radio name="png">PNG</van-radio>
-              <van-radio name="jpeg">JPEG</van-radio>
-            </van-radio-group>
-          </template>
-        </van-cell>
+        <cell-picker v-model="format" title="输出格式" :options="FORMAT_OPTIONS" />
       </van-cell-group>
       <p class="tool-hint">按行优先编号：_1 在左上。相册按时间排序，发朋友圈时按编号顺序选图即可。</p>
     </tool-group>
@@ -199,10 +195,5 @@ onBeforeUnmount(() => image.value?.release())
 
 .ig-meta {
   margin: 0 0 $space-2;
-}
-
-.ig-radios {
-  justify-content: flex-end;
-  row-gap: $space-2;
 }
 </style>

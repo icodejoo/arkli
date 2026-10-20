@@ -5,6 +5,7 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAiCatalog } from '@/native/useAiCatalog'
 import ModelPickerSection from './ModelPickerSection.vue'
+import { AI_ACTION_TEXT } from './bottomActions'
 import { AI_CENTER_PATH, buildItems, type PickerItem, type PickerSection } from './modelPicker'
 
 /** 底部按钮文案：去 AI 中心 */
@@ -12,7 +13,7 @@ const MANAGE_TEXT = '查看Ai中心'
 
 /**
  * 单类模型传 `toolId`；多类模型传 `sections`（优先，按顺序分组显示，选中后不关弹层以便连选；触发器简称取第一组）。
- * `variant`：默认触发器样式，`button`（默认）为圆形主色按钮；`bar` 为放进 van-action-bar 的无背景纯图标（不带文字），颜色取 AI 强调色。
+ * `variant`：默认触发器样式，`button`（默认）为圆形主色按钮；`bar` 为放进 van-action-bar 的无背景「cpu-ai 图标 + Ai 文字」，图标与文字都取 AI 强调色。
  * `disabled`：禁用默认触发器（如当前模式用不到模型）；自定义触发器插槽不受影响。
  * `extra`：额外的非模型行（如对联的语料库），排在第一组模型行后面；选任何行都触发 `picked`，选的是额外行时带该行 id。
  */
@@ -61,8 +62,8 @@ function goCenter(): void {
 <template>
   <!-- 触发器插槽：label 为当前模型简称，show 打开弹层；不传则渲染 AI 图标按钮 -->
   <slot :label="label" :show="() => (open = true)">
-    <van-action-bar-icon v-if="variant === 'bar'" class="mp-bar" :disabled="disabled" :aria-label="`选择模型：${label}`" @click.stop="onTrigger">
-      <template #icon><i-arkli-ai class="mp-bar__icon" /></template>
+    <van-action-bar-icon v-if="variant === 'bar'" class="mp-bar" :disabled="disabled" :aria-label="`选择模型：${label}`" :text="AI_ACTION_TEXT" @click.stop="onTrigger">
+      <template #icon><i-arkli-cpu-ai class="mp-bar__icon" /></template>
     </van-action-bar-icon>
     <van-button v-else type="primary" round size="small" :disabled="disabled" :aria-label="`选择模型：${label}`" @click.stop="onTrigger">
       <i-arkli-ai class="mp-trigger__icon" />
@@ -101,12 +102,12 @@ function goCenter(): void {
   color: var(--van-danger-color); /* 整体 danger 红：文字与箭头 */
 }
 
-/* 动作栏版触发器：只有图标、不带文字，用 AI 强调色（与底栏 AI tab 一致） */
+/* 动作栏版触发器：cpu-ai 图标 + Ai 文字，整体用 AI 强调色（与底栏 AI tab 一致）；禁用时沿用 Vant 置灰 */
 .mp-bar:not(.van-action-bar-icon--disabled) {
   color: var(--c-ai-accent);
 }
 
-/* 图标默认用强调色；禁用时不覆盖，沿用 Vant 的置灰色 */
+/* 图标同样用强调色；禁用时不覆盖，沿用 Vant 的置灰色 */
 .mp-bar:not(.van-action-bar-icon--disabled) .mp-bar__icon {
   color: var(--c-ai-accent);
 }

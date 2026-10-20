@@ -1,7 +1,9 @@
 <script setup lang="ts">
 // 表情包制作：在图片或纯色底上加字（经典上下字 + 可拖动文字层），导出 PNG/JPEG，或抖动/闪烁 GIF
 import BottomActions from '@/shared/BottomActions.vue'
+import CellPicker from '@/shared/CellPicker.vue'
 import ColorPicker from '@/shared/ColorPicker.vue'
+import type { CellOption } from '@/shared/cellPicker'
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { showToast } from 'vant'
 import ImageResultList from '@/shared/ImageResultList.vue'
@@ -46,11 +48,31 @@ const RATIOS: Array<{ key: string; label: string; w: number; h: number }> = [
 ]
 /** GIF 长边选项 */
 const GIF_EDGES = [240, 360, 480]
+/** 比例选项 */
+const RATIO_OPTIONS: readonly CellOption[] = RATIOS.map((r) => ({ value: r.key, label: r.label }))
+/** GIF 长边选择器选项 */
+const GIF_EDGE_OPTIONS: readonly CellOption[] = GIF_EDGES.map((e) => ({ value: e, label: String(e) }))
+/** 动效选项 */
+const PRESET_OPTIONS: readonly CellOption[] = [
+  { value: 'none', label: '无' },
+  { value: 'shake', label: '抖动' },
+  { value: 'blink', label: '闪烁' },
+]
+/** 静态图输出格式选项 */
+const FORMAT_OPTIONS: readonly CellOption[] = [
+  { value: 'png', label: 'PNG' },
+  { value: 'jpeg', label: 'JPEG' },
+]
 
 /** 底图来源：图片或纯色 */
 const baseMode = ref<'image' | 'solid'>('solid')
 /** 已缩到工作尺寸的底图（不放进响应式深层） */
 const baseCanvas = shallowRef<HTMLCanvasElement | null>(null)
+/** 底图来源选项；没有导入图片时「图片」禁用 */
+const BASE_OPTIONS = computed<CellOption[]>(() => [
+  { value: 'solid', label: '纯色底' },
+  { value: 'image', label: '图片', disabled: !baseCanvas.value },
+])
 /** 底色 */
 const bgColor = ref(BG_DEFAULT)
 /** 纯色底比例 */
@@ -272,21 +294,8 @@ onBeforeUnmount(() => {
   <div class="tool-page">
     <tool-group title="底图">
       <van-cell-group :border="false">
-        <van-cell title="来源" center>
-          <template #value>
-            <van-radio-group v-model="baseMode" direction="horizontal" class="is-radios">
-              <van-radio name="solid">纯色底</van-radio>
-              <van-radio name="image" :disabled="!baseCanvas">图片</van-radio>
-            </van-radio-group>
-          </template>
-        </van-cell>
-        <van-cell v-if="baseMode === 'solid'" title="比例" center>
-          <template #value>
-            <van-radio-group v-model="ratioKey" direction="horizontal" class="is-radios">
-              <van-radio v-for="r in RATIOS" :key="r.key" :name="r.key">{{ r.label }}</van-radio>
-            </van-radio-group>
-          </template>
-        </van-cell>
+        <cell-picker :model-value="baseMode" title="来源" :options="BASE_OPTIONS" @update:model-value="baseMode = $event as 'image' | 'solid'" />
+        <cell-picker v-if="baseMode === 'solid'" v-model="ratioKey" title="比例" :options="RATIO_OPTIONS" />
         <van-cell title="底色" center>
           <template #value><color-picker v-model="bgColor" label="底色" /></template>
         </van-cell>
@@ -346,30 +355,9 @@ onBeforeUnmount(() => {
 
     <tool-group title="导出">
       <van-cell-group :border="false">
-        <van-cell title="动效" center>
-          <template #value>
-            <van-radio-group v-model="preset" direction="horizontal" class="is-radios">
-              <van-radio name="none">无</van-radio>
-              <van-radio name="shake">抖动</van-radio>
-              <van-radio name="blink">闪烁</van-radio>
-            </van-radio-group>
-          </template>
-        </van-cell>
-        <van-cell v-if="preset === 'none'" title="格式" center>
-          <template #value>
-            <van-radio-group v-model="format" direction="horizontal" class="is-radios">
-              <van-radio name="png">PNG</van-radio>
-              <van-radio name="jpeg">JPEG</van-radio>
-            </van-radio-group>
-          </template>
-        </van-cell>
-        <van-cell v-else title="GIF 长边" center>
-          <template #value>
-            <van-radio-group v-model="gifEdge" direction="horizontal" class="is-radios">
-              <van-radio v-for="e in GIF_EDGES" :key="e" :name="e">{{ e }}</van-radio>
-            </van-radio-group>
-          </template>
-        </van-cell>
+        <cell-picker v-model="preset" title="动效" :options="PRESET_OPTIONS" />
+        <cell-picker v-if="preset === 'none'" v-model="format" title="格式" :options="FORMAT_OPTIONS" />
+        <cell-picker v-else v-model="gifEdge" title="GIF 长边" :options="GIF_EDGE_OPTIONS" />
       </van-cell-group>
     </tool-group>
 
@@ -383,10 +371,6 @@ onBeforeUnmount(() => {
 </template>
 
 <style lang="scss" scoped>
-.is-radios {
-  justify-content: flex-end;
-}
-
 /* 滑杆留出触控空间 */
 .is-slider {
   padding: $space-2 $space-3 $space-3;

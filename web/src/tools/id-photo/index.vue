@@ -2,6 +2,8 @@
 // 证件照：选图 → 选规格 → 拖动/缩放裁剪框 → 换底色（AI 抠图 或 纯色背景抠图兜底）→ 导出
 import BottomActions from '@/shared/BottomActions.vue'
 import ColorPicker from '@/shared/ColorPicker.vue'
+import CellPicker from '@/shared/CellPicker.vue'
+import type { CellOption } from '@/shared/cellPicker'
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { showFailToast, showToast } from 'vant'
 import ImageResultList from '@/shared/ImageResultList.vue'
@@ -69,6 +71,13 @@ const sample = shallowRef<ImageData | null>(null)
 const loading = ref(false)
 /** 规格标识 */
 const specId = ref(ID_SPECS[0].id)
+/** 规格选项：预设规格 + 自定义 */
+const SPEC_OPTIONS = [...ID_SPECS.map((s) => ({ value: s.id, label: s.name })), { value: CUSTOM_ID, label: '自定义' }]
+/** 输出格式选项 */
+const FORMAT_OPTIONS = [
+  { value: 'jpeg', label: 'JPEG' },
+  { value: 'png', label: 'PNG' },
+]
 /** 自定义宽 */
 const customW = ref(413)
 /** 自定义高 */
@@ -77,6 +86,12 @@ const customH = ref(531)
 const crop = ref<CropState>({ frac: FRAC_MAX, cx: 0, cy: 0 })
 /** 抠图方式 */
 const matting = ref<MattingMode>('none')
+/** 抠图方式选项；AI 抠图在模型未就绪时禁用 */
+const MATTING_OPTIONS = computed<CellOption[]>(() => [
+  { value: 'none', label: '保持原背景' },
+  { value: 'chroma', label: '纯色背景抠图' },
+  { value: 'ai', label: 'AI 抠图', disabled: !ready.value },
+])
 /** 底色预设标识，`custom` 为自定义 */
 const bgId = ref(BG_PRESETS[1].id)
 /** 自定义底色 */
@@ -331,10 +346,7 @@ onBeforeUnmount(() => {
     </tool-group>
 
     <tool-group title="规格（300dpi，单位像素）">
-      <van-radio-group v-model="specId" class="spec-list">
-        <van-radio v-for="s in ID_SPECS" :key="s.id" :name="s.id">{{ s.name }}</van-radio>
-        <van-radio :name="CUSTOM_ID">自定义</van-radio>
-      </van-radio-group>
+      <cell-picker v-model="specId" title="规格" :options="SPEC_OPTIONS" />
       <div v-if="specId === CUSTOM_ID" class="custom">
         <van-field v-model.number="customW" type="digit" label="宽" :placeholder="`${CUSTOM_MIN}~${CUSTOM_MAX}`" />
         <van-field v-model.number="customH" type="digit" label="高" :placeholder="`${CUSTOM_MIN}~${CUSTOM_MAX}`" />
@@ -344,11 +356,7 @@ onBeforeUnmount(() => {
     </tool-group>
 
     <tool-group title="背景">
-      <van-radio-group v-model="matting" direction="horizontal" class="mode-list">
-        <van-radio name="none">保持原背景</van-radio>
-        <van-radio name="chroma">纯色背景抠图</van-radio>
-        <van-radio name="ai" :disabled="!ready">AI 抠图</van-radio>
-      </van-radio-group>
+      <cell-picker :model-value="matting" title="抠图方式" :options="MATTING_OPTIONS" @update:model-value="matting = $event as MattingMode" />
 
       <template v-if="matting === 'chroma'">
         <p class="tool-hint">仅适用于纯色背景的照片（白墙、蓝布等）。点「取背景色」后点照片上的背景处，再调容差。</p>
@@ -384,14 +392,7 @@ onBeforeUnmount(() => {
         </div>
       </template>
 
-      <van-cell title="输出格式" center>
-        <template #value>
-          <van-radio-group v-model="format" direction="horizontal" class="is-radios">
-            <van-radio name="jpeg">JPEG</van-radio>
-            <van-radio name="png">PNG</van-radio>
-          </van-radio-group>
-        </template>
-      </van-cell>
+      <cell-picker :model-value="format" title="输出格式" :options="FORMAT_OPTIONS" @update:model-value="format = $event as 'png' | 'jpeg'" />
     </tool-group>
 
     <ai-gap-notice v-if="checked && !ready" feature="AI 抠图" purpose="自动分离人像与背景，适合复杂背景" size="约 25MB" retry :loading="checking" @retry="refresh" />
@@ -406,10 +407,6 @@ onBeforeUnmount(() => {
 </template>
 
 <style lang="scss" scoped>
-.is-radios {
-  justify-content: flex-end;
-}
-
 /* 预览：图自适应宽度，框叠在上面；touch-action 关掉浏览器手势，交给 Pointer Events */
 .stage {
   position: relative;
@@ -437,18 +434,6 @@ onBeforeUnmount(() => {
     box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
     pointer-events: none;
   }
-}
-
-.spec-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: $space-2 $space-4;
-  margin-bottom: $space-2;
-}
-
-.mode-list {
-  margin-bottom: $space-3;
-  gap: $space-2 0;
 }
 
 .is-slider {

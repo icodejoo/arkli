@@ -1,7 +1,10 @@
 <script setup lang="ts">
 // 抠图：选图 → 本地模型（人像 MODNet / 通用 U2Net-p）→ 透明 PNG；棋盘格预览，可换底色，保存 PNG（透明）或 JPG（带底色）、分享
 import BottomActions from '@/shared/BottomActions.vue'
+import ModelPicker from '@/shared/ModelPicker.vue'
+import CellPicker from '@/shared/CellPicker.vue'
 import ColorPicker from '@/shared/ColorPicker.vue'
+import type { CellOption } from '@/shared/cellPicker'
 import ModelMissingNotice from '@/shared/ModelMissingNotice.vue'
 import { computed, onBeforeUnmount, onDeactivated, ref, shallowRef } from 'vue'
 import { showToast } from 'vant'
@@ -55,6 +58,8 @@ const image = shallowRef<PickedImage | null>(null)
 const busy = ref(false)
 /** 抠图结果 */
 const result = shallowRef<MattingResult | null>(null)
+/** 背景选择器选项 */
+const BG_CHOICES: readonly CellOption[] = BG_OPTIONS.map((o) => ({ value: o.kind, label: o.label }))
 /** 背景选项 */
 const bgKind = ref<BgKind>('transparent')
 /** 自定义背景色 */
@@ -260,16 +265,14 @@ onBeforeUnmount(cleanup)
           <img class="mt-stage__img" :src="resultSrc" alt="抠图结果" />
         </div>
         <p class="tool-hint">{{ summary }}。点图可全屏预览。</p>
-        <van-radio-group v-model="bgKind" direction="horizontal" class="mt-bg">
-          <van-radio v-for="o in BG_OPTIONS" :key="o.kind" :name="o.kind">{{ o.label }}</van-radio>
-        </van-radio-group>
+        <cell-picker :model-value="bgKind" title="背景" :options="BG_CHOICES" @update:model-value="bgKind = $event as BgKind" />
         <color-picker v-if="bgKind === 'custom'" v-model="customHex" label="背景色" />
         <p class="tool-hint">透明保存为 PNG；选了底色保存为 JPG。</p>
       </template>
     </tool-group>
 
     <!-- 底部动作栏：相册 / 拍照选图，保存与分享结果，主按钮开始抠图 -->
-    <bottom-actions
+    <bottom-actions ai
       :actions="{ save: { disabled: !result || busy }, share: { disabled: !result || busy } }"
       album
       photo
@@ -281,7 +284,9 @@ onBeforeUnmount(cleanup)
       @save="save"
       @share="shareResult"
       @main="run"
-    />
+    >
+      <template #ai><model-picker :tool-id="TOOL_ID" variant="bar" /></template>
+    </bottom-actions>
   </div>
 </template>
 
@@ -348,10 +353,5 @@ onBeforeUnmount(cleanup)
     width: 100%;
     height: auto;
   }
-}
-
-/* 背景选项一行 */
-.mt-bg {
-  margin: $space-3 0;
 }
 </style>

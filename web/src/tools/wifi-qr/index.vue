@@ -3,6 +3,8 @@
 import BottomActions from '@/shared/BottomActions.vue'
 import { computed, nextTick, ref, watch } from 'vue'
 import { showFailToast, showSuccessToast, showToast } from 'vant'
+import CellPicker from '@/shared/CellPicker.vue'
+import type { CellOption } from '@/shared/cellPicker'
 import { isNativeAvailable } from '@/native/bridge'
 import { openSettings } from '@/native/system'
 import { canvasToBlob, saveBlob } from '@/shared/image-io'
@@ -24,6 +26,8 @@ const ssid = ref('')
 const password = ref('')
 /** 加密类型 */
 const auth = ref<WifiAuth>('WPA')
+/** 加密方式选项 */
+const AUTH_PICK_OPTIONS: CellOption[] = AUTH_OPTIONS.map((o) => ({ value: o.id, label: o.label }))
 /** 是否隐藏 */
 const hidden = ref(false)
 /** 画布元素 */
@@ -94,9 +98,7 @@ async function openWifi(): Promise<void> {
     <tool-group title="网络信息">
       <van-field v-model="ssid" label="名称" placeholder="WiFi 名称（SSID）" clearable />
       <van-field v-if="auth !== 'nopass'" v-model="password" label="密码" placeholder="WiFi 密码" clearable />
-      <van-radio-group v-model="auth" direction="horizontal" class="wq-auth">
-        <van-radio v-for="o in AUTH_OPTIONS" :key="o.id" :name="o.id">{{ o.label }}</van-radio>
-      </van-radio-group>
+      <cell-picker :model-value="auth" title="加密方式" :options="AUTH_PICK_OPTIONS" @update:model-value="auth = $event as WifiAuth" />
       <van-cell center title="隐藏网络">
         <template #right-icon><van-switch v-model="hidden" size="20" /></template>
       </van-cell>
@@ -132,9 +134,6 @@ async function openWifi(): Promise<void> {
 }
 .wq-empty {
   text-align: center;
-}
-.wq-auth {
-  margin: $space-3 0;
 }
 .wq-err {
   color: var(--c-error);

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 日期计算器：日期间隔、日期推算两个标签页
 import { computed, ref } from 'vue'
+import CellPicker from '@/shared/CellPicker.vue'
 import { WEEK_NAMES, dateDiff, dayOfYear, formatDate, parseDate, shiftDate, toDayNumber, weekday, type ShiftUnit } from './logic'
 
 /** 推算单位可选项 */
@@ -9,6 +10,11 @@ const UNITS: { value: ShiftUnit; label: string }[] = [
   { value: 'week', label: '周' },
   { value: 'month', label: '个月' },
   { value: 'year', label: '年' },
+]
+/** 推算方向选项：之后为 1，之前为 -1 */
+const SIGN_OPTIONS = [
+  { value: 1, label: '之后' },
+  { value: -1, label: '之前' },
 ]
 /** 起始日期字段标签 */
 const LABEL_START = '起始日期'
@@ -99,22 +105,9 @@ const shiftResult = computed(() => {
       <tool-group>
         <van-cell-group>
           <van-field v-model="baseText" :label="LABEL_START" type="date" />
-          <van-field label="方向">
-            <template #input>
-              <van-radio-group v-model="sign" direction="horizontal">
-                <van-radio :name="1">之后</van-radio>
-                <van-radio :name="-1">之前</van-radio>
-              </van-radio-group>
-            </template>
-          </van-field>
+          <cell-picker :model-value="sign" title="方向" :options="SIGN_OPTIONS" @update:model-value="sign = $event as 1 | -1" />
           <van-field v-model="amountText" label="数量" type="digit" placeholder="整数" clearable />
-          <van-field label="单位">
-            <template #input>
-              <van-radio-group v-model="unit" direction="horizontal">
-                <van-radio v-for="u in UNITS" :key="u.value" :name="u.value">{{ u.label }}</van-radio>
-              </van-radio-group>
-            </template>
-          </van-field>
+          <cell-picker :model-value="unit" title="单位" :options="UNITS" @update:model-value="unit = $event as ShiftUnit" />
         </van-cell-group>
       </tool-group>
       <p v-if="shiftResult && 'error' in shiftResult" class="tool-result tool-result--error">{{ shiftResult.error }}</p>

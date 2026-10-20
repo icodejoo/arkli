@@ -1,7 +1,14 @@
 <script setup lang="ts">
 // BMI 与基础代谢：中国成人分级 + Mifflin-St Jeor，仅供参考
 import { computed, ref } from 'vue'
+import CellPicker from '@/shared/CellPicker.vue'
 import { ACTIVITY_LEVELS, bmiLevel, calcBmi, calcBmr, calcTdee, normalWeightRange, type Sex } from './logic'
+
+/** 性别选项 */
+const SEX_OPTIONS = [
+  { value: 'male', label: '男' },
+  { value: 'female', label: '女' },
+]
 
 /** 性别 */
 const sex = ref<Sex>('male')
@@ -35,10 +42,7 @@ const result = computed(() => {
 <template>
   <div class="tool-page">
     <tool-group title="身体数据">
-      <van-radio-group v-model="sex" direction="horizontal">
-        <van-radio name="male">男</van-radio>
-        <van-radio name="female">女</van-radio>
-      </van-radio-group>
+      <cell-picker :model-value="sex" title="性别" :options="SEX_OPTIONS" @update:model-value="sex = $event as Sex" />
       <van-field v-model="age" type="digit" label="年龄" input-align="right"><template #button>岁</template></van-field>
       <van-field v-model="height" type="number" label="身高" input-align="right"><template #button>cm</template></van-field>
       <van-field v-model="weight" type="number" label="体重" input-align="right"><template #button>kg</template></van-field>

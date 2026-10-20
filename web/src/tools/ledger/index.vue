@@ -1,6 +1,8 @@
 <script setup lang="ts">
 // 极简记账：数据存 IndexedDB，按月看收支与分类占比，可导出 JSON/CSV、导入 JSON
 import BottomActions from '@/shared/BottomActions.vue'
+import CellPicker from '@/shared/CellPicker.vue'
+import type { CellOption } from '@/shared/cellPicker'
 import { computed, onMounted, ref } from 'vue'
 import { showConfirmDialog, showFailToast, showSuccessToast, showToast } from 'vant'
 import { saveBlob } from '@/shared/image-io'
@@ -23,6 +25,8 @@ const CAT_KEY = 'arkli:ledger:categories'
 const EXPORT_KEY = 'arkli:ledger:lastExport'
 /** 方向列表，用于渲染切换按钮 */
 const KINDS: Kind[] = ['out', 'in']
+/** 方向选择器选项（分类占比与记账表单共用） */
+const KIND_OPTIONS: readonly CellOption[] = KINDS.map((k) => ({ value: k, label: KIND_LABEL[k] }))
 
 /** 账目仓库，加载完成前为 undefined */
 let store: RecordStore<Entry> | undefined
@@ -277,9 +281,7 @@ onMounted(() => {
     </tool-group>
 
     <tool-group title="分类占比">
-      <van-radio-group v-model="shareKind" direction="horizontal">
-        <van-radio v-for="k in KINDS" :key="k" :name="k">{{ KIND_LABEL[k] }}</van-radio>
-      </van-radio-group>
+      <cell-picker :model-value="shareKind" title="类型" :options="KIND_OPTIONS" @update:model-value="shareKind = $event as Kind" />
       <p v-if="!shares.length" class="tool-hint lg-gap">这个月还没有{{ KIND_LABEL[shareKind] }}记录</p>
       <ul v-else class="lg-bars">
         <li v-for="s in shares" :key="s.category">
@@ -322,9 +324,7 @@ onMounted(() => {
     <van-popup v-model:show="showForm" position="bottom" round closeable teleport="body">
       <div class="lg-form">
         <h3 class="tool-group__title">记一笔</h3>
-        <van-radio-group :model-value="fKind" direction="horizontal" @update:model-value="setFormKind">
-          <van-radio v-for="k in KINDS" :key="k" :name="k">{{ KIND_LABEL[k] }}</van-radio>
-        </van-radio-group>
+        <cell-picker :model-value="fKind" title="类型" :options="KIND_OPTIONS" @update:model-value="setFormKind($event as Kind)" />
         <van-field v-model="fAmount" label="金额" type="number" inputmode="decimal" placeholder="例如 12.5" />
         <van-field v-model="fDate" label="日期" type="date" />
         <van-field v-model="fNote" label="备注" :maxlength="MAX_NOTE_LEN" placeholder="选填" />

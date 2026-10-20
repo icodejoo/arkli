@@ -3,6 +3,8 @@
 import BottomActions from '@/shared/BottomActions.vue'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { showFailToast, showSuccessToast } from 'vant'
+import CellPicker from '@/shared/CellPicker.vue'
+import type { CellOption } from '@/shared/cellPicker'
 import { canvasToBlob, loadBitmap, EDIT_FULL, pickImages, saveBlob, type PickedImage } from '@/shared/image-io'
 import {
   BORDER_MAX,
@@ -41,6 +43,8 @@ const text = ref('')
 const settled = ref('')
 /** 纠错等级 */
 const ecc = ref<EccLevel>('M')
+/** 纠错等级选项：字母 + 大致恢复能力 */
+const ECC_PICK_OPTIONS: CellOption[] = ECC_OPTIONS.map((o) => ({ value: o.id, label: `${o.label} ${o.hint}` }))
 /** 边距（模块数） */
 const border = ref(4)
 /** 目标边长（像素） */
@@ -182,10 +186,9 @@ async function save(): Promise<void> {
     </tool-group>
     <tool-group v-else-if="!settled" class="qr-empty tool-hint">输入内容后，二维码会显示在这里</tool-group>
 
-    <tool-group title="纠错等级（越高越抗污损，但码更密）">
-      <van-radio-group v-model="ecc" direction="horizontal">
-        <van-radio v-for="o in ECC_OPTIONS" :key="o.id" :name="o.id">{{ o.label }} {{ o.hint }}</van-radio>
-      </van-radio-group>
+    <tool-group title="纠错与尺寸">
+      <cell-picker :model-value="ecc" title="纠错等级" :options="ECC_PICK_OPTIONS" @update:model-value="ecc = $event as EccLevel" />
+      <p class="tool-hint">纠错等级越高越抗污损，但码更密。</p>
       <h3 class="tool-group__title qr-gap">边距：{{ border }} 格</h3>
       <van-slider v-model="border" :min="BORDER_MIN" :max="BORDER_MAX" />
       <h3 class="tool-group__title qr-gap">尺寸：{{ size }} px</h3>

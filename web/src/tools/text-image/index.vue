@@ -2,6 +2,8 @@
 // 文字转图：输入文字排版成图片，自动换行，超过高度上限自动分页成多张
 import BottomActions from '@/shared/BottomActions.vue'
 import ColorPicker from '@/shared/ColorPicker.vue'
+import CellPicker from '@/shared/CellPicker.vue'
+import type { CellOption } from '@/shared/cellPicker'
 import { computed, ref } from 'vue'
 import { showToast } from 'vant'
 import ImageResultList from '@/shared/ImageResultList.vue'
@@ -13,6 +15,14 @@ import { alignX, BG_PRESETS, footerFontSize, footerHeight, gradientLine, layoutP
 const FONT_FAMILY = '-apple-system, "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif'
 /** 宽度预设 */
 const WIDTH_OPTIONS = [750, 1080, 1440]
+/** 宽度选择器选项 */
+const WIDTH_PICK_OPTIONS: CellOption[] = WIDTH_OPTIONS.map((w) => ({ value: w, label: String(w) }))
+/** 对齐方式选项 */
+const ALIGN_OPTIONS: CellOption[] = [
+  { value: 'left', label: '靠左' },
+  { value: 'center', label: '居中' },
+  { value: 'right', label: '靠右' },
+]
 /** 单张高度上限预设：0 为只受画布上限约束 */
 const CAP_OPTIONS = [
   { text: '不限（受画布上限）', value: 0 },
@@ -139,22 +149,8 @@ async function run(): Promise<void> {
 
     <tool-group>
       <van-cell-group :border="false">
-        <van-cell title="宽度" center>
-          <template #value>
-            <van-radio-group v-model="width" direction="horizontal" class="is-radios">
-              <van-radio v-for="w in WIDTH_OPTIONS" :key="w" :name="w">{{ w }}</van-radio>
-            </van-radio-group>
-          </template>
-        </van-cell>
-        <van-cell title="对齐" center>
-          <template #value>
-            <van-radio-group v-model="align" direction="horizontal" class="is-radios">
-              <van-radio name="left">靠左</van-radio>
-              <van-radio name="center">居中</van-radio>
-              <van-radio name="right">靠右</van-radio>
-            </van-radio-group>
-          </template>
-        </van-cell>
+        <cell-picker v-model="width" title="宽度" :options="WIDTH_PICK_OPTIONS" />
+        <cell-picker :model-value="align" title="对齐" :options="ALIGN_OPTIONS" @update:model-value="align = $event as TextAlign" />
         <van-cell title="字号" :value="`${fontSize} px`" />
       </van-cell-group>
       <div class="is-slider"><van-slider v-model="fontSize" :min="20" :max="96" /></div>
@@ -217,10 +213,6 @@ async function run(): Promise<void> {
 </template>
 
 <style lang="scss" scoped>
-.is-radios {
-  justify-content: flex-end;
-}
-
 /* 滑杆留出触控空间 */
 .is-slider {
   padding: $space-2 $space-3 $space-3;

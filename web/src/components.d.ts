@@ -12,6 +12,8 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     IArkliAi: typeof import('~icons/arkli/ai')['default']
+    IArkliCircuitBoard: typeof import('~icons/arkli/circuit-board')['default']
+    IArkliCpuAi: typeof import('~icons/arkli/cpu-ai')['default']
     IArkliSave: typeof import('~icons/arkli/save')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']

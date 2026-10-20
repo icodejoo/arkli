@@ -255,19 +255,19 @@ describe('适用性回归（registry 里的真实工具）', () => {
 })
 
 describe('适用性（声明了文本任务的工具）', () => {
-  it('声明 summarize/prompt：Qwen（L2）与可用的交接（L3）都在，补 L4 占位', () => {
+  it('声明 summarize/prompt：只有 Qwen（L2）与 L4 占位，交接不进目录', () => {
     const items = catalogFor(['summarize', 'prompt'])
-    expect(items.map((i) => i.key)).toEqual(['local-qwen', 'intent-handoff', L4_OPENAI_ID])
+    expect(items.map((i) => i.key)).toEqual(['local-qwen', L4_OPENAI_ID])
     expect(items[0]).toMatchObject({ desc: '摘要、问答', entries: { summarize: 'native.ai.run', prompt: 'native.ai.run' } })
-    expect(items[1]).toMatchObject({ layer: 'L3', status: 'ready' })
+    expect(items.some((i) => i.layer === 'L3')).toBe(false)
   })
-  it('本机 AI 不可用就隐藏（不置灰）；本地模型没下载仍显示为未下载', () => {
+  it('交接即使不可用也不出现；本地模型没下载仍显示为未下载', () => {
     const items = catalogFor(['summarize'], [], nativeProviders({ 'intent-handoff': { available: false, reason: 'no_handler' } }))
     expect(items.map((i) => i.key)).toEqual(['local-qwen', L4_OPENAI_ID])
     expect(items[0].status).toBe('missing')
   })
-  it('只写任务名不限入口：翻译类工具若不限入口，交接也会出现', () => {
-    expect(catalogFor(['translate']).map((i) => i.key)).toEqual(['local-nllb', 'local-qwen', 'intent-handoff', L4_OPENAI_ID])
+  it('只写任务名不限入口：翻译类工具的目录里也没有交接', () => {
+    expect(catalogFor(['translate']).map((i) => i.key)).toEqual(['local-nllb', 'local-qwen', L4_OPENAI_ID])
   })
 })
 
@@ -300,7 +300,7 @@ describe('状态与合并', () => {
   })
   it('按层排序，同层保持注册顺序', () => {
     const items = catalogFor(['translate'])
-    expect(items.map((i) => i.layer)).toEqual(['L1', 'L2', 'L3', 'L4'])
+    expect(items.map((i) => i.layer)).toEqual(['L1', 'L2', 'L4'])
   })
 })
 
@@ -335,11 +335,12 @@ describe('选择解析', () => {
     expect(resolveChoice('x', [])).toBeNull()
     expect(resolveChoice('x', catalogFor(['summarize'], [], []))).toBeNull()
   })
-  it('不会自动回落到本机 AI 交接（隐私：默认不启用），但用户选过的交接照常保留', () => {
+  it('存量选择值是交接时：目录里没有它，正常回落到 L1/L2，没有可回落项则为 null', () => {
     const onlyHandoff = catalogFor(['summarize'], [], nativeProviders().filter((p) => p.id === 'intent-handoff'))
-    expect(onlyHandoff.map((i) => i.key)).toEqual(['intent-handoff', L4_OPENAI_ID])
-    expect(resolveChoice(null, onlyHandoff)).toBeNull()
-    expect(resolveChoice('intent-handoff', onlyHandoff)).toBe('intent-handoff')
+    expect(onlyHandoff.map((i) => i.key)).toEqual([L4_OPENAI_ID])
+    expect(resolveChoice('intent-handoff', onlyHandoff)).toBeNull()
+    expect(resolveChoice('intent-handoff', catalogFor(['summarize']))).toBe('local-qwen')
+    expect(resolveChoice('intent-handoff', catalogFor(['translate']))).toBe('local-nllb')
   })
 })
 
@@ -389,14 +390,14 @@ describe('旧值迁移', () => {
 })
 
 describe('会话（预热跟随）', () => {
-  it('目录项的 session 来自原生；交接、过渡项、L4 占位都没有会话', () => {
+  it('目录项的 session 来自原生；过渡项、L4 占位都没有会话', () => {
     const items = catalogFor(['translate'], [{ modelId: 'ocr', title: 'OCR', desc: '' }])
     const byKey = Object.fromEntries(items.map((i) => [i.key, i.session]))
-    expect(byKey).toEqual({ 'local-nllb': true, 'local-qwen': true, 'intent-handoff': false, [modelKey('ocr')]: false, [L4_OPENAI_ID]: false })
+    expect(byKey).toEqual({ 'local-nllb': true, 'local-qwen': true, [modelKey('ocr')]: false, [L4_OPENAI_ID]: false })
   })
   it('sessionProviderOf：只有声明了会话的才返回提供者 id', () => {
     const items = catalogFor(['translate'])
-    expect(items.map(sessionProviderOf)).toEqual(['local-nllb', 'local-qwen', undefined, undefined])
+    expect(items.map(sessionProviderOf)).toEqual(['local-nllb', 'local-qwen', undefined])
     expect(sessionProviderOf(null)).toBeUndefined()
     expect(sessionProviderOf(undefined)).toBeUndefined()
   })

@@ -5,7 +5,9 @@
 import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, ref, shallowRef } from 'vue'
 import { showConfirmDialog, showFailToast, showSuccessToast, showToast } from 'vant'
+import CellPicker from '@/shared/CellPicker.vue'
 import ColorPicker from '@/shared/ColorPicker.vue'
+import type { CellOption } from '@/shared/cellPicker'
 import ImageThumbList from '@/shared/ImageThumbList.vue'
 import ImageResultList from '@/shared/ImageResultList.vue'
 import NativeResultList, { type NativeRow } from '@/shared/NativeResultList.vue'
@@ -64,6 +66,16 @@ const ROW_ID_STITCH = 1
 const ROW_ID_COMPRESS = 2
 /** 取消错误码 */
 const CODE_CANCELLED = 'CANCELLED'
+/** 拼接方向选项 */
+const DIRECTION_OPTIONS: readonly CellOption[] = [
+  { value: 'v', label: '纵向' },
+  { value: 'h', label: '横向' },
+]
+/** 输出格式选项 */
+const FORMAT_OPTIONS: readonly CellOption[] = [
+  { value: 'png', label: 'PNG' },
+  { value: 'jpeg', label: 'JPEG' },
+]
 
 /** 已选图片（顺序即拼接顺序） */
 const images = ref<PickedImage[]>([])
@@ -116,6 +128,15 @@ const layout = computed(() =>
 const tooBig = computed(() => !native && layout.value.width > 0 && exceedsCanvas(layout.value.width, layout.value.height))
 /** PNG 像素多时的提示 */
 const slowHint = computed(() => pngSlowHint(format.value, layout.value.width, layout.value.height))
+/** 对齐选项：文案随方向变化 */
+const alignOptions = computed<CellOption[]>(() => {
+  const v = direction.value === 'v'
+  return [
+    { value: 'start', label: v ? '靠左' : '靠上' },
+    { value: 'center', label: '居中' },
+    { value: 'end', label: v ? '靠右' : '靠下' },
+  ]
+})
 /** 统一宽/高的轴向文案 */
 const unifyLabel = computed(() => (direction.value === 'v' ? '统一宽度' : '统一高度'))
 /** 拼接结果列表行 */
@@ -369,26 +390,11 @@ onBeforeUnmount(() => {
 
     <tool-group>
       <van-cell-group :border="false">
-        <van-cell title="方向" center>
-          <template #value>
-            <van-radio-group v-model="direction" direction="horizontal" class="is-radios">
-              <van-radio name="v">纵向</van-radio>
-              <van-radio name="h">横向</van-radio>
-            </van-radio-group>
-          </template>
-        </van-cell>
+        <cell-picker v-model="direction" title="方向" :options="DIRECTION_OPTIONS" />
         <van-cell :title="unifyLabel" center>
           <template #right-icon><van-switch v-model="unify" size="22" /></template>
         </van-cell>
-        <van-cell v-if="!unify" title="对齐" center>
-          <template #value>
-            <van-radio-group v-model="align" direction="horizontal" class="is-radios">
-              <van-radio name="start">{{ direction === 'v' ? '靠左' : '靠上' }}</van-radio>
-              <van-radio name="center">居中</van-radio>
-              <van-radio name="end">{{ direction === 'v' ? '靠右' : '靠下' }}</van-radio>
-            </van-radio-group>
-          </template>
-        </van-cell>
+        <cell-picker v-if="!unify" v-model="align" title="对齐" :options="alignOptions" />
         <van-cell title="间距" :value="`${gap} px`" />
       </van-cell-group>
       <div class="is-slider"><van-slider v-model="gap" :min="0" :max="GAP_MAX" /></div>
@@ -396,14 +402,7 @@ onBeforeUnmount(() => {
         <van-cell title="背景色" center>
           <template #value><color-picker v-model="bg" label="背景色" /></template>
         </van-cell>
-        <van-cell title="输出格式" center>
-          <template #value>
-            <van-radio-group v-model="format" direction="horizontal" class="is-radios">
-              <van-radio name="png">PNG</van-radio>
-              <van-radio name="jpeg">JPEG</van-radio>
-            </van-radio-group>
-          </template>
-        </van-cell>
+        <cell-picker v-model="format" title="输出格式" :options="FORMAT_OPTIONS" />
       </van-cell-group>
       <p v-if="slowHint" class="tool-hint is-warn">{{ slowHint }}</p>
       <p v-if="layout.width" class="tool-hint" :class="{ 'is-warn': tooBig }">
@@ -482,10 +481,6 @@ onBeforeUnmount(() => {
 </template>
 
 <style lang="scss" scoped>
-.is-radios {
-  justify-content: flex-end;
-}
-
 /* 滑杆留出触控空间 */
 .is-slider {
   padding: $space-2 $space-3 $space-3;

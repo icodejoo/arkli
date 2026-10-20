@@ -3,6 +3,8 @@
 import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { showToast } from 'vant'
+import CellPicker from '@/shared/CellPicker.vue'
+import type { CellOption } from '@/shared/cellPicker'
 import { BUFFER_SECONDS, clampVolume, DEFAULT_VOLUME, fillNoise, formatRemaining, MS_PER_MIN, NOISES, remainingMs, TIMER_OPTIONS, type NoiseKind } from './logic'
 
 /** 音频不可用提示 */
@@ -20,6 +22,8 @@ const volume = ref(Math.round(DEFAULT_VOLUME * 100))
 const playing = ref(false)
 /** 定时关闭分钟数，0 为不定时 */
 const timerMin = ref(0)
+/** 定时选项：0 为不定时 */
+const TIMER_PICK_OPTIONS: CellOption[] = [{ value: 0, label: '不定时' }, ...TIMER_OPTIONS.map((m) => ({ value: m, label: `${m} 分钟` }))]
 /** 关闭时刻 */
 const endAt = ref<number | null>(null)
 /** 当前时刻（驱动倒计时显示） */
@@ -149,11 +153,8 @@ onBeforeUnmount(() => {
       <van-slider v-model="volume" :min="0" :max="100" />
     </tool-group>
 
-    <tool-group title="定时关闭">
-      <van-radio-group v-model="timerMin" direction="horizontal">
-        <van-radio :name="0">不定时</van-radio>
-        <van-radio v-for="m in TIMER_OPTIONS" :key="m" :name="m">{{ m }} 分钟</van-radio>
-      </van-radio-group>
+    <tool-group>
+      <cell-picker v-model="timerMin" title="定时关闭" :options="TIMER_PICK_OPTIONS" />
       <p v-if="remainText" class="tool-hint">剩余 {{ remainText }}</p>
     </tool-group>
 

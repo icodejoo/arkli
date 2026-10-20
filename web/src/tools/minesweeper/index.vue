@@ -1,6 +1,8 @@
 <script setup lang="ts">
 // 扫雷：点开格子，长按插旗；首次点击必不踩雷
 import BottomActions from '@/shared/BottomActions.vue'
+import CellPicker from '@/shared/CellPicker.vue'
+import type { CellOption } from '@/shared/cellPicker'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { createLongPress } from '@/views/useLongPress'
 import { createGame, formatTime, LEVELS, minesLeft, reveal, toggleFlag, type Game, type Level } from './logic'
@@ -9,6 +11,9 @@ import { createGame, formatTime, LEVELS, minesLeft, reveal, toggleFlag, type Gam
 const TICK_MS = 1000
 /** 数字配色，下标为周围雷数 */
 const NUM_COLORS = ['', '#1e6fff', '#2e9e4f', '#e03131', '#1c3d99', '#a61e4d', '#0c8599', '#212529', '#868e96']
+
+/** 难度选项 */
+const LEVEL_OPTIONS: readonly CellOption[] = LEVELS.map((l) => ({ value: l.id, label: l.name }))
 
 /** 当前难度 */
 const level = ref<Level>(LEVELS[0])
@@ -20,6 +25,14 @@ const seconds = ref(0)
 const flagMode = ref(false)
 /** 计时器句柄 */
 let timer: ReturnType<typeof setInterval> | undefined
+
+/**
+ * 按难度标识切换难度。
+ * @param id 难度标识
+ */
+function setLevel(id: Level['id']): void {
+  level.value = LEVELS.find((l) => l.id === id) ?? LEVELS[0]
+}
 
 /** 长按插旗 */
 const press = createLongPress((key) => {
@@ -76,9 +89,7 @@ onBeforeUnmount(stopTimer)
 
 <template>
   <div class="tool-page">
-    <van-radio-group v-model="level" direction="horizontal">
-      <van-radio v-for="l in LEVELS" :key="l.id" :name="l">{{ l.name }}</van-radio>
-    </van-radio-group>
+    <cell-picker :model-value="level.id" title="难度" :options="LEVEL_OPTIONS" @update:model-value="setLevel($event as Level['id'])" />
 
     <div class="ms-head">
       <span class="ms-lcd">💣 {{ leftText }}</span>

@@ -1,14 +1,10 @@
 <script setup lang="ts">
-// 根组件：路由出口（工具页 iOS 风格推入/弹出，底栏 tab 之间淡入淡出）+ 底部 tab 栏，并让 Vant 暗色类跟随系统深浅色
+// 根组件：路由出口（工具页 iOS 风格推入/弹出，底栏 tab 之间淡入淡出）+ 底部 tab 栏，并按主题设置（亮/暗/跟随系统）切 Vant 暗色类
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useKeyboardOpen } from '@/shared/useKeyboardOpen'
+import { initTheme } from '@/shared/theme'
 import { holdScroll, isCachedRoute, isTabPath, pageTransition, releaseScroll, type PageTransition } from '@/router/transition'
-
-/** Vant 暗色主题的 class 名 */
-const DARK_CLASS = 'van-theme-dark'
-/** 深色模式媒体查询 */
-const DARK_QUERY = '(prefers-color-scheme: dark)'
 
 /** keep-alive 缓存的视图组件名（与 CACHED_ROUTES 对应） */
 const CACHED_VIEWS = ['HomeView', 'AiView', 'FavoritesView', 'SettingsView']
@@ -72,22 +68,15 @@ function onAfterEnter(el: Element): void {
   restoring = 0
 }
 
-/** 系统深浅色变化监听器 */
-let mql: MediaQueryList | undefined
-
-/** 按系统深浅色切换 html 上的暗色类 */
-function applyScheme(): void {
-  document.documentElement.classList.toggle(DARK_CLASS, !!mql?.matches)
-}
+/** 取消系统深浅色监听的函数 */
+let stopTheme: (() => void) | undefined
 
 onMounted(() => {
-  mql = window.matchMedia(DARK_QUERY)
-  applyScheme()
-  mql.addEventListener('change', applyScheme)
+  stopTheme = initTheme()
 })
 
 onBeforeUnmount(() => {
-  mql?.removeEventListener('change', applyScheme)
+  stopTheme?.()
   removeGuard()
 })
 </script>

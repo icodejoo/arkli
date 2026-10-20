@@ -102,6 +102,11 @@ interface ActivityHost {
     fun setOrientation(landscape: Boolean) = Unit
 
     /**
+     * 主题偏好已变更（页面切了亮/暗/跟随系统）：宿主据此重设状态栏、导航栏图标深浅。默认什么都不做。
+     */
+    fun onThemeChanged() = Unit
+
+    /**
      * 请求系统授权修改一张 MediaStore 图片（API 30+ 的 `createWriteRequest` 确认框）。
      * 默认实现返回 false（不支持），由 Activity 覆盖。
      *

@@ -5,6 +5,8 @@ import { showFailToast, showSuccessToast, showToast } from 'vant'
 import { isNativeAvailable } from '@/native/bridge'
 import { openSettings } from '@/native/system'
 import { copyText } from '@/shared/clipboard'
+import CellPicker from '@/shared/CellPicker.vue'
+import type { CellOption } from '@/shared/cellPicker'
 import {
   ANIM_MAX,
   ANIM_MIN,
@@ -122,9 +124,7 @@ async function openDev(): Promise<void> {
     <tool-group title="电量伪装">
       <p class="tool-hint">只是让系统显示假电量，真实电池不变；用完请执行 reset。</p>
       <van-field v-model="level" type="digit" :label="`电量（${BATTERY_MIN}~${BATTERY_MAX}）`" :error-message="batCmd.error" />
-      <van-radio-group v-model="status" direction="horizontal" class="sh-gap">
-        <van-radio v-for="o in BATTERY_STATUS_OPTIONS" :key="o.value" :name="o.value">{{ o.label }}</van-radio>
-      </van-radio-group>
+      <cell-picker v-model="status" title="电池状态" :options="BATTERY_STATUS_OPTIONS" />
       <van-cell center title="模拟接入交流电">
         <template #right-icon><van-switch v-model="ac" size="20" /></template>
       </van-cell>
@@ -136,9 +136,7 @@ async function openDev(): Promise<void> {
 
     <tool-group title="动画速度">
       <p class="tool-hint">倍数越大动画越慢，「关」即 0；系统默认是 1。</p>
-      <van-radio-group v-model="scale" direction="horizontal" class="sh-gap">
-        <van-radio v-for="p in ANIM_PRESETS" :key="p.value" :name="p.value">{{ p.label }}</van-radio>
-      </van-radio-group>
+      <cell-picker v-model="scale" title="预设倍数" :options="ANIM_PRESETS" />
       <van-field v-model="scale" type="number" :label="`自定义（${ANIM_MIN}~${ANIM_MAX}）`" :error-message="animCmd.error" />
       <pre class="sh-cmd">{{ animCmd.text }}</pre>
       <van-button size="small" type="primary" :disabled="!animCmd.text" @click="copy(animCmd.text)">复制命令</van-button>
@@ -168,8 +166,5 @@ async function openDev(): Promise<void> {
   background: var(--c-bg, transparent);
   border: 1px solid var(--c-border);
   border-radius: 4px;
-}
-.sh-gap {
-  margin: $space-3 0;
 }
 </style>

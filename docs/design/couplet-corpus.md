@@ -33,7 +33,7 @@ summary: 73.6 万副对联语料的数据包格式、原生随机访问、前端
 - **对下联**：`aiCouplet`（local-couplet，上联 ≤14 字，只允许汉字与常用标点）。
 - **大模型**：`aiInvoke('prompt')` 走 local-qwen。选项：要不要横批、横批 2~7 字、16 类类型、自由要求。`generate.ts` 拼提示词、解析 `上联/下联/横批` 三行、校验（汉字数相等、断句位置一致、上下联不同、横批字数符合），不合格带原因重试一次，仍失败给提示。界面提示 0.8B 会写出不工整的句子。
 - 结果可手改，画红底金字竖排图并导出 PNG（`logic.ts` 的 `layoutCouplet/drawCouplet`）。底部用 `BottomActions`。
-- 模型选择器放标题栏（默认插槽）：工具声明了 `couplet` 与 `prompt` 两类任务，页面按提供者 id（`local-couplet`、`local-qwen`）读就绪状态，不依赖“当前选择”；语料库不是提供者，页面读 `stores/models.ts` 的 `couplet-corpus` 状态，未就绪只提示先下载，下载在 AI 中心。
+- 模型选择器放底部操作栏（默认插槽）：工具声明了 `couplet` 与 `prompt` 两类任务，页面按提供者 id（`local-couplet`、`local-qwen`）读就绪状态，不依赖“当前选择”；语料库不是提供者，页面读 `stores/models.ts` 的 `couplet-corpus` 状态，未就绪只提示先下载，下载在 AI 中心。
 
 ## 验证
 - 真机 STG-AL00（debug 包）：adb 把 zip 放进 `files/models/couplet-corpus/`，`native.model.ensure` 后约 2 秒解压完成，状态 `installed`，zip 被删，5 个文件 sha256 通过；`info/get`、越界、缺参、`remove` 后 `NOT_READY`、重推再装均符合预期；页面随机抽取正常、画布渲染正常。

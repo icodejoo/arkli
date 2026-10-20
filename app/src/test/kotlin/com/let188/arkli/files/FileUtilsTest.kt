@@ -120,4 +120,17 @@ class FileUtilsTest {
         assertFalse(PickKind.isValid("a b/c"))
         assertFalse(PickKind.isValid(""))
     }
+
+    /** 逗号分隔的多个 mime：合法、走文档选择器、拆成数组 */
+    @Test
+    fun pickKindMultipleMimes() {
+        assertTrue(PickKind.isValid("text/*,application/json"))
+        assertTrue(PickKind.isValid("text/plain, application/json"))
+        assertFalse(PickKind.isValid("text/*,json"))
+        assertFalse(PickKind.isValid("text/*,"))
+        assertEquals(PickKind.DOCUMENT, PickKind.of("text/*,application/json"))
+        assertEquals(PickKind.DOCUMENT, PickKind.of("image/png,image/jpeg"))
+        assertArrayEquals(arrayOf("text/*", "application/json"), PickKind.documentTypes("text/*, application/json"))
+        assertArrayEquals(arrayOf("text/plain"), PickKind.documentTypes("text/plain"))
+    }
 }

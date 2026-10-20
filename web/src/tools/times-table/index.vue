@@ -2,6 +2,8 @@
 // 九九乘法练习：四选一或输入答案，统计连对，错题回顾
 import BottomActions from '@/shared/BottomActions.vue'
 import { ref } from 'vue'
+import CellPicker from '@/shared/CellPicker.vue'
+import type { CellOption } from '@/shared/cellPicker'
 import { accuracy, emptyStats, MAX_OPTIONS, makeQuestion, parseAnswer, recordAnswer, type Question } from './logic'
 
 /** 答完后停留多久进入下一题（毫秒） */
@@ -11,6 +13,13 @@ const NEXT_DELAY_MS = 700
 const max = ref(9)
 /** 作答方式 */
 const mode = ref<'choice' | 'input'>('choice')
+/** 乘数上限选项 */
+const MAX_PICK_OPTIONS: CellOption[] = MAX_OPTIONS.map((m) => ({ value: m, label: `1~${m}` }))
+/** 作答方式选项 */
+const MODE_OPTIONS: CellOption[] = [
+  { value: 'choice', label: '四选一' },
+  { value: 'input', label: '输入答案' },
+]
 /** 当前题 */
 const q = ref<Question>(makeQuestion(max.value))
 /** 统计 */
@@ -53,8 +62,9 @@ function reset(): void {
   next()
 }
 
-/** 换范围后清零 */
-function onMax(): void {
+/** 选了新范围：更新上限并清零 */
+function onPickMax(v: number): void {
+  max.value = v
   reset()
 }
 </script>
@@ -62,13 +72,8 @@ function onMax(): void {
 <template>
   <div class="tool-page">
     <tool-group title="设置">
-      <van-radio-group v-model="max" direction="horizontal" @change="onMax">
-        <van-radio v-for="m in MAX_OPTIONS" :key="m" :name="m">1~{{ m }}</van-radio>
-      </van-radio-group>
-      <van-radio-group v-model="mode" direction="horizontal" class="tt-gap">
-        <van-radio name="choice">四选一</van-radio>
-        <van-radio name="input">输入答案</van-radio>
-      </van-radio-group>
+      <cell-picker :model-value="max" title="乘数范围" :options="MAX_PICK_OPTIONS" @update:model-value="onPickMax($event as number)" />
+      <cell-picker :model-value="mode" title="作答方式" :options="MODE_OPTIONS" @update:model-value="mode = $event as 'choice' | 'input'" />
     </tool-group>
 
     <div class="tt-card" :class="{ 'tt-card--ok': feedback?.ok, 'tt-card--bad': feedback && !feedback.ok }">
@@ -98,7 +103,7 @@ function onMax(): void {
 </template>
 
 <style lang="scss" scoped>
-/* 单选组之间留白 */
+/* 区块之间留白 */
 .tt-gap {
   margin-top: $space-2;
 }

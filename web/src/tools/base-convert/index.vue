@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 进制转换：选输入进制，一次显示 2/8/10/16 和自定义进制，并给补码
 import { computed, ref } from 'vue'
+import CellPicker from '@/shared/CellPicker.vue'
 import {
   BIT_WIDTHS,
   COMMON_BASES,
@@ -19,7 +20,7 @@ const DEFAULT_CUSTOM_BASE = 36
 const DEFAULT_BITS: BitWidth = 32
 /** 默认输入进制 */
 const DEFAULT_FROM_BASE = 10
-/** 单选里表示“自定义”的标记值 */
+/** 选择器里表示“自定义”的标记值 */
 const CUSTOM_FLAG = 0
 
 /** 当前环境是否支持 BigInt */
@@ -33,6 +34,11 @@ const customText = ref(String(DEFAULT_CUSTOM_BASE))
 /** 补码位宽 */
 const bits = ref<BitWidth>(DEFAULT_BITS)
 
+/** 输入进制选项：常用进制 + 自定义 */
+const BASE_OPTIONS = [...COMMON_BASES.map((b) => ({ value: b, label: String(b) })), { value: CUSTOM_FLAG, label: '自定义' }]
+/** 补码位宽选项 */
+const BIT_OPTIONS = BIT_WIDTHS.map((w) => ({ value: w, label: String(w) }))
+
 /** 自定义进制数值；空串为 NaN */
 const customBase = computed(() => (customText.value.trim() === '' ? NaN : Number(customText.value)))
 
@@ -44,7 +50,7 @@ const customValid = computed(
 /** 选中的输入进制是否为自定义 */
 const useCustom = computed(() => !COMMON_BASES.includes(fromBase.value as 2))
 
-/** 单选当前值：常用进制或自定义标记 */
+/** 选择器当前值：常用进制或自定义标记 */
 const radioValue = computed(() => (useCustom.value ? CUSTOM_FLAG : fromBase.value))
 
 /** 自定义进制行内错误 */
@@ -98,15 +104,10 @@ function onCustomInput(): void {
     </van-notice-bar>
     <template v-else>
       <tool-group>
-        <p class="tool-group__title">输入进制</p>
-        <van-radio-group :model-value="radioValue" direction="horizontal" @update:model-value="pick">
-          <van-radio v-for="b in COMMON_BASES" :key="b" :name="b">{{ b }}</van-radio>
-          <van-radio :name="CUSTOM_FLAG">自定义</van-radio>
-        </van-radio-group>
+        <cell-picker :model-value="radioValue" title="输入进制" :options="BASE_OPTIONS" @update:model-value="pick" />
         <van-field
           v-if="useCustom"
           v-model="customText"
-          class="gap"
           :label="`进制（${MIN_BASE}-${MAX_BASE}）`"
           type="digit"
           :error-message="customError"
@@ -137,10 +138,7 @@ function onCustomInput(): void {
       </tool-group>
 
       <tool-group v-if="twos !== null">
-        <p class="tool-group__title">补码位宽</p>
-        <van-radio-group v-model="bits" direction="horizontal">
-          <van-radio v-for="w in BIT_WIDTHS" :key="w" :name="w">{{ w }}</van-radio>
-        </van-radio-group>
+        <cell-picker :model-value="bits" title="补码位宽" :options="BIT_OPTIONS" @update:model-value="bits = $event as BitWidth" />
         <div v-if="twos" class="tool-result tool-result--text mono gap">{{ twos }}</div>
         <p v-else class="tool-result tool-result--error gap">超出 {{ bits }} 位能表示的范围</p>
       </tool-group>

@@ -2,6 +2,7 @@
 // 抛硬币：点一下抛一次，可连抛并统计；先定结果再播动画
 import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import CellPicker from '@/shared/CellPicker.vue'
 import { prefersReducedMotion } from '@/shared/motion'
 import { countSides, flipCoin, flipCoins, loadFlag, MAX_FLIPS, saveFlag, SIDE_LABEL, SOUND_KEY, VIBRATE_KEY, VIBRATE_LAND, VIBRATE_START, type CoinSide } from './logic'
 import { createSoundPlayer, tryVibrate } from './feedback'
@@ -24,7 +25,7 @@ const EDGE_OFFSETS = Array.from(
   (_, i) => (i / (EDGE_SLICES - 1) - 0.5) * COIN_THICKNESS,
 )
 /** 连抛次数可选项 */
-const BATCH_OPTIONS = [1, 3, 5, 10, MAX_FLIPS]
+const BATCH_OPTIONS = [1, 3, 5, 10, MAX_FLIPS].map((n) => ({ value: n, label: `${n} 次` }))
 
 /** 当前显示的面 */
 const side = ref<CoinSide>('heads')
@@ -140,10 +141,8 @@ onBeforeUnmount(() => {
       <p class="coin-stage__text" aria-live="polite">{{ flipping ? '抛起来了…' : history.length ? SIDE_LABEL[side] : '点硬币开抛' }}</p>
     </tool-group>
 
-    <tool-group title="连抛次数">
-      <van-radio-group v-model="batch" direction="horizontal" :disabled="flipping">
-        <van-radio v-for="n in BATCH_OPTIONS" :key="n" :name="n">{{ n }} 次</van-radio>
-      </van-radio-group>
+    <tool-group>
+      <cell-picker :model-value="batch" title="连抛次数" :options="BATCH_OPTIONS" :disabled="flipping" @update:model-value="batch = $event as number" />
     </tool-group>
 
     <tool-group>

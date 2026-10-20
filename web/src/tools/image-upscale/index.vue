@@ -1,6 +1,9 @@
 <script setup lang="ts">
 // 图像分辨率提升：选图 → 2×/4× → 本地超分 → 前后对比滑块 → 保存
 import BottomActions from '@/shared/BottomActions.vue'
+import CellPicker from '@/shared/CellPicker.vue'
+import type { CellOption } from '@/shared/cellPicker'
+import ModelPicker from '@/shared/ModelPicker.vue'
 import { computed, onBeforeUnmount, ref, shallowRef } from 'vue'
 import { showFailToast, showSuccessToast, showToast } from 'vant'
 import { outputName } from '@/shared/image-calc'
@@ -11,6 +14,9 @@ import AiGapNotice from '@/tools/_ai/AiGapNotice.vue'
 import { useAiModel } from '@/tools/_ai/useAiModel'
 import { aiErrorText, resolveImagePath } from '@/tools/_ai/aiImage'
 import { DEFAULT_SPLIT, estimateText, estimateUpscale, maxAllowedScale, scaleSuffix, splitClip, splitFromPointer, type UpscaleScale } from './logic'
+
+/** 本工具 id（模型选择器用） */
+const TOOL_ID = 'image-upscale'
 
 /** 模型状态 */
 const { ready, checked, loading: checking, refresh, markNotReady } = useAiModel('upscale')
@@ -34,6 +40,11 @@ const compare = ref<HTMLElement | null>(null)
 const estimate = computed(() => (image.value ? estimateUpscale(image.value.width, image.value.height, scale.value) : null))
 /** 当前图允许的最大倍数 */
 const allowed = computed(() => (image.value ? maxAllowedScale(image.value.width, image.value.height) : 4))
+/** 放大倍数选项；超过图片允许的最大倍数时禁用 */
+const SCALE_OPTIONS = computed<CellOption[]>(() => [
+  { value: 2, label: '2×', disabled: allowed.value < 2 },
+  { value: 4, label: '4×', disabled: allowed.value < 4 },
+])
 /** 「处理前」图层裁剪样式 */
 const beforeClip = computed(() => splitClip(split.value))
 /** 分隔线位置 */
@@ -138,14 +149,7 @@ onBeforeUnmount(() => {
       </div>
       <p v-if="image" class="tool-hint">原图 {{ image.width }}×{{ image.height }}</p>
       <p v-else class="tool-hint">点底部「相册」或「拍照」选一张图。</p>
-      <van-cell title="放大倍数" center>
-        <template #value>
-          <van-radio-group v-model="scale" direction="horizontal" class="is-radios">
-            <van-radio :name="2" :disabled="allowed < 2">2×</van-radio>
-            <van-radio :name="4" :disabled="allowed < 4">4×</van-radio>
-          </van-radio-group>
-        </template>
-      </van-cell>
+      <cell-picker :model-value="scale" title="放大倍数" :options="SCALE_OPTIONS" @update:model-value="scale = $event as UpscaleScale" />
       <p v-if="estimate" class="tool-hint" :class="{ 'is-warn': estimate.tooBig }">{{ estimateText(estimate) }}</p>
     </tool-group>
 
@@ -156,15 +160,13 @@ onBeforeUnmount(() => {
     </tool-group>
 
     <!-- 底部动作栏：相册 / 拍照选图，保存结果，主按钮开始放大 -->
-    <bottom-actions :actions="{ save: { disabled: !result || saving } }" album photo main :main-text="busy ? '放大中' : '开始放大'" :disabled="{ album: busy, photo: busy, main: busy || !image || !ready || !!estimate?.tooBig }" @album="choose" @photo="shoot" @main="run" @save="save" />
+    <bottom-actions ai :actions="{ save: { disabled: !result || saving } }" album photo main :main-text="busy ? '放大中' : '开始放大'" :disabled="{ album: busy, photo: busy, main: busy || !image || !ready || !!estimate?.tooBig }" @album="choose" @photo="shoot" @main="run" @save="save">
+      <template #ai><model-picker :tool-id="TOOL_ID" variant="bar" /></template>
+    </bottom-actions>
   </div>
 </template>
 
 <style lang="scss" scoped>
-.is-radios {
-  justify-content: flex-end;
-}
-
 .preview {
   display: block;
   width: 100%;

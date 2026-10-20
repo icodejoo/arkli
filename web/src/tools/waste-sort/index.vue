@@ -111,7 +111,7 @@ const counts = computed(() => countByCat());
         <!-- 识别模式：底部动作栏，左边模型选择器，右边相册、拍照 -->
         <bottom-actions v-if="camera" :ai="hasPicker" album main main-text="拍照" main-type="danger" :disabled="{ album: blocked, main: blocked }" @album="classify?.fromAlbum()" @main="classify?.takePhoto()">
             <template #ai>
-                <model-picker :tool-id="TOOL_ID" />
+                <model-picker :tool-id="TOOL_ID" variant="bar" />
             </template>
         </bottom-actions>
     </div>

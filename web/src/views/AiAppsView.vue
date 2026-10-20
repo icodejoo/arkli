@@ -40,7 +40,7 @@ function goBack(): void {
   &__body {
     max-width: 720px;
     margin: 0 auto;
-    padding: $space-4;
+    padding: var(--page-pad);
   }
 }
 </style>

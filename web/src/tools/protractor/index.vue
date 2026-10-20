@@ -1,6 +1,8 @@
 <script setup lang="ts">
 // 量角器：屏上拖两条射线读夹角；倾角模式读手机的倾斜角（复用水平仪的算法）
 import BottomActions from '@/shared/BottomActions.vue'
+import CellPicker from '@/shared/CellPicker.vue'
+import type { CellOption } from '@/shared/cellPicker'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { isSteady, startGravity, type MotionSourceLike, type MotionStatus, type Vec3 } from '../level/logic'
 import { clampAngle, clientToView, edgeInclination, FULL_CIRCLE, HALF_CIRCLE, includedAngle, nearestRay, pointAngle, polar, SNAP_STEP, snapAngle, surfaceInclination, sweepAngle, type DialMode, type Point } from './logic'
@@ -41,6 +43,11 @@ const TIP_UNSUPPORTED = '没读到重力传感器的数据：设备可能没有�
 const mode = ref<Mode>('screen')
 /** 盘面：半圆/全圆 */
 const dial = ref<DialMode>('half')
+/** 盘面选项 */
+const DIAL_OPTIONS: CellOption[] = [
+  { value: 'half', label: '半圆' },
+  { value: 'full', label: '全圆' },
+]
 /** 两条射线方向角 */
 const rays = ref<[number, number]>([0, 60])
 /** 是否吸附到 5 度 */
@@ -263,12 +270,7 @@ onBeforeUnmount(end)
       </tool-group>
       <tool-group>
         <van-cell-group>
-          <van-cell title="盘面">
-            <van-radio-group :model-value="dial" direction="horizontal" @update:model-value="(v: string) => setDial(v as DialMode)">
-              <van-radio name="half">半圆</van-radio>
-              <van-radio name="full">全圆</van-radio>
-            </van-radio-group>
-          </van-cell>
+          <cell-picker :model-value="dial" title="盘面" :options="DIAL_OPTIONS" @update:model-value="setDial($event as DialMode)" />
           <van-cell title="吸附到 5 度" center>
             <van-switch v-model="snap" size="20" />
           </van-cell>

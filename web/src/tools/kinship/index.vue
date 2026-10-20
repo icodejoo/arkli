@@ -1,7 +1,15 @@
 <script setup lang="ts">
 // 亲戚关系计算器：点按钮拼出关系链，显示对应称呼
 import { computed, ref } from 'vue'
+import CellPicker from '@/shared/CellPicker.vue'
+import type { CellOption } from '@/shared/cellPicker'
 import { MAX_CHAIN, STEP_LABEL, STEP_ORDER, calcKinship, type Gender, type Step } from './logic'
+
+/** 「我是」性别选项 */
+const GENDER_OPTIONS: readonly CellOption[] = [
+  { value: 'm', label: '男' },
+  { value: 'f', label: '女' },
+]
 
 /** 我的性别 */
 const me = ref<Gender>('m')
@@ -37,14 +45,7 @@ function clear(): void {
 <template>
   <div class="tool-page">
     <tool-group>
-      <van-field label="我是">
-        <template #input>
-          <van-radio-group v-model="me" direction="horizontal">
-            <van-radio name="m">男</van-radio>
-            <van-radio name="f">女</van-radio>
-          </van-radio-group>
-        </template>
-      </van-field>
+      <cell-picker :model-value="me" title="我是" :options="GENDER_OPTIONS" @update:model-value="me = $event as Gender" />
     </tool-group>
 
     <tool-group>

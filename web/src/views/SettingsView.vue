@@ -1,10 +1,20 @@
 <script setup lang="ts">
-// 设置页（底栏根 tab 之一，不显示返回箭头）：目前只有“缓存”卡片（占用 + 清理）
+// 设置页（底栏根 tab 之一，不显示返回箭头）：按分组 + van-cell 组织——“样式”（主题）与“存储”（缓存占用 + 清理）
 import { onMounted } from 'vue'
 import { showConfirmDialog, showToast } from 'vant'
 import { isNativeAvailable } from '@/native/bridge'
 import { clearCache, getCacheStats } from '@/native/cache'
+import CellPicker from '@/shared/CellPicker.vue'
+import type { CellOption } from '@/shared/cellPicker'
+import { setThemeMode, themeMode, THEME_MODES, type ThemeMode } from '@/shared/theme'
 import { CACHE_ONLY_APP, useCacheCard } from './settingsCache'
+
+/** 主题可选项：取值与文案 */
+const THEME_OPTIONS: readonly CellOption[] = [
+  { value: THEME_MODES.LIGHT, label: '亮色' },
+  { value: THEME_MODES.DARK, label: '暗色' },
+  { value: THEME_MODES.SYSTEM, label: '跟随系统' },
+]
 
 /** 是否有原生宿主 */
 const native = isNativeAvailable()
@@ -25,12 +35,12 @@ onMounted(() => {
   <div class="settings">
     <van-nav-bar title="设置" fixed placeholder safe-area-inset-top />
     <main class="settings__body">
-      <tool-group title="缓存">
-        <p v-if="!native" class="tool-hint">{{ CACHE_ONLY_APP }}</p>
-        <template v-else>
-          <p class="tool-hint">{{ text }}</p>
-          <van-button block plain round :loading="busy" @click="clean">清理缓存</van-button>
-        </template>
+      <tool-group title="样式">
+        <cell-picker :model-value="themeMode" title="主题" :options="THEME_OPTIONS" @update:model-value="setThemeMode($event as ThemeMode)" />
+      </tool-group>
+      <tool-group title="存储">
+        <van-cell v-if="!native" title="清理缓存" :label="CACHE_ONLY_APP" center class="is-disabled" />
+        <van-cell v-else title="清理缓存" :label="text" :value="busy ? '清理中' : ''" is-link center :clickable="!busy" @click="!busy && clean()" />
       </tool-group>
     </main>
   </div>
@@ -43,8 +53,13 @@ onMounted(() => {
   &__body {
     max-width: 720px;
     margin: 0 auto;
-    padding: $space-4;
-    padding-bottom: calc(#{$space-4} + var(--tabbar-total));
+    padding: var(--page-pad);
+    padding-bottom: calc(var(--page-pad) + var(--tabbar-total));
   }
+}
+
+/* 无宿主时缓存项置灰 */
+.is-disabled {
+  opacity: 0.5;
 }
 </style>

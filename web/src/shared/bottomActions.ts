@@ -21,6 +21,11 @@ export interface BottomActionDef {
   readonly group: BottomActionGroup
 }
 
+/** ai 项的文案（操作栏里模型选择器的触发器复用） */
+export const AI_ACTION_TEXT = 'Ai'
+/** ai 项的图标名（Lucide cpu-ai） */
+export const AI_ACTION_ICON = 'arkli:cpu-ai'
+
 /**
  * 内置动作注册表（有序，渲染顺序固定即此顺序）。新增内置项只改这张表：
  * 选图类 → 编辑类 → 输出类 → 查看类 → 播放类 → 其他 → 主按钮（最右，单独渲染）。
@@ -28,7 +33,7 @@ export interface BottomActionDef {
  */
 export const BOTTOM_ACTION_REGISTRY = [
   // 选图类
-  { key: 'ai', text: 'AI', icon: 'arkli:ai', group: 'pick' },
+  { key: 'ai', text: AI_ACTION_TEXT, icon: AI_ACTION_ICON, group: 'pick' },
   { key: 'album', text: '相册', icon: 'arkli:images', group: 'pick' },
   { key: 'photo', text: '拍照', icon: 'arkli:camera', group: 'pick' },
   { key: 'paste', text: '粘贴', icon: 'arkli:clipboard-paste', group: 'pick' },

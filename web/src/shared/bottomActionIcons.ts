@@ -6,6 +6,7 @@ import IconCheckCheck from '~icons/arkli/check-check'
 import IconCircleHelp from '~icons/arkli/circle-help'
 import IconClipboardPaste from '~icons/arkli/clipboard-paste'
 import IconCopy from '~icons/arkli/copy'
+import IconCpuAi from '~icons/arkli/cpu-ai'
 import IconDownload from '~icons/arkli/download'
 import IconEllipsis from '~icons/arkli/ellipsis'
 import IconEraser from '~icons/arkli/eraser'
@@ -44,6 +45,7 @@ export const BOTTOM_ACTION_ICON_MAP: Readonly<Record<string, Component>> = {
   'arkli:circle-help': IconCircleHelp,
   'arkli:clipboard-paste': IconClipboardPaste,
   'arkli:copy': IconCopy,
+  'arkli:cpu-ai': IconCpuAi,
   'arkli:download': IconDownload,
   'arkli:ellipsis': IconEllipsis,
   'arkli:eraser': IconEraser,

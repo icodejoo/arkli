@@ -27,8 +27,8 @@ const store = useFavoritesStore()
   &__body {
     max-width: 720px;
     margin: 0 auto;
-    padding: $space-4;
-    padding-bottom: calc(#{$space-4} + var(--tabbar-total));
+    padding: var(--page-pad);
+    padding-bottom: calc(var(--page-pad) + var(--tabbar-total));
   }
 }
 </style>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 人脸融合：选两张人脸照片 + 融合比例 → 本地模型融合 → 结果展示/保存
 import BottomActions from '@/shared/BottomActions.vue'
+import ModelPicker from '@/shared/ModelPicker.vue'
 import { computed, onBeforeUnmount, ref, shallowRef } from 'vue'
 import { showToast } from 'vant'
 import ImageResultList from '@/shared/ImageResultList.vue'
@@ -12,6 +13,9 @@ import AiGapNotice from '@/tools/_ai/AiGapNotice.vue'
 import { useAiModel } from '@/tools/_ai/useAiModel'
 import { aiErrorText, resolveImagePath } from '@/tools/_ai/aiImage'
 import { DEFAULT_RATIO, RATIO_STEP, clampRatio, ratioText, validateFuse } from './logic'
+
+/** 本工具 id（模型选择器用） */
+const TOOL_ID = 'face-fusion'
 
 /** 比例滑杆刻度：0~100 的整数 */
 const SLIDER_MAX = 100
@@ -122,7 +126,9 @@ onBeforeUnmount(() => {
     </tool-group>
 
     <!-- 底部动作栏：两个槽位各自选图，这里只放保存与主按钮开始融合 -->
-    <bottom-actions :actions="{ save: { disabled: !results.length || saving } }" main :main-text="busy ? '融合中' : '开始融合'" :disabled="{ main: busy || !!problem || !ready }" @main="run" @save="saveAll" />
+    <bottom-actions ai :actions="{ save: { disabled: !results.length || saving } }" main :main-text="busy ? '融合中' : '开始融合'" :disabled="{ main: busy || !!problem || !ready }" @main="run" @save="saveAll">
+      <template #ai><model-picker :tool-id="TOOL_ID" variant="bar" /></template>
+    </bottom-actions>
   </div>
 </template>
 

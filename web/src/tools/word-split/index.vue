@@ -65,8 +65,12 @@ async function copy(): Promise<void> {
       <div class="ws-actions">
         <van-button size="small" plain @click="all">全选</van-button>
         <van-button size="small" plain :disabled="!selected.size" @click="selected = new Set()">清除</van-button>
-        <van-checkbox v-model="spaced" shape="square">词间加空格</van-checkbox>
       </div>
+      <van-cell-group :border="false">
+        <van-cell title="词间加空格" center>
+          <template #right-icon><van-switch v-model="spaced" size="20" /></template>
+        </van-cell>
+      </van-cell-group>
     </tool-group>
 
     <tool-group v-if="tokens.length" title="选中的内容">

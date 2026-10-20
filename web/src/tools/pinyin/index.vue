@@ -3,6 +3,8 @@
 import BottomActions from '@/shared/BottomActions.vue'
 import { ref, watch } from 'vue'
 import { showFailToast, showSuccessToast } from 'vant'
+import CellPicker from '@/shared/CellPicker.vue'
+import type { CellOption } from '@/shared/cellPicker'
 import { copyText } from '@/shared/clipboard'
 import { convertPinyin, DEFAULT_OPTIONS, loadPinyin, type PinyinLib, type PinyinOptions, type PinyinResult } from './logic'
 
@@ -20,11 +22,22 @@ const error = ref('')
 let lib: PinyinLib | undefined
 
 /** 分隔符预设：空格 / 无 / 连字符 / 下划线 */
-const SEPARATORS = [
+const SEPARATORS: CellOption[] = [
   { label: '空格', value: ' ' },
   { label: '无', value: '' },
   { label: '-', value: '-' },
   { label: '_', value: '_' },
+]
+/** 声调写法选项 */
+const TONE_OPTIONS: CellOption[] = [
+  { value: 'mark', label: '带声调' },
+  { value: 'num', label: '数字声调' },
+  { value: 'none', label: '无声调' },
+]
+/** 拼音样式选项 */
+const PATTERN_OPTIONS: CellOption[] = [
+  { value: 'full', label: '全拼' },
+  { value: 'first', label: '首字母' },
 ]
 
 /** 转换：必要时先加载词典 */
@@ -73,21 +86,10 @@ async function copy(): Promise<void> {
       <van-field v-model="input" type="textarea" rows="3" autosize clearable placeholder="输入要转换的文字，如：你好，世界" :error-message="error" />
     </tool-group>
 
-    <tool-group title="声调">
-      <van-radio-group v-model="opts.tone" direction="horizontal">
-        <van-radio name="mark">带声调</van-radio>
-        <van-radio name="num">数字声调</van-radio>
-        <van-radio name="none">无声调</van-radio>
-      </van-radio-group>
-      <h3 class="tool-group__title py-gap">样式</h3>
-      <van-radio-group v-model="opts.pattern" direction="horizontal">
-        <van-radio name="full">全拼</van-radio>
-        <van-radio name="first">首字母</van-radio>
-      </van-radio-group>
-      <h3 class="tool-group__title py-gap">分隔符</h3>
-      <van-radio-group v-model="opts.separator" direction="horizontal">
-        <van-radio v-for="s in SEPARATORS" :key="s.label" :name="s.value">{{ s.label }}</van-radio>
-      </van-radio-group>
+    <tool-group title="转换选项">
+      <cell-picker :model-value="opts.tone" title="声调" :options="TONE_OPTIONS" @update:model-value="opts.tone = $event as PinyinOptions['tone']" />
+      <cell-picker :model-value="opts.pattern" title="样式" :options="PATTERN_OPTIONS" @update:model-value="opts.pattern = $event as PinyinOptions['pattern']" />
+      <cell-picker v-model="opts.separator" title="分隔符" :options="SEPARATORS" />
     </tool-group>
 
     <tool-group>
@@ -114,10 +116,6 @@ async function copy(): Promise<void> {
 </template>
 
 <style lang="scss" scoped>
-/* 卡片内第二、三组标题与上一组拉开 */
-.py-gap {
-  margin-top: $space-4;
-}
 .py-out {
   word-break: break-word;
 }

@@ -6,8 +6,7 @@ import { showToast } from 'vant'
 import { isNativeAvailable } from '@/native/bridge'
 import CameraIcon from '~icons/cil/camera?width=1em&height=1em'
 import KeyboardIcon from '~icons/cil/keyboard?width=1em&height=1em'
-import { MODE_CAMERA, MODE_QUERY, findTool, hasAiChoices } from '@/tools/registry'
-import ModelPicker from '@/shared/ModelPicker.vue'
+import { MODE_CAMERA, MODE_QUERY, findTool } from '@/tools/registry'
 import PinToolSheet from '@/shared/PinToolSheet.vue'
 import { MENU_KEY_PIN, buildMenuActions } from '@/shared/pinToolSheet'
 import { useToolsStore } from '@/stores/tools'
@@ -54,8 +53,6 @@ const route = useRoute()
 const hasCamera = computed(() => !!meta.value?.camera)
 /** 当前是否在拍照识别模式 */
 const cameraOn = computed(() => route.query[MODE_QUERY] === MODE_CAMERA)
-/** 带 ai 标签且声明了模型的工具才在标题栏显示模型选择器；摄像头工具与声明 pickerInPage 的工具把选择器放在页面里 */
-const showPicker = computed(() => hasAiChoices(meta.value) && !hasCamera.value && !meta.value?.pickerInPage)
 
 /** 在普通模式与拍照识别模式间切换（replace，不堆历史） */
 function toggleCamera(): void {
@@ -125,7 +122,6 @@ watchEffect(() => {
       <template v-if="meta" #right>
         <!-- 工具页可用 teleport 往这里放自己的标题栏按钮（如筛选） -->
         <span id="shell-nav-actions" class="shell__slot" />
-        <model-picker v-if="showPicker" :tool-id="meta.id" />
         <component
           :is="cameraOn ? KeyboardIcon : CameraIcon"
           v-if="hasCamera"
@@ -235,8 +231,8 @@ watchEffect(() => {
   &__body {
     max-width: 720px;
     margin: 0 auto;
-    padding: $space-3;
-    padding-bottom: calc(#{$space-3} + var(--safe-bottom));
+    padding: var(--page-pad);
+    padding-bottom: calc(var(--page-pad) + var(--safe-bottom));
   }
 }
 </style>

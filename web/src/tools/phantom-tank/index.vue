@@ -4,6 +4,8 @@ import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { showToast } from 'vant'
 import ImageResultList from '@/shared/ImageResultList.vue'
+import CellPicker from '@/shared/CellPicker.vue'
+import type { CellOption } from '@/shared/cellPicker'
 import { useImageResults } from '@/shared/useImageResults'
 import { fitMaxEdge } from '@/shared/image-calc'
 import { canvasToBlob, createCanvas, loadBitmap, EDIT_BASIC, pickImages, releaseCanvas, type PickedImage } from '@/shared/image-io'
@@ -22,6 +24,11 @@ const inner = ref<PickedImage | null>(null)
 const contrastRaw = ref(CONTRAST_DEFAULT * CONTRAST_SCALE)
 /** 预览背景：white / black */
 const previewBg = ref<'white' | 'black'>('white')
+/** 预览背景选项 */
+const PREVIEW_BG_OPTIONS: CellOption[] = [
+  { value: 'white', label: '白底' },
+  { value: 'black', label: '黑底' },
+]
 /** 结果与批处理状态 */
 const { results, busy, saving, process, saveAll } = useImageResults()
 
@@ -129,10 +136,7 @@ onBeforeUnmount(() => {
     </tool-group>
 
     <tool-group v-if="results.length" title="效果预览">
-      <van-radio-group v-model="previewBg" direction="horizontal" class="is-radios">
-        <van-radio name="white">白底</van-radio>
-        <van-radio name="black">黑底</van-radio>
-      </van-radio-group>
+      <cell-picker :model-value="previewBg" title="预览背景" :options="PREVIEW_BG_OPTIONS" @update:model-value="previewBg = $event as 'white' | 'black'" />
       <div class="pt-stage" :style="{ background: bgColor }">
         <img class="pt-stage__img" :src="results[0].url" alt="幻影坦克预览" />
       </div>
@@ -186,10 +190,6 @@ onBeforeUnmount(() => {
 
 .is-slider {
   padding: $space-2 $space-3 $space-3;
-}
-
-.is-radios {
-  margin-bottom: $space-2;
 }
 
 /* 预览舞台：背景在白/黑间切换 */

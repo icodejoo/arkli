@@ -8,6 +8,7 @@ import { useElementSize } from '@vueuse/core'
 import { useRouter } from 'vue-router'
 import { showFailToast, showSuccessToast, showToast } from 'vant'
 import BottomActions from '@/shared/BottomActions.vue'
+import CellPicker from '@/shared/CellPicker.vue'
 import ModelMissingNotice from '@/shared/ModelMissingNotice.vue'
 import ModelPicker from '@/shared/ModelPicker.vue'
 import { copyText } from '@/shared/clipboard'
@@ -61,6 +62,14 @@ const QWEN_TEMPERATURE = 0.7
 const BANNER_NONE = 0
 /** 横批字数候选 */
 const BANNER_LENS = Array.from({ length: BANNER_MAX - BANNER_MIN + 1 }, (_, i) => BANNER_MIN + i)
+/** 横批选项：无 + 各字数 */
+const BANNER_OPTIONS = [{ value: BANNER_NONE, label: '无' }, ...BANNER_LENS.map((n) => ({ value: n, label: `${n} 字` }))]
+/** 上联字数选项：不限 + 各字数 */
+const QUIZ_LEN_OPTIONS = [{ value: UPPER_LEN_ANY, label: '不限' }, ...UPPER_LENS.map((n) => ({ value: n, label: `${n} 字` }))]
+/** 大模型类型选项 */
+const CATEGORY_OPTIONS = CATEGORY_HINTS.map((c) => ({ value: c.name, label: c.name }))
+/** 挽联池的显示名 */
+const MOURNING_LABEL = '挽联（哀悼）'
 /** 提示条文案 */
 const MSG_CORPUS_MISSING = '随机模式需要对联语料库，请先下载'
 const MSG_NOT_READY = '模型还没就绪，请先下载'
@@ -157,6 +166,8 @@ const pools = computed<CorpusPool[]>(() => {
   const list = corpus.value.pools ?? []
   return [...list.filter((p) => p.name !== MOURNING_CATEGORY), ...list.filter((p) => p.name === MOURNING_CATEGORY)]
 })
+/** 语料池选项 */
+const poolOptions = computed(() => pools.value.map((p) => ({ value: p.pool, label: p.name === MOURNING_CATEGORY ? MOURNING_LABEL : p.name })))
 /** 当前池 */
 const pool = computed(() => pools.value.find((p) => p.pool === poolId.value))
 /** 手写软提示 */
@@ -434,47 +445,33 @@ onBeforeUnmount(() => abort?.abort())
             <template v-if="mode === 'quiz'">
               <p class="tool-hint">当前来源：{{ quizSource === 'corpus' ? '语料库' : '大模型' }}（点底部 AI 图标切换）；对完可点「看参考」对照，仅语料库有原下联。</p>
 
-              <tool-group v-if="quizSource === 'corpus'" title="类型">
-                <van-radio-group v-model="poolId" direction="horizontal" class="cp-gap">
-                  <van-radio v-for="p in pools" :key="p.pool" :name="p.pool">{{ p.name === MOURNING_CATEGORY ? '挽联（哀悼）' : p.name }}</van-radio>
-                </van-radio-group>
+              <tool-group v-if="quizSource === 'corpus'">
+                <cell-picker :model-value="poolId" title="类型" :options="poolOptions" @update:model-value="poolId = $event as number" />
               </tool-group>
               <template v-else>
-                <tool-group title="类型">
-                  <van-radio-group v-model="category" direction="horizontal" class="cp-gap">
-                    <van-radio v-for="c in CATEGORY_HINTS" :key="c.name" :name="c.name">{{ c.name }}</van-radio>
-                  </van-radio-group>
+                <tool-group>
+                  <cell-picker :model-value="category" title="类型" :options="CATEGORY_OPTIONS" @update:model-value="category = $event as string" />
                   <p class="tool-hint">{{ MSG_REVIEW }}</p>
                 </tool-group>
               </template>
 
-              <tool-group title="上联字数">
-                <van-radio-group v-model="quizLen" direction="horizontal" class="cp-gap">
-                  <van-radio :name="UPPER_LEN_ANY">不限</van-radio>
-                  <van-radio v-for="n in UPPER_LENS" :key="n" :name="n">{{ n }} 字</van-radio>
-                </van-radio-group>
+              <tool-group>
+                <cell-picker :model-value="quizLen" title="上联字数" :options="QUIZ_LEN_OPTIONS" @update:model-value="quizLen = $event as number" />
               </tool-group>
             </template>
 
-            <tool-group v-else-if="mode === 'random'" title="类型">
-              <van-radio-group v-model="poolId" direction="horizontal" class="cp-gap">
-                <van-radio v-for="p in pools" :key="p.pool" :name="p.pool">{{ p.name === MOURNING_CATEGORY ? '挽联（哀悼）' : p.name }}</van-radio>
-              </van-radio-group>
+            <tool-group v-else-if="mode === 'random'">
+              <cell-picker :model-value="poolId" title="类型" :options="poolOptions" @update:model-value="poolId = $event as number" />
               <p v-if="pool" class="tool-hint">该类共 {{ pool.count }} 副，抽完一轮才会重复。默认的「全部」不含挽联，想看挽联要单独选。</p>
               <p class="tool-hint">{{ MSG_RANDOM_NOTE }}</p>
             </tool-group>
             <template v-else-if="mode === 'llm'">
-              <tool-group title="横批">
-                <van-radio-group v-model="bannerChoice" direction="horizontal" class="cp-gap">
-                  <van-radio :name="BANNER_NONE">无</van-radio>
-                  <van-radio v-for="n in BANNER_LENS" :key="n" :name="n">{{ n }} 字</van-radio>
-                </van-radio-group>
+              <tool-group>
+                <cell-picker :model-value="bannerChoice" title="横批" :options="BANNER_OPTIONS" @update:model-value="bannerChoice = $event as number" />
               </tool-group>
 
-              <tool-group title="类型">
-                <van-radio-group v-model="category" direction="horizontal" class="cp-gap">
-                  <van-radio v-for="c in CATEGORY_HINTS" :key="c.name" :name="c.name">{{ c.name }}</van-radio>
-                </van-radio-group>
+              <tool-group>
+                <cell-picker :model-value="category" title="类型" :options="CATEGORY_OPTIONS" @update:model-value="category = $event as string" />
                 <p class="tool-hint">{{ MSG_REVIEW }}</p>
               </tool-group>
             </template>

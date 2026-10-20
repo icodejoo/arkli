@@ -1,6 +1,8 @@
 <script setup lang="ts">
 // JS 运行器：代码放进 Web Worker 执行，捕获 console 输出，超时强杀
 import BottomActions from '@/shared/BottomActions.vue'
+import CellPicker from '@/shared/CellPicker.vue'
+import type { CellOption } from '@/shared/cellPicker'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { showToast } from 'vant'
 import { DEFAULT_TIMEOUT_MS, runCode, type LogEntry, type RunHandle, type RunStatus } from './logic'
@@ -9,6 +11,8 @@ import { DEFAULT_TIMEOUT_MS, runCode, type LogEntry, type RunHandle, type RunSta
 const STORAGE_KEY = 'arkli.js-runner.code'
 /** 可选超时（秒） */
 const TIMEOUT_OPTIONS = [3, 5, 10, 30]
+/** 超时选择器选项（值为秒数） */
+const TIMEOUT_CHOICES: readonly CellOption[] = TIMEOUT_OPTIONS.map((s) => ({ value: s, label: `${s} 秒` }))
 /** 毫秒换算 */
 const MS_PER_SEC = 1000
 /** 示例代码 */
@@ -107,12 +111,7 @@ function clear(): void {
         autocapitalize="off"
         autocomplete="off"
       />
-      <div class="jr-opts">
-        <span class="tool-hint">超时</span>
-        <van-radio-group v-model="timeoutSec" direction="horizontal" :disabled="running">
-          <van-radio v-for="s in TIMEOUT_OPTIONS" :key="s" :name="s">{{ s }} 秒</van-radio>
-        </van-radio-group>
-      </div>
+      <cell-picker :model-value="timeoutSec" title="超时" :options="TIMEOUT_CHOICES" :disabled="running" @update:model-value="timeoutSec = $event as number" />
       <div class="jr-actions">
         <van-button size="small" plain :disabled="!logs.length && !last" @click="clear">清空输出</van-button>
       </div>
@@ -142,13 +141,6 @@ function clear(): void {
   font-family: ui-monospace, Menlo, Consolas, monospace;
   font-size: 13px;
   line-height: 1.5;
-}
-.jr-opts {
-  display: flex;
-  align-items: center;
-  gap: $space-2;
-  margin: $space-2 0;
-  flex-wrap: wrap;
 }
 .jr-actions {
   display: flex;

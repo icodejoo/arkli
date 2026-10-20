@@ -20,4 +20,17 @@ describe('cellPicker', () => {
       { name: '自定义', value: 'custom' },
     ])
   })
+
+  it('toActions 透传 disabled，当前值被禁用时仍带 disabled', () => {
+    const a = toActions([{ value: 1, label: '甲', disabled: true }, { value: 2, label: '乙', disabled: false }, { value: 3, label: '丙' }], 1, '#f00')
+    expect(a).toEqual([
+      { name: '甲', value: 1, color: '#f00', disabled: true },
+      { name: '乙', value: 2, disabled: false },
+      { name: '丙', value: 3 },
+    ])
+  })
+
+  it('未设 disabled 时 action 不带该字段', () => {
+    expect('disabled' in toActions(OPTS, 29, '#f00')[0]).toBe(false)
+  })
 })
