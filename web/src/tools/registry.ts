@@ -203,6 +203,7 @@ export const tools: ToolMeta[] = [
   { id: 'roll-call', name: '随机点名', description: '粘贴名单随机抽人，可选不重复', load: () => import('./roll-call/index.vue') },
   { id: 'torch', name: '手电筒', description: '后置闪光灯常亮，支持 SOS 和限频频闪', load: () => import('./torch/index.vue') },
   { id: 'speech-to-text', name: '语音转文字', description: '本地模型离线听写，边说边出字，可复制、存成文本', tags: [TAG_AI], models: [{ modelId: 'asr-zipformer-zh-en-mnn-w8', title: '语音识别 zipformer（MNN）', desc: '中英文流式听写' }], load: () => import('./speech-to-text/index.vue') },
+  { id: 'logo', name: 'logo 设计', description: '输入品牌名，智能排版出 6 个 logo 方案，可换版式、配色、图标，存成 PNG', tags: [TAG_AI], pickerInPage: true, tasks: [{ task: 'prompt', entry: AI_METHODS.run }], load: () => import('./logo/index.vue') },
   { id: 'ai-writer', name: 'AI 写作助手', description: '本地模型起名、起标题、润色、扩写、缩写', tags: [TAG_AI], pickerInPage: true, tasks: [{ task: 'prompt', entry: AI_METHODS.run }], load: () => import('./ai-writer/index.vue') },
 ]
 

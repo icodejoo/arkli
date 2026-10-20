@@ -249,6 +249,7 @@ describe('适用性回归（registry 里的真实工具）', () => {
       colorize: [],
       'speech-to-text': [],
       'ai-writer': ['prompt@native.ai.run'],
+      logo: ['prompt@native.ai.run'],
     })
   })
 })

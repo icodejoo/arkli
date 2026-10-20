@@ -117,6 +117,7 @@ const ICONS: Record<string, string> = {
   torch: '🔦',
   'speech-to-text': '🎙️',
   'ai-writer': '✍️',
+  logo: '🎨',
 }
 
 /**
