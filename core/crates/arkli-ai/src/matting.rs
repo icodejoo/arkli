@@ -1,4 +1,4 @@
-//! 抠图引擎：人像用 MODNet（512，fp32），通用用 U2Net-p（320，f16）。
+//! 抠图引擎：人像用 MODNet（512，fp32），通用用 U2Net-p（320，f16）；另有两个实验模型 PP-MattingV2、BiRefNet-lite。
 //!
 //! 流程：原图缩放到模型输入边长（PIL 同款抗锯齿 bilinear，与桌面验证脚本一致）-> 按模式归一化 ->
 //! 单次前向 -> 取 alpha（U2Net-p 要 min-max 归一化）-> 缩回原图尺寸（8 位 alpha）-> 边缘细化
@@ -11,6 +11,9 @@
 //! 前后处理以 `native/mnn/.work/convert/matting-tools/{prep,eval}.py` 里已对拍验证的为准：
 //! - MODNet：输入 `input`，`(v - 127.5) / 127.5`，输出 `output`，值域 0~1
 //! - U2Net-p：输入 `input.1`，先 `v / max(全图最大值)`，再 ImageNet mean/std，输出 `1959`（最后融合的 d0），min-max 归一化
+//! - PP-MattingV2（实验）：输入 `img` 512，`(v/255 - 0.5)/0.5`，输出 `sigmoid_5.tmp_0` 已是 0~1 的 alpha
+//! - BiRefNet-lite（实验）：输入 `input_image` 512（社区 512 重导出版），`v/255` 后 ImageNet mean/std，输出 `output_image`；
+//!   值越出 0~1 说明是 logits，整体过 sigmoid（与桌面 `run_models.py` 一致）
 
 use std::borrow::Cow;
 use std::time::Instant;
@@ -34,6 +37,18 @@ pub const MODNET_OUTPUT: &str = "output";
 pub const U2NETP_INPUT: &str = "input.1";
 /// U2Net-p 输出名（最后融合后的 d0）。
 pub const U2NETP_OUTPUT: &str = "1959";
+/// PP-MattingV2 输入边长（固定）。
+pub const PPMATTING_SIZE: u32 = 512;
+/// PP-MattingV2 输入名。
+pub const PPMATTING_INPUT: &str = "img";
+/// PP-MattingV2 输出名。
+pub const PPMATTING_OUTPUT: &str = "sigmoid_5.tmp_0";
+/// BiRefNet-lite 输入边长（固定，512 重导出版；1024 版真机内存峰值约 5.2GB 会被系统杀）。
+pub const BIREFNET_SIZE: u32 = 512;
+/// BiRefNet-lite 输入名。
+pub const BIREFNET_INPUT: &str = "input_image";
+/// BiRefNet-lite 输出名。
+pub const BIREFNET_OUTPUT: &str = "output_image";
 /// 输入图最长边上限，与 OCR 一致。
 pub const MAX_INPUT_SIDE: u32 = 4096;
 /// 像素最大值，用于 0..255 到 0..1。
@@ -56,6 +71,10 @@ pub enum MattingMode {
     Portrait,
     /// 通用主体（U2Net-p）
     General,
+    /// 人像 v2（PP-MattingV2，实验）
+    PpMatting,
+    /// 通用高精（BiRefNet-lite，实验）
+    BiRefNet,
 }
 
 impl MattingMode {
@@ -64,6 +83,8 @@ impl MattingMode {
         match self {
             MattingMode::Portrait => MODNET_SIZE,
             MattingMode::General => U2NETP_SIZE,
+            MattingMode::PpMatting => PPMATTING_SIZE,
+            MattingMode::BiRefNet => BIREFNET_SIZE,
         }
     }
 
@@ -72,6 +93,8 @@ impl MattingMode {
         match self {
             MattingMode::Portrait => MODNET_INPUT,
             MattingMode::General => U2NETP_INPUT,
+            MattingMode::PpMatting => PPMATTING_INPUT,
+            MattingMode::BiRefNet => BIREFNET_INPUT,
         }
     }
 
@@ -80,6 +103,8 @@ impl MattingMode {
         match self {
             MattingMode::Portrait => MODNET_OUTPUT,
             MattingMode::General => U2NETP_OUTPUT,
+            MattingMode::PpMatting => PPMATTING_OUTPUT,
+            MattingMode::BiRefNet => BIREFNET_OUTPUT,
         }
     }
 }
@@ -175,11 +200,14 @@ impl<G: GraphSession> Matter<G> {
 ///
 /// - MODNet：`(v - 127.5) / 127.5`
 /// - U2Net-p：`v / max(全图最大值)` 后用 ImageNet mean/std（最大值取全图三通道，与桌面脚本一致）
+/// - PP-MattingV2：同 MODNet（`(v/255-0.5)/0.5` 即 `(v-127.5)/127.5`）
+/// - BiRefNet-lite：`v/255` 后用 ImageNet mean/std
 pub fn normalize(mode: MattingMode, rgb: &[u8]) -> Vec<f32> {
     let plane = rgb.len() / 3;
     let mut out = vec![0.0f32; 3 * plane];
     match mode {
-        MattingMode::Portrait => {
+        // PP-MattingV2 的 `(v/255-0.5)/0.5` 与 MODNet 的 `(v-127.5)/127.5` 等价
+        MattingMode::Portrait | MattingMode::PpMatting => {
             for (i, px) in rgb.chunks_exact(3).enumerate() {
                 for c in 0..3 {
                     out[c * plane + i] = (px[c] as f32 - MODNET_MID) / MODNET_MID;
@@ -194,12 +222,22 @@ pub fn normalize(mode: MattingMode, rgb: &[u8]) -> Vec<f32> {
                 }
             }
         }
+        MattingMode::BiRefNet => {
+            for (i, px) in rgb.chunks_exact(3).enumerate() {
+                for c in 0..3 {
+                    out[c * plane + i] = (px[c] as f32 / PIXEL_MAX - IMAGENET_MEAN[c]) / IMAGENET_STD[c];
+                }
+            }
+        }
     }
     out
 }
 
-/// 就地整理模型输出：U2Net-p 做 min-max 归一化，两者都夹到 0..1。
+/// 就地整理模型输出：U2Net-p 做 min-max 归一化；BiRefNet 输出越出 0..1 时整体过 sigmoid；最后都夹到 0..1。
 pub fn finish_alpha(mode: MattingMode, alpha: &mut [f32]) {
+    if mode == MattingMode::BiRefNet && alpha.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
+        alpha.iter_mut().for_each(|v| *v = 1.0 / (1.0 + (-*v).exp()));
+    }
     if mode == MattingMode::General {
         let (mut lo, mut hi) = (f32::INFINITY, f32::NEG_INFINITY);
         for &v in alpha.iter() {
@@ -410,6 +448,37 @@ mod tests {
         assert!(r.alpha.iter().all(|&v| v == 255));
         let seen = seen.lock().unwrap();
         assert_eq!(seen[0].0, vec![1, 3, 512, 512]);
+    }
+
+    #[test]
+    fn ppmatting归一化与人像一致() {
+        let rgb = [0u8, 127, 255, 10, 20, 30];
+        assert_eq!(normalize(MattingMode::PpMatting, &rgb), normalize(MattingMode::Portrait, &rgb));
+    }
+
+    #[test]
+    fn birefnet用255做分母加imagenet() {
+        let out = normalize(MattingMode::BiRefNet, &[255, 0, 255]);
+        assert!((out[0] - (1.0 - IMAGENET_MEAN[0]) / IMAGENET_STD[0]).abs() < 1e-5);
+        assert!((out[1] - (0.0 - IMAGENET_MEAN[1]) / IMAGENET_STD[1]).abs() < 1e-5);
+    }
+
+    #[test]
+    fn birefnet的logits过sigmoid_已在0到1则不动() {
+        let mut a = [-20.0f32, 0.0, 20.0];
+        finish_alpha(MattingMode::BiRefNet, &mut a);
+        assert!(a[0] < 1e-6 && (a[1] - 0.5).abs() < 1e-6 && a[2] > 1.0 - 1e-6);
+        let mut b = [0.1f32, 0.9];
+        finish_alpha(MattingMode::BiRefNet, &mut b);
+        assert_eq!(b, [0.1, 0.9]);
+    }
+
+    #[test]
+    fn 新模式的尺寸与名字() {
+        assert_eq!(MattingMode::PpMatting.input_size(), 512);
+        assert_eq!(MattingMode::BiRefNet.input_size(), 512);
+        assert_eq!(MattingMode::PpMatting.input_name(), "img");
+        assert_eq!(MattingMode::BiRefNet.output_name(), "output_image");
     }
 
     #[test]

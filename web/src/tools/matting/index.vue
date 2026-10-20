@@ -42,7 +42,7 @@ const TOOL_ID = 'matting'
 const catalog = useAiCatalog(TOOL_ID)
 /** 提供者是否已探测过；探测前不提示“无可用模型”，免得闪一下 */
 const catalogReady = catalog.ready
-/** 当前模式：两个模式各是一个提供者，所以模式就是目录里当前选中的提供者 */
+/** 当前模式：每个模式各是一个提供者，所以模式就是目录里当前选中的提供者 */
 const mode = computed(() => modeOfProvider(catalog.current.value?.providerId))
 /** 当前模式的模型是否已安装 */
 const modelReady = computed(() => catalog.current.value?.status === 'ready')
@@ -229,7 +229,7 @@ onBeforeUnmount(cleanup)
 
 <template>
   <div class="tool-page">
-    <van-tabs :active="tabIndex" class="mt-tabs" type="card" :swipeable="false" @change="onTab">
+    <van-tabs :active="tabIndex" class="mt-tabs" type="card" :swipeable="false" :ellipsis="false" @change="onTab">
       <van-tab v-for="m in MATTING_MODES" :key="m" :title="MODE_LABELS[m]" />
     </van-tabs>
     <p class="tool-hint">{{ modeHint }}</p>

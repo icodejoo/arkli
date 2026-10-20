@@ -91,6 +91,34 @@ function nativeProviders(over: Partial<Record<string, Partial<AiProviderInfo>>> 
       downloading: false,
     },
     {
+      id: 'local-matting-ppmatting',
+      displayName: '本地人像抠图 v2（PP-MattingV2，实验）',
+      layer: 'L1',
+      available: false,
+      reason: 'not_installed',
+      session: true,
+      tasks: ['matting'],
+      offers: [{ task: 'matting', entry: 'native.ai.matting' }],
+      modelId: 'matting-ppmattingv2-mnn-w8',
+      downloaded: false,
+      sizeBytes: 0,
+      downloading: false,
+    },
+    {
+      id: 'local-matting-birefnet',
+      displayName: '本地通用高精抠图（BiRefNet-lite 512，非人像）',
+      layer: 'L1',
+      available: false,
+      reason: 'not_installed',
+      session: true,
+      tasks: ['matting'],
+      offers: [{ task: 'matting', entry: 'native.ai.matting' }],
+      modelId: 'matting-birefnet-lite512-mnn-w8',
+      downloaded: false,
+      sizeBytes: 0,
+      downloading: false,
+    },
+    {
       id: 'local-nllb',
       displayName: '本地翻译（NLLB）',
       layer: 'L1',
@@ -199,12 +227,12 @@ describe('适用性回归（registry 里的真实工具）', () => {
       .map((t) => t.id)
     expect(offenders).toEqual([])
   })
-  it('抠图：任务 matting 的目录是两个本地提供者（人像、通用各一个），互不混入别的提供者', () => {
+  it('抠图：任务 matting 的目录是四个本地提供者（人像、通用、人像 v2、高精各一个），互不混入别的提供者', () => {
     const items = catalogOf('matting')
-    expect(items.map((i) => i.key)).toEqual(['local-matting-portrait', 'local-matting-general'])
+    expect(items.map((i) => i.key)).toEqual(['local-matting-portrait', 'local-matting-general', 'local-matting-ppmatting', 'local-matting-birefnet'])
     expect(items[0]).toMatchObject({ layer: 'L1', status: 'missing', modelId: 'matting-modnet-mnn-fp32', entries: { matting: 'native.ai.matting' }, session: true })
     const installed = catalogOf('matting', nativeProviders(), { 'matting-u2netp-mnn-f16': st('matting-u2netp-mnn-f16', 'installed') })
-    expect(installed.map((i) => i.status)).toEqual(['missing', 'ready'])
+    expect(installed.map((i) => i.status)).toEqual(['missing', 'ready', 'missing', 'missing'])
   })
   it('各 AI 工具声明的任务（改了要同步文档与汇报）', () => {
     const declared = Object.fromEntries(tools.filter((t) => hasAiChoices(t)).map((t) => [t.id, (t.tasks ?? []).map((x) => (typeof x === 'string' ? x : `${x.task}@${x.entry}`))]))
@@ -375,7 +403,7 @@ describe('会话（预热跟随）', () => {
     const noSession = nativeProviders({ 'local-nllb': { session: false } })
     expect(sessionProviderOf(catalogOf('translate', noSession)[0])).toBeUndefined()
     const old = nativeProviders().map(({ session: _s, ...rest }) => rest)
-    expect(old.map(hasSession)).toEqual([false, true, true, true, true, true, true])
+    expect(old.map(hasSession)).toEqual([false, true, true, true, true, true, true, true, true])
   })
 })
 

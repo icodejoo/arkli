@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "note": "随包信任锚：下载地址只能来自这里，页面不能传 URL。M9（2026-10-16）已把旧 ONNX 模型整体退役，目录登记在 retired，启动后台回收：siglip2-q4_half（旧识物）、nllb600m-un6-ccm-int4（旧翻译）、asr-zipformer-zh-en-int8（旧语音，此前靠手动放置）、ppocrv5-mnn-fp16（OCR v5，已被 v6 取代）；这些目录名不要再复用给新模型。siglip2-mnn-w8 的 release siglip2-mnn-v1 待用户上传（model.mnn），上传前下载会失败；上传后需核对 sha256 与清单一致。nllb600m-un6-mnn-w6 的 release nllb-mnn-v1 待用户上传（12 个文件，清单见 docs/research/onnx-to-mnn-migration.md M6c 一节），上传前下载会失败；上传后需逐个核对 sha256；该模型为 CC-BY-NC-4.0，仅限非商业使用，署名与授权说明见 docs/design/bridge-protocol.md。asr-zipformer-zh-en-mnn-w8（语音输入，原模型 X-ASR 480ms 流式 zipformer 中英，Apache-2.0）的 release asr-mnn-v1 待用户上传（4 个文件：encoder.mnn、decoder.mnn、joiner.mnn、tokens.txt），上传前下载会失败；上传后需逐个核对 sha256。ppocrv6-small-mnn-fp16（文字识别，PP-OCRv6 small 的 det/rec 来自官方 HF 仓库 PaddlePaddle/PP-OCRv6_small_{det,rec}_onnx，cls 沿用 PP-OCRv5 方向分类，MNN fp16 版，Apache-2.0，两个 HF 模型页均标 apache-2.0）的 release ocr-mnn-v2 待用户上传（6 个文件：det.mnn、rec.mnn、cls.mnn、ppocr_keys.txt、NOTICE.txt、LICENSE-Apache-2.0.txt），上传前下载会失败；上传后需逐个核对 sha256。couplet-gpt2-mnn-w6（对联，uer/gpt2-chinese-couplet 的 MNN 6-bit 版）的 release couplet-mnn-v1 已上传并逐个核对 sha256 与清单一致（7 个文件：model.mnn、model.mnn.weight、vocab.txt、model.json、NOTICE.txt、UER-py_LICENSE_Apache-2.0.txt、couplet-clean-dataset_LICENSE_MIT.txt）。该模型的许可证无法确认可再分发（HF 模型卡无 license 字段，训练数据上游为 AGPL-3.0 且授权链不明），license 字段如实标注，风险自负，两份 LICENSE 文件只作来源留痕，不代表对权重的授权，详见包内 NOTICE.txt。 matting-modnet-mnn-fp32（人像抠图，MODNet fp32，Apache-2.0，权重来自第三方转存 Xenova/modnet，未与官方逐字节核对）与 matting-u2netp-mnn-f16（通用抠图，U2Net-p f16，Apache-2.0，权重来自 rembg release 的 u2netp.onnx，未与官方逐字节核对）的 release matting-modnet-mnn-v1 / matting-u2netp-mnn-v1 **均未发布，清单里的 URL 是占位**，待用户确认后上传（各 3 个文件：模型、NOTICE.txt、LICENSE-Apache-2.0.txt），上传前下载会失败；上传后需逐个核对 sha256。 couplet-corpus（对联语料库，数据包：下载 couplet-corpus.zip，解压出 5 个文件并逐个核对 sha256）的 release couplet-corpus-v1 待用户上传；语料由 couplet 训练集经 scripts/couplet 推导分类与横批得到，分类与横批质量未达验收线，数据集来源许可（MIT/AGPL 链条）存疑，风险自负。",
+  "note": "随包信任锚：下载地址只能来自这里，页面不能传 URL。M9（2026-10-16）已把旧 ONNX 模型整体退役，目录登记在 retired，启动后台回收：siglip2-q4_half（旧识物）、nllb600m-un6-ccm-int4（旧翻译）、asr-zipformer-zh-en-int8（旧语音，此前靠手动放置）、ppocrv5-mnn-fp16（OCR v5，已被 v6 取代）；这些目录名不要再复用给新模型。siglip2-mnn-w8 的 release siglip2-mnn-v1 待用户上传（model.mnn），上传前下载会失败；上传后需核对 sha256 与清单一致。nllb600m-un6-mnn-w6 的 release nllb-mnn-v1 待用户上传（12 个文件，清单见 docs/research/onnx-to-mnn-migration.md M6c 一节），上传前下载会失败；上传后需逐个核对 sha256；该模型为 CC-BY-NC-4.0，仅限非商业使用，署名与授权说明见 docs/design/bridge-protocol.md。asr-zipformer-zh-en-mnn-w8（语音输入，原模型 X-ASR 480ms 流式 zipformer 中英，Apache-2.0）的 release asr-mnn-v1 待用户上传（4 个文件：encoder.mnn、decoder.mnn、joiner.mnn、tokens.txt），上传前下载会失败；上传后需逐个核对 sha256。ppocrv6-small-mnn-fp16（文字识别，PP-OCRv6 small 的 det/rec 来自官方 HF 仓库 PaddlePaddle/PP-OCRv6_small_{det,rec}_onnx，cls 沿用 PP-OCRv5 方向分类，MNN fp16 版，Apache-2.0，两个 HF 模型页均标 apache-2.0）的 release ocr-mnn-v2 待用户上传（6 个文件：det.mnn、rec.mnn、cls.mnn、ppocr_keys.txt、NOTICE.txt、LICENSE-Apache-2.0.txt），上传前下载会失败；上传后需逐个核对 sha256。couplet-gpt2-mnn-w6（对联，uer/gpt2-chinese-couplet 的 MNN 6-bit 版）的 release couplet-mnn-v1 已上传并逐个核对 sha256 与清单一致（7 个文件：model.mnn、model.mnn.weight、vocab.txt、model.json、NOTICE.txt、UER-py_LICENSE_Apache-2.0.txt、couplet-clean-dataset_LICENSE_MIT.txt）。该模型的许可证无法确认可再分发（HF 模型卡无 license 字段，训练数据上游为 AGPL-3.0 且授权链不明），license 字段如实标注，风险自负，两份 LICENSE 文件只作来源留痕，不代表对权重的授权，详见包内 NOTICE.txt。 matting-modnet-mnn-fp32（人像抠图，MODNet fp32，Apache-2.0，权重来自第三方转存 Xenova/modnet，未与官方逐字节核对）与 matting-u2netp-mnn-f16（通用抠图，U2Net-p f16，Apache-2.0，权重来自 rembg release 的 u2netp.onnx，未与官方逐字节核对）的 release matting-modnet-mnn-v1 / matting-u2netp-mnn-v1 **均未发布，清单里的 URL 是占位**，待用户确认后上传（各 3 个文件：模型、NOTICE.txt、LICENSE-Apache-2.0.txt），上传前下载会失败；上传后需逐个核对 sha256。 couplet-corpus（对联语料库，数据包：下载 couplet-corpus.zip，解压出 5 个文件并逐个核对 sha256）的 release couplet-corpus-v1 待用户上传；语料由 couplet 训练集经 scripts/couplet 推导分类与横批得到，分类与横批质量未达验收线，数据集来源许可（MIT/AGPL 链条）存疑，风险自负。 matting-birefnet-lite-mnn-w8（BiRefNet-lite@1024 实验版，真机推理峰值约 5.2GB 被系统杀）已退役，目录登记在 retired，启动后台回收，其 release matting-birefnet-lite-mnn-v1 已于 2026-10-20 删除；该目录名不要复用。替代品 matting-birefnet-lite512-mnn-w8（BiRefNet-lite 512 重导出，MIT）的 release matting-birefnet-lite512-mnn-v1 待用户上传（LICENSE-MIT.txt、NOTICE.txt、birefnet_lite512_w8.mnn），上传前下载会失败；上传后需核对 sha256。",
   "retired": [
     {
       "id": "siglip2-q4_half",
@@ -17,6 +17,10 @@
     {
       "id": "ppocrv5-mnn-fp16",
       "dir": "models/ppocrv5-mnn-fp16"
+    },
+    {
+      "id": "matting-birefnet-lite-mnn-w8",
+      "dir": "models/matting-birefnet-lite-mnn-w8"
     }
   ],
   "models": [
@@ -368,6 +372,82 @@
           "name": "u2netp_f16.mnn",
           "bytes": 2394164,
           "sha256": "9ccd77f57f157e17117ed273629c40f13cd6a28681418583821f328d2a34d8f2",
+          "role": "model"
+        }
+      ]
+    },
+    {
+      "id": "matting-ppmattingv2-mnn-w8",
+      "displayName": "本地人像抠图模型 v2（PP-MattingV2，MNN 版，实验）",
+      "version": "1",
+      "dir": "models/matting-ppmattingv2-mnn-w8",
+      "totalBytes": 9174366,
+      "license": "apache-2.0",
+      "note": "实验模型：代码 Apache-2.0，预训练权重许可作者未单独声明，转正前需核对。release matting-ppmattingv2-mnn-v1 已于 2026-10-20 上传（预发布），线上 sha256 已核对。",
+      "archive": {
+        "name": "matting-ppmattingv2-mnn-w8-1.zip",
+        "bytes": 8178134,
+        "sha256": "dec7326b15a272df3e6029b7bd2da2b0688a7162148d6ae37e4446a44741ada8",
+        "role": "archive",
+        "urls": [
+          "https://github.com/icodejoo/arkli/releases/download/matting-ppmattingv2-mnn-v1/matting-ppmattingv2-mnn-w8-1.zip"
+        ]
+      },
+      "files": [
+        {
+          "name": "LICENSE-Apache-2.0.txt",
+          "bytes": 11577,
+          "sha256": "8ae60061cdd89d5b70a5d71b2816ecc0da0bee21947688bff4b39928512a45af",
+          "role": "aux"
+        },
+        {
+          "name": "NOTICE.txt",
+          "bytes": 1021,
+          "sha256": "6f4e61ceae610b5c7f2d73575d4756eaa39d84d1b137d764ecd29f507f99ba5f",
+          "role": "aux"
+        },
+        {
+          "name": "ppmattingv2_w8.mnn",
+          "bytes": 9161768,
+          "sha256": "7830feb2e99806be10cba1fd6155eea60793f4dee49f888c16bec552a0756601",
+          "role": "model"
+        }
+      ]
+    },
+    {
+      "id": "matting-birefnet-lite512-mnn-w8",
+      "version": "1",
+      "dir": "models/matting-birefnet-lite512-mnn-w8",
+      "totalBytes": 91348066,
+      "displayName": "本地通用高精抠图模型（BiRefNet-lite 512，MNN 版，不建议用于人像）",
+      "license": "mit",
+      "note": "通用（非人像）高精抠图：商品、宠物、物件边缘最干净；不建议用于人像，发丝不如人像模型。MIT（BiRefNet 原作者 ZhengPeng，512 重导出者 studioludens）。体积约 91MB，真机单张约 10 秒、峰值内存约 1.9GB。release matting-birefnet-lite512-mnn-v1 已于 2026-10-20 上传，线上 sha256 已核对。",
+      "archive": {
+        "name": "matting-birefnet-lite512-mnn-w8-1.zip",
+        "bytes": 68370210,
+        "sha256": "ca190b706f6566a25e1a035199b22739b1d533faa16327c9e31d3e9fb04af4d7",
+        "role": "archive",
+        "urls": [
+          "https://github.com/icodejoo/arkli/releases/download/matting-birefnet-lite512-mnn-v1/matting-birefnet-lite512-mnn-w8-1.zip"
+        ]
+      },
+      "files": [
+        {
+          "name": "LICENSE-MIT.txt",
+          "bytes": 1106,
+          "sha256": "b5cd5faac84a0acb8a6bdb8aeef0919e528891be27216df84eab398d7c8bd2aa",
+          "role": "aux"
+        },
+        {
+          "name": "NOTICE.txt",
+          "bytes": 1308,
+          "sha256": "a0c8519f902de5d150b3b04c7a449a6a016f8fb51eb1a9f29525629657e470c8",
+          "role": "aux"
+        },
+        {
+          "name": "birefnet_lite512_w8.mnn",
+          "bytes": 91345652,
+          "sha256": "d9d8373134208148dd505d773fb70d01cfa98cee9841cb624cf4bc8dc69e7ed5",
           "role": "model"
         }
       ]

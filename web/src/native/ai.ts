@@ -686,8 +686,8 @@ export interface CoupletResult {
   modelId: string
 }
 
-/** 抠图模式：人像（MODNet）/ 通用主体（U2Net-p），各对应一个本地模型 */
-export type MattingMode = 'portrait' | 'general'
+/** 抠图模式：人像（MODNet）/ 通用主体（U2Net-p）/ 人像 v2（PP-MattingV2，实验）/ 通用高精（BiRefNet-lite，实验），各对应一个本地模型 */
+export type MattingMode = 'portrait' | 'general' | 'ppmatting' | 'birefnet'
 
 /** 边缘细化强度：关 / 轻 / 标准 / 强（原生缺省“强”） */
 export type MattingRefine = 'off' | 'light' | 'standard' | 'strong'

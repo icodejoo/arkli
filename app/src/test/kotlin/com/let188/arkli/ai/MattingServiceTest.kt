@@ -153,6 +153,14 @@ class MattingServiceTest {
     }
 
     @Test
+    fun experimentalModes_requireTheirOwnFiles() {
+        assertEquals(listOf("ppmattingv2_w8.mnn", "NOTICE.txt", "LICENSE-Apache-2.0.txt"), MattingService.requiredFilesOf(MattingMode.PPMATTING))
+        assertEquals(listOf("birefnet_lite512_w8.mnn", "NOTICE.txt", "LICENSE-MIT.txt"), MattingService.requiredFilesOf(MattingMode.BIREFNET))
+        assertTrue(service(fullDir(MattingMode.BIREFNET), FakeBackend(), mode = MattingMode.BIREFNET).isModelReady())
+        assertFalse(service(fullDir(MattingMode.PPMATTING), FakeBackend(), mode = MattingMode.BIREFNET).isModelReady())
+    }
+
+    @Test
     fun warmup_thenMatteDoesNotReload_andUnloadReportsWhetherLoaded() {
         val b = FakeBackend()
         val svc = service(fullDir(), b)

@@ -1,21 +1,30 @@
 import type { MattingMode, MattingRefine, MattingResult } from '@/native/ai'
 
 /** 抠图模式的展示顺序（也是页面标签页的顺序） */
-export const MATTING_MODES: readonly MattingMode[] = ['portrait', 'general']
+export const MATTING_MODES: readonly MattingMode[] = ['portrait', 'general', 'ppmatting', 'birefnet']
 
-/** 模式对应的原生提供者 id（原生 `MattingMode.providerId`，两个模式各是一个提供者） */
+/** 模式对应的原生提供者 id（原生 `MattingMode.providerId`，每个模式各是一个提供者） */
 export const PROVIDER_OF_MODE: Readonly<Record<MattingMode, string>> = {
   portrait: 'local-matting-portrait',
   general: 'local-matting-general',
+  ppmatting: 'local-matting-ppmatting',
+  birefnet: 'local-matting-birefnet',
 }
 
 /** 模式的中文名 */
-export const MODE_LABELS: Readonly<Record<MattingMode, string>> = { portrait: '人像', general: '通用' }
+export const MODE_LABELS: Readonly<Record<MattingMode, string>> = {
+  portrait: '人像',
+  general: '通用',
+  ppmatting: '人像 v2（实验）',
+  birefnet: '通用高精',
+}
 
 /** 模式的一句话说明 */
 export const MODE_HINTS: Readonly<Record<MattingMode, string>> = {
   portrait: '人像专用，发丝与边缘更细；深色背景配深色衣服时可能出现镂空。',
   general: '通用主体，物品、宠物都行，体积小；发丝等细节偏粗。',
+  ppmatting: '实验：人像专用，发丝外圈更干净；输入固定 512，细节有上限。',
+  birefnet: '适合商品、宠物、物件这类非人像，边缘最干净；不建议用于人像（发丝不如人像模型）。模型约 91MB，单张约 10 秒、内存约 1.9GB，内存小的手机可能被系统关掉。',
 }
 
 /** 边缘细化档位的展示顺序与文案（分段控件） */

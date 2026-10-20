@@ -61,8 +61,33 @@ summary: 本地抠图工具：MODNet 人像与 U2Net-p 通用两个 MNN 模型�
 - **取消**：细化阶段每波（线程数 × 64 行）之间检查令牌，抛 `Cancelled`；单测覆盖“分块检查”“细化阶段取消后可再跑”“结果与线程数无关”。真机：前向中取消约 0.15 秒内返回 `CANCELLED`，取消后立刻再跑正常。
 - **局限**：① 暗背景配暗衣服的镂空是模型 alpha 的问题，后处理救不了（image-3-darkbg 肩部不变）；② 引导滤波用灰度引导，发丝与背景亮度相近时贴不准；③ 极细发丝若模型 alpha 本身为 0 则无从找回，Strong 档会削弱 alpha<0.12 的细丝；④ 源图是 JPEG 时 8×8 块效应放大 300% 后可见，前景色估计会继承；⑤ 单遍大半径在前景与背景颜色都很杂的边缘可能略偏向邻近前景色。
 
+## 实验模型（2026-10-20 接入，待真机对比）
+
+为了在手机上亲眼比效果，把调研（`docs/research/portrait-matting-models.md`）里的两个候选以“实验”身份接进抠图页，作为第三、第四个标签页；不改默认，不替换 MODNet / U2Net-p。
+
+| | PP-MattingV2（人像 v2） | BiRefNet-lite 512（通用高精，非人像） |
+|---|---|---|
+| 提供者 / 模型 id | `local-matting-ppmatting` / `matting-ppmattingv2-mnn-w8` | `local-matting-birefnet` / `matting-birefnet-lite512-mnn-w8` |
+| 桥 `mode` | `ppmatting` | `birefnet` |
+| 模型文件 | `ppmattingv2_w8.mnn`（9,161,768 B，w8） | `birefnet_lite512_w8.mnn`（91,345,652 B，w8，sha256 `d9d8373134208148dd505d773fb70d01cfa98cee9841cb624cf4bc8dc69e7ed5`） |
+| 清单 zip | `matting-ppmattingv2-mnn-w8-1.zip`，8,178,134 B，sha256 `dec7326b15a272df3e6029b7bd2da2b0688a7162148d6ae37e4446a44741ada8` | `matting-birefnet-lite512-mnn-w8-1.zip`，68,370,210 B，sha256 `ca190b706f6566a25e1a035199b22739b1d533faa16327c9e31d3e9fb04af4d7`（解压后共 91,348,066 B） |
+| 模型 sha256 | `7830feb2e99806be10cba1fd6155eea60793f4dee49f888c16bec552a0756601` | `70b743eb679595643a9284db3bbcde9ffa14a3acb6028952cd5ed91aecb65ad4` |
+| 输入 | `img`，固定 1×3×512×512 | `input_image`，固定 1×3×512×512 |
+| 预处理 | 缩放到 512；`(v/255-0.5)/0.5`（即 `(v-127.5)/127.5`，与 MODNet 同） | 缩放到 512；`v/255` 后 ImageNet mean/std |
+| 输出 | `sigmoid_5.tmp_0`，已是 0~1 的 alpha，只夹值 | `output_image`，logits；值越出 0~1 就整体过 sigmoid |
+| 许可 | 代码 Apache-2.0；**预训练权重许可作者未单独声明，转正前要核对** | MIT |
+
+- 预后处理依据：桌面实测脚本 `E:\workspaces\arkli-verify\matting-scripts\run_models.py`（ORT 跑通），输入输出名核对自两个 ONNX 的元数据（lite512 的输入输出名与 1024 版相同，只有形状不同，预处理同为 `v/255` + ImageNet mean/std，后处理同为越界才 sigmoid）与 MNN 转换日志（名字在 MNN 里原样保留）。BiRefNet 的“越界才 sigmoid”照脚本做；Rust 侧 `matting.rs` 的 `normalize` / `finish_alpha` 有纯函数单测。
+- 后面仍是同一条链：缩回原图 -> 边缘细化（四档，默认强）。细化档位对它们没重新调；PP-MattingV2 本身边缘更窄，“强”可能过度，真机看了再定。
+- **取消**：两者都只有一次前向、没有循环可插检查点，无法中途打断，与 MODNet 同；只在阶段边界检查，取消后会话保留、可再跑。BiRefNet 512 一次前向真机约 9 秒，取消最长要等这么久。
+- **风险**：lite@512 是把 1024 训练的权重直接换 512 重导出（未重训），细节比 1024 版略少，深色衣服配深色背景可能整块丢失；桌面 MNN 峰值约 2.17GB（memory low 约 1.86GB），推算手机约 1.4~1.6GB；**真机实测（STG-AL00）单张约 9~10 秒、峰值 1.88GB，不再被杀**。
+- **来源与许可**：`studioludens/birefnet-lite-512`（基于 ZhengPeng7/BiRefNet_lite，MIT，版权行含 ZhengPeng 与 Studio Ludens V.O.F.），ONNX sha256 `1cb0fb36…5ac2` 与 HF 的 X-Linked-ETag 一致；包内 LICENSE-MIT.txt 为其仓库原文，NOTICE.txt 写明两层来源与转换改动。桌面对拍（portrait-3，ORT vs MNN w8）：logit 最大绝对差 0.34（量级约 18.3），过 sigmoid 后差异只在过渡带。release `matting-birefnet-lite512-mnn-v1` 已于 2026-10-20 上传（正式 release，不占“Latest”），线上回下载 sha256 与清单一致。`matting-ppmattingv2-mnn-v1` 已上传（预发布）。
+- **1024 版退役**（2026-10-20）：BiRefNet-lite@1024（`matting-birefnet-lite-mnn-w8`，135MB）真机推理峰值约 5.2GB，被系统杀掉。清单里该条目已换成 512 版，旧目录 `models/matting-birefnet-lite-mnn-w8` 登记进 `retired`，手机上启动后台自动清掉；旧 release `matting-birefnet-lite-mnn-v1` 与本地库目录、zip 已于 2026-10-20 删除，目录名不复用。
+- 模型 zip 由 `scripts/mnn/pack.py --zip` 打出（这两个模型没有 `recipes.json` 配方，`--tag` 手给）。
+
 ## 已知局限与待办
-- MODNet 深色对深色会镂空；U2Net-p 发丝粗；两者都不是通用高精度分割。待评估 PP-MattingV2、BiRefNet-lite。
+- MODNet 深色对深色会镂空；U2Net-p 发丝粗；两者都不是通用高精度分割。
+- **真机对比结论（2026-10-20，用户验收）**：人像上 PP-MattingV2 与 BiRefNet-lite512 都比 MODNet 强档干净、两者接近（portrait-3 半透明占比 MODNet 5.2% / PP 3.6% / BiRefNet 4.0%，对比图 `E:\workspaces\arkli-verify\matting-models\sheets\device-portrait-3.three-models.png`），但 PP 体积 9MB、约 2.1 秒、峰值 326MB，代价小得多。**BiRefNet-lite512 定位为“通用高精”**：商品、宠物、物件等非人像边缘明显好，**不建议用于人像**；页面选项名“通用高精”，说明里写明。
 - 边缘细化四档的默认已改为“强”，真机已验（`a09cbbd`）；已出图时切档自动重抠仍待手点。浅色背景加头发高光时前景去污染洗不干净（黑底发丝泛米白）是算法上限，另起一项。
 - 大图会被收敛到 3072 再抠，成品不是原分辨率。
 - `native.media.preview` 尚未实现，页面预览用现有 `native.image.preview`（透明）或 `previewBlob`（带底色）。

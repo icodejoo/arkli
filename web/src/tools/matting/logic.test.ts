@@ -13,18 +13,29 @@ import {
 import indexSource from './index.vue?raw'
 
 describe('模式与提供者', () => {
-  it('两个模式各对应一个提供者，互不相同', () => {
-    expect(MATTING_MODES).toEqual(['portrait', 'general'])
-    expect(PROVIDER_OF_MODE).toEqual({ portrait: 'local-matting-portrait', general: 'local-matting-general' })
-    expect(new Set(Object.values(PROVIDER_OF_MODE)).size).toBe(2)
+  it('四个模式各对应一个提供者，互不相同', () => {
+    expect(MATTING_MODES).toEqual(['portrait', 'general', 'ppmatting', 'birefnet'])
+    expect(PROVIDER_OF_MODE).toEqual({
+      portrait: 'local-matting-portrait',
+      general: 'local-matting-general',
+      ppmatting: 'local-matting-ppmatting',
+      birefnet: 'local-matting-birefnet',
+    })
+    expect(new Set(Object.values(PROVIDER_OF_MODE)).size).toBe(4)
     for (const m of MATTING_MODES) {
       expect(MODE_LABELS[m]).toBeTruthy()
       expect(MODE_HINTS[m]).toBeTruthy()
     }
+    expect(MODE_LABELS.ppmatting).toContain('实验')
+    // BiRefNet 已转正为“通用高精”，说明里必须提醒不建议用于人像
+    expect(MODE_LABELS.birefnet).toBe('通用高精')
+    expect(MODE_HINTS.birefnet).toContain('不建议用于人像')
   })
   it('提供者 id 反查模式：认识的反查，不认识与空回落人像', () => {
     expect(modeOfProvider('local-matting-general')).toBe('general')
     expect(modeOfProvider('local-matting-portrait')).toBe('portrait')
+    expect(modeOfProvider('local-matting-ppmatting')).toBe('ppmatting')
+    expect(modeOfProvider('local-matting-birefnet')).toBe('birefnet')
     expect(modeOfProvider('local-ocr')).toBe('portrait')
     expect(modeOfProvider(undefined)).toBe('portrait')
     expect(modeOfProvider(null)).toBe('portrait')

@@ -105,7 +105,7 @@ class AiProviderContractTest {
     fun everyRegisteredProvider_keepsCapabilityPortContract() {
         val all = registered()
         assertEquals(
-            listOf(IntentHandoffProvider.ID, LocalClipProvider.ID, LocalOcrProvider.ID, LocalNllbProvider.ID, LocalQwenProvider.ID, LocalCoupletProvider.ID, MattingMode.PORTRAIT.providerId, MattingMode.GENERAL.providerId),
+            listOf(IntentHandoffProvider.ID, LocalClipProvider.ID, LocalOcrProvider.ID, LocalNllbProvider.ID, LocalQwenProvider.ID, LocalCoupletProvider.ID, MattingMode.PORTRAIT.providerId, MattingMode.GENERAL.providerId, MattingMode.PPMATTING.providerId, MattingMode.BIREFNET.providerId),
             all.map { it.id },
         )
         assertEquals("id 不能重复", all.size, all.map { it.id }.toSet().size)
@@ -143,6 +143,8 @@ class AiProviderContractTest {
                 LocalCoupletProvider.ID to AiLayer.L1,
                 MattingMode.PORTRAIT.providerId to AiLayer.L1,
                 MattingMode.GENERAL.providerId to AiLayer.L1,
+                MattingMode.PPMATTING.providerId to AiLayer.L1,
+                MattingMode.BIREFNET.providerId to AiLayer.L1,
             ),
             registered().associate { it.id to it.layer },
         )
@@ -162,6 +164,8 @@ class AiProviderContractTest {
         assertEquals(AiModule.METHOD_COUPLET, entry(LocalCoupletProvider.ID, AiTask.COUPLET))
         assertEquals(AiModule.METHOD_MATTING, entry(MattingMode.PORTRAIT.providerId, AiTask.MATTING))
         assertEquals(AiModule.METHOD_MATTING, entry(MattingMode.GENERAL.providerId, AiTask.MATTING))
+        assertEquals(AiModule.METHOD_MATTING, entry(MattingMode.PPMATTING.providerId, AiTask.MATTING))
+        assertEquals(AiModule.METHOD_MATTING, entry(MattingMode.BIREFNET.providerId, AiTask.MATTING))
         /** 某提供者 translate 报价的约束 */
         fun tr(id: String) = byId.getValue(id).offers().first { it.task == AiTask.TRANSLATE }.constraints
         // 语言清单与 auto 规则相同；Qwen 的原文上限更小、不收 numBeams
@@ -208,7 +212,7 @@ class AiProviderContractTest {
     fun sessionModelId_matchesModelInfo() {
         val all = AiFixtures.registered(tmp, ModelStateSource { ModelStateInfo(installed = false, diskBytes = 0, downloading = false) })
         val sessions = all.mapNotNull { p -> AiPort.Session.bind(p)?.let { p to it } }
-        assertEquals(listOf(LocalClipProvider.ID, LocalOcrProvider.ID, LocalNllbProvider.ID, LocalQwenProvider.ID, LocalCoupletProvider.ID, MattingMode.PORTRAIT.providerId, MattingMode.GENERAL.providerId), sessions.map { it.first.id })
+        assertEquals(listOf(LocalClipProvider.ID, LocalOcrProvider.ID, LocalNllbProvider.ID, LocalQwenProvider.ID, LocalCoupletProvider.ID, MattingMode.PORTRAIT.providerId, MattingMode.GENERAL.providerId, MattingMode.PPMATTING.providerId, MattingMode.BIREFNET.providerId), sessions.map { it.first.id })
         // 删模型前卸会话靠 sessionModelId，它必须就是 providers 里报给前端的 modelId
         sessions.forEach { (p, s) -> assertEquals("${p.id} 的会话模型", p.modelInfo()?.modelId, s.sessionModelId) }
     }

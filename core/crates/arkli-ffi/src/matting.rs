@@ -38,13 +38,17 @@ impl std::fmt::Display for MattingFfiError {
     }
 }
 
-/// 抠图模式，对应两个模型。
+/// 抠图模式，对应四个模型（后两个是实验模型）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum MattingFfiMode {
     /// 人像（MODNet）
     Portrait,
     /// 通用主体（U2Net-p）
     General,
+    /// 人像 v2（PP-MattingV2，实验）
+    PpMatting,
+    /// 通用高精（BiRefNet-lite，实验）
+    BiRefNet,
 }
 
 impl MattingFfiMode {
@@ -53,6 +57,8 @@ impl MattingFfiMode {
         match self {
             MattingFfiMode::Portrait => MattingMode::Portrait,
             MattingFfiMode::General => MattingMode::General,
+            MattingFfiMode::PpMatting => MattingMode::PpMatting,
+            MattingFfiMode::BiRefNet => MattingMode::BiRefNet,
         }
     }
 
@@ -61,6 +67,8 @@ impl MattingFfiMode {
         match self {
             MattingFfiMode::Portrait => 0,
             MattingFfiMode::General => 1,
+            MattingFfiMode::PpMatting => 2,
+            MattingFfiMode::BiRefNet => 3,
         }
     }
 }
@@ -127,13 +135,13 @@ struct Slot {
     matter: Matter<MnnNet>,
 }
 
-/// 进程内状态：MNN 运行时（只加载一次）与两个模式的槽位。
+/// 进程内状态：MNN 运行时（只加载一次）与四个模式的槽位。
 #[derive(Default)]
 struct State {
     /// MNN 运行时，首次加载时创建
     mnn: Option<MnnRuntime>,
-    /// 槽位：0 人像，1 通用
-    slots: [Option<Slot>; 2],
+    /// 槽位：0 人像，1 通用，2 PP-MattingV2，3 BiRefNet
+    slots: [Option<Slot>; 4],
 }
 
 /// 全局状态；Mutex 同时保证“一次只跑一个推理”。
@@ -303,6 +311,9 @@ mod tests {
     fn 模式槽位互不相同() {
         assert_ne!(MattingFfiMode::Portrait.slot(), MattingFfiMode::General.slot());
         assert_eq!(MattingFfiMode::General.engine(), MattingMode::General);
+        let slots = [MattingFfiMode::Portrait, MattingFfiMode::General, MattingFfiMode::PpMatting, MattingFfiMode::BiRefNet].map(|m| m.slot());
+        assert_eq!(slots, [0, 1, 2, 3]);
+        assert_eq!(MattingFfiMode::BiRefNet.engine(), MattingMode::BiRefNet);
     }
 
     /// 取必需的环境变量。

@@ -5,7 +5,7 @@ import com.let188.arkli.bridge.BridgeException
 import org.json.JSONObject
 
 /**
- * 抠图模式，对应两个本地模型。`wire` 是桥协议里 `mode` 的取值，也是前端 `MattingMode` 的字面量。
+ * 抠图模式，对应四个本地模型（后两个是实验模型）。`wire` 是桥协议里 `mode` 的取值，也是前端 `MattingMode` 的字面量。
  *
  * @property wire 桥协议里的名字
  * @property providerId 对应提供者 id
@@ -13,6 +13,7 @@ import org.json.JSONObject
  * @property modelDir 模型目录（相对 filesDir）
  * @property modelFile 模型文件名
  * @property displayName 提供者展示名
+ * @property licenseFile 随模型包的许可证文件名（清单 files 里有，设备上必需）
  */
 enum class MattingMode(
     val wire: String,
@@ -21,6 +22,7 @@ enum class MattingMode(
     val modelDir: String,
     val modelFile: String,
     val displayName: String,
+    val licenseFile: String = LICENSE_APACHE,
 ) {
     /** 人像：MODNet，fp32，输入 512 */
     PORTRAIT(
@@ -33,9 +35,24 @@ enum class MattingMode(
         "general", "local-matting-general", "matting-u2netp-mnn-f16",
         "models/matting-u2netp-mnn-f16", "u2netp_f16.mnn", "本地通用抠图（U2Net-p）",
     ),
+
+    /** 人像 v2（实验）：PP-MattingV2，w8，固定输入 512 */
+    PPMATTING(
+        "ppmatting", "local-matting-ppmatting", "matting-ppmattingv2-mnn-w8",
+        "models/matting-ppmattingv2-mnn-w8", "ppmattingv2_w8.mnn", "本地人像抠图 v2（PP-MattingV2，实验）",
+    ),
+
+    /** 通用高精（非人像）：BiRefNet-lite，w8，固定输入 512（社区 512 重导出）；不建议用于人像，较慢、真机峰值约 1.9GB */
+    BIREFNET(
+        "birefnet", "local-matting-birefnet", "matting-birefnet-lite512-mnn-w8",
+        "models/matting-birefnet-lite512-mnn-w8", "birefnet_lite512_w8.mnn", "本地通用高精抠图（BiRefNet-lite 512，非人像）", "LICENSE-MIT.txt",
+    ),
     ;
 
     companion object {
+        /** 默认许可证文件名（Apache-2.0） */
+        private const val LICENSE_APACHE = "LICENSE-Apache-2.0.txt"
+
         /**
          * 按桥协议名查模式。
          *
@@ -78,16 +95,16 @@ object AiMattingPolicy {
 
     /**
      * 解析并校验 `native.ai.matting` 的参数。`mode` 必填；`provider` 可省，给了就必须与 `mode` 对应
-     * （两个模式各是一个提供者，选哪个模型就是选哪个模式）；`refine` 可选，缺省 strong。
+     * （每个模式各是一个提供者，选哪个模型就是选哪个模式）；`refine` 可选，缺省 strong。
      *
-     * @param params `{ provider?: string, path: string, mode: "portrait" | "general", refine?: "off" | "light" | "standard" | "strong" }`
+     * @param params `{ provider?: string, path: string, mode: "portrait" | "general" | "ppmatting" | "birefnet", refine?: "off" | "light" | "standard" | "strong" }`
      * @return 校验通过的请求，provider 已补成 mode 对应的提供者
      * @throws BridgeException BAD_PARAMS：path 缺失或过长、mode 缺失或不认识、provider 与 mode 不符、refine 不合法
      */
     fun parse(params: JSONObject): AiMattingRequest {
         val path = AiPolicy.pagePath(params)
-        val wire = params.opt(KEY_MODE) as? String ?: throw bad("mode 需要是字符串（portrait 或 general）")
-        val mode = MattingMode.fromWire(wire) ?: throw bad("mode 不认识：$wire（应为 portrait 或 general）")
+        val wire = params.opt(KEY_MODE) as? String ?: throw bad("mode 需要是字符串（portrait / general / ppmatting / birefnet）")
+        val mode = MattingMode.fromWire(wire) ?: throw bad("mode 不认识：$wire（应为 portrait / general / ppmatting / birefnet）")
         val given = AiPolicy.providerId(params.opt(AiPolicy.KEY_PROVIDER), required = false)
         if (given != null && given != mode.providerId) throw bad("provider $given 与 mode $wire 不符，应为 ${mode.providerId}")
         val refine = when (val raw = params.opt(KEY_REFINE)) {

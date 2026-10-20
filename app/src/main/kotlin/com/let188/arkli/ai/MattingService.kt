@@ -395,16 +395,13 @@ class MattingService(
         /** 说明文件名（随模型下载） */
         private const val NOTICE_FILE = "NOTICE.txt"
 
-        /** 许可证文件名（随模型下载） */
-        private const val LICENSE_FILE = "LICENSE-Apache-2.0.txt"
-
         /**
          * 某模式设备上必需的文件名，与清单里 files 一致。
          *
          * @param mode 模式
          * @return 文件名列表：模型、说明、许可证
          */
-        fun requiredFilesOf(mode: MattingMode): List<String> = listOf(mode.modelFile, NOTICE_FILE, LICENSE_FILE)
+        fun requiredFilesOf(mode: MattingMode): List<String> = listOf(mode.modelFile, NOTICE_FILE, mode.licenseFile)
 
         /**
          * 计算模型指纹：目录路径加每个必需文件的长度与修改时间。
@@ -420,7 +417,8 @@ class MattingService(
 
 /**
  * 本地抠图提供者（L1）：一个模式一个实例，声明 `matting`，可用性取决于对应模型是否由 `native.model.*` 装好并校验通过。
- * 人像用 MODNet（`local-matting-portrait`），通用用 U2Net-p（`local-matting-general`）。
+ * 人像用 MODNet（`local-matting-portrait`），通用用 U2Net-p（`local-matting-general`）；
+ * 另有两个实验提供者：PP-MattingV2（`local-matting-ppmatting`）、BiRefNet-lite（`local-matting-birefnet`）。
  *
  * 文本入口 [run] 不适用（输入是图片），请走 `native.ai.matting`。
  *

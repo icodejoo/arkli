@@ -120,6 +120,8 @@ internal object AiFixtures {
         val couplet = CoupletService(object : CoupletEnv { override fun modelDir() = coupletDir }, NoCouplet())
         val mattingPortrait = mattingService(tmp, MattingMode.PORTRAIT)
         val mattingGeneral = mattingService(tmp, MattingMode.GENERAL)
-        return AiModule.providers(OkHandoff(), clip, ocr, translate, qwen, couplet, mattingPortrait, mattingGeneral, models)
+        val mattingPpMatting = mattingService(tmp, MattingMode.PPMATTING)
+        val mattingBiRefNet = mattingService(tmp, MattingMode.BIREFNET)
+        return AiModule.providers(OkHandoff(), clip, ocr, translate, qwen, couplet, mattingPortrait, mattingGeneral, mattingPpMatting, mattingBiRefNet, models)
     }
 }

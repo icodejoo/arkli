@@ -24,6 +24,15 @@ class AiMattingPolicyTest {
     }
 
     @Test
+    fun parse_experimentalModes_mapToTheirProviders() {
+        val pp = AiMattingPolicy.parse(JSONObject().put("path", "p").put("mode", "ppmatting"))
+        assertEquals(MattingMode.PPMATTING, pp.mode)
+        assertEquals("local-matting-ppmatting", pp.provider)
+        assertEquals("local-matting-birefnet", AiMattingPolicy.parse(JSONObject().put("path", "p").put("mode", "birefnet")).provider)
+        assertBad { AiMattingPolicy.parse(JSONObject().put("path", "p").put("mode", "birefnet").put("provider", "local-matting-ppmatting")) }
+    }
+
+    @Test
     fun parse_acceptsMatchingProvider_rejectsMismatch() {
         val ok = AiMattingPolicy.parse(JSONObject().put("path", "p").put("mode", "general").put("provider", "local-matting-general"))
         assertEquals(MattingMode.GENERAL, ok.mode)

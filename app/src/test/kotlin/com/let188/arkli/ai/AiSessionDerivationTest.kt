@@ -69,7 +69,7 @@ class AiSessionDerivationTest {
     fun releaseHooks_coverEveryModelBackedSession() {
         val stub = SessionOnly()
         val hooks = AiLifecyclePolicy.releaseHooks(AiFixtures.registered(tmp) + stub)
-        assertEquals(setOf(ClipService.MODEL_ID, OcrService.MODEL_ID, TranslateService.MODEL_ID, QwenService.MODEL_ID, CoupletService.MODEL_ID, MattingMode.PORTRAIT.modelId, MattingMode.GENERAL.modelId, stubModel), hooks.keys)
+        assertEquals(setOf(ClipService.MODEL_ID, OcrService.MODEL_ID, TranslateService.MODEL_ID, QwenService.MODEL_ID, CoupletService.MODEL_ID, MattingMode.PORTRAIT.modelId, MattingMode.GENERAL.modelId, MattingMode.PPMATTING.modelId, MattingMode.BIREFNET.modelId, stubModel), hooks.keys)
         assertEquals(listOf(stub.id), hooks.getValue(stubModel).map { it.first })
         assertEquals(listOf(LocalQwenProvider.ID), hooks.getValue(QwenService.MODEL_ID).map { it.first })
     }
@@ -104,6 +104,8 @@ class AiSessionDerivationTest {
                 LocalCoupletProvider.ID to true,
                 MattingMode.PORTRAIT.providerId to true,
                 MattingMode.GENERAL.providerId to true,
+                MattingMode.PPMATTING.providerId to true,
+                MattingMode.BIREFNET.providerId to true,
                 stub.id to true,
             ),
             session,

@@ -59,8 +59,12 @@ private fun MattingRefine.toFfi(): MattingFfiRefine = when (this) {
  */
 internal class UniffiMattingBackend(private val mode: MattingMode, private val store: AiParamStore) : MattingBackend {
     /** Rust 侧的模式枚举 */
-    private val ffiMode: MattingFfiMode =
-        if (mode == MattingMode.PORTRAIT) MattingFfiMode.PORTRAIT else MattingFfiMode.GENERAL
+    private val ffiMode: MattingFfiMode = when (mode) {
+        MattingMode.PORTRAIT -> MattingFfiMode.PORTRAIT
+        MattingMode.GENERAL -> MattingFfiMode.GENERAL
+        MattingMode.PPMATTING -> MattingFfiMode.PP_MATTING
+        MattingMode.BIREFNET -> MattingFfiMode.BI_REF_NET
+    }
 
     /** 加载 MNN 运行库与模型文件（先确保 so 已载入，Rust 按裸名 dlopen），顺带记录加载耗时 */
     override fun load(modelPath: String): Unit = guard {
