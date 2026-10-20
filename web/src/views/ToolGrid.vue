@@ -2,9 +2,8 @@
 // 工具宫格：首页、AI 页、收藏页共用；点击进入 /tool/:id，长按（仅 App 内）可添加到桌面
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { showToast } from 'vant'
 import { isNativeAvailable } from '@/native/bridge'
-import { pinToolShortcut } from '@/native/shortcut'
+import PinToolSheet from '@/shared/PinToolSheet.vue'
 import type { ToolMeta } from '@/tools/registry'
 import { toolIcon } from './toolIcons'
 import { GRID_COLUMNS } from './toolGrid'
@@ -21,8 +20,6 @@ const sheetShow = ref(false)
 const pressedId = ref('')
 /** 长按选中的工具 */
 const pressed = computed(() => props.tools.find((t) => t.id === pressedId.value))
-/** 长按菜单项（只有一项，留成数组是 ActionSheet 的要求） */
-const sheetActions = [{ name: '添加到桌面' }]
 /** 长按识别：只在 App 内启用，浏览器里没有桌面可加 */
 const longPress = createLongPress((id) => {
   if (!isNativeAvailable()) return
@@ -34,19 +31,6 @@ const longPress = createLongPress((id) => {
 function open(id: string): void {
   if (longPress.consumeClick()) return
   void router.push(`/tool/${id}`)
-}
-
-/** 菜单选择：请求系统把当前工具固定到桌面 */
-async function onSelect(): Promise<void> {
-  const t = pressed.value
-  sheetShow.value = false
-  if (!t) return
-  try {
-    const r = await pinToolShortcut({ label: t.name, icon: toolIcon(t.id), toolId: t.id })
-    showToast(r.requested ? '请在系统弹窗里确认添加' : '当前桌面不支持添加快捷方式')
-  } catch (e) {
-    showToast(e instanceof Error ? e.message : '添加失败')
-  }
 }
 </script>
 
@@ -68,14 +52,7 @@ async function onSelect(): Promise<void> {
       <span class="tool-grid__name">{{ t.name }}</span>
     </van-grid-item>
   </van-grid>
-  <van-action-sheet
-    v-model:show="sheetShow"
-    :actions="sheetActions"
-    :description="pressed ? `${toolIcon(pressed.id)} ${pressed.name}` : ''"
-    cancel-text="取消"
-    close-on-click-action
-    @select="onSelect"
-  />
+  <pin-tool-sheet v-model:show="sheetShow" :tool="pressed" />
 </template>
 
 <style lang="scss" scoped>

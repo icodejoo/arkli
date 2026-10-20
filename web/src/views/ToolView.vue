@@ -1,12 +1,15 @@
 <script setup lang="ts">
 // 工具容器页：顶部导航栏 + 内容区（安全区内边距），按路由 id 异步加载工具组件
-import { computed, defineAsyncComponent, ref, watchEffect, type Component } from 'vue'
+import { computed, defineAsyncComponent, nextTick, ref, watchEffect, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { showToast } from 'vant'
+import { isNativeAvailable } from '@/native/bridge'
 import CameraIcon from '~icons/cil/camera?width=1em&height=1em'
 import KeyboardIcon from '~icons/cil/keyboard?width=1em&height=1em'
 import { MODE_CAMERA, MODE_QUERY, findTool, hasAiChoices } from '@/tools/registry'
 import ModelPicker from '@/shared/ModelPicker.vue'
+import PinToolSheet from '@/shared/PinToolSheet.vue'
+import { MENU_KEY_PIN, buildMenuActions } from '@/shared/pinToolSheet'
 import { useToolsStore } from '@/stores/tools'
 import { useFavoritesStore } from '@/stores/favorites'
 import { shareApp, shareAppLink } from '@/shared/appShare'
@@ -69,20 +72,25 @@ function toggleStar(): void {
   showToast(favorites.toggle(props.id) ? '已收藏' : '已取消收藏')
 }
 
-/** 分享方式选择面板是否显示 */
+/** 胶囊菜单面板是否显示 */
 const shareSheet = ref(false)
-/** 分享方式：分享下载链接（纯文字）或分享安装包 */
-const shareActions = [
-  { name: '分享下载链接', key: 'link' },
-  { name: '分享安装包', key: 'apk' },
-]
+/** “添加到桌面”面板是否显示 */
+const pinSheet = ref(false)
+/** 胶囊菜单项：两项分享，有原生宿主时再加“添加到桌面” */
+const shareActions = computed(() => buildMenuActions(isNativeAvailable()))
 
 /**
- * 选好分享方式后执行：链接直接发文字，安装包先导出再发。
+ * 选好菜单项后执行：添加到桌面先关菜单再开固定面板；链接直接发文字，安装包先导出再发。
  *
- * @param action 被选中的分享方式
+ * @param action 被选中的菜单项
  */
 async function onSharePick(action: { key?: string }): Promise<void> {
+  if (action.key === MENU_KEY_PIN) {
+    shareSheet.value = false
+    await nextTick()
+    pinSheet.value = true
+    return
+  }
   try {
     const ok = action.key === 'apk' ? await shareApp() : await shareAppLink()
     if (!ok) showToast('没能拉起分享')
@@ -144,6 +152,7 @@ watchEffect(() => {
       </template>
     </van-nav-bar>
     <van-action-sheet v-model:show="shareSheet" :actions="shareActions" cancel-text="取消" close-on-click-action @select="onSharePick" />
+    <pin-tool-sheet v-if="meta" v-model:show="pinSheet" :tool="meta" />
     <main class="shell__body">
       <!-- keep-alive：工具之间互相跳转（如取色器 → 颜色助手）再返回时保留状态；离开工具页（回首页等）整个 ToolView 卸载，缓存随之释放 -->
       <keep-alive v-if="ToolComponent" :max="KEEP_ALIVE_MAX">
