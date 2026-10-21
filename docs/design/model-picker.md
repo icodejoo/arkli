@@ -122,7 +122,7 @@ ToolMeta.models?: ToolModelOption[]  // 过渡：{ modelId, title, desc }，L1 �
 
 ## 文字识别页的接法（M8，第一个只读目录的新任务页）
 
-`ocr` 与 `table-extract` 页：`useAiCatalog(TOOL_ID)`，`modelReady = current.status === 'ready'`，探测完（`catalog.ready`）仍没有就绪模型时显示共用的 `<model-missing-notice />`（文案 `MSG_NO_MODEL`「无可用模型，去查看」，点击去 AI 中心，只提示、不指定下载入口）；识别按钮在 `modelReady` 为假时禁用。**页面不再读 `native.ai.status` 桩，也不调任何 `native.model.*`**，下载、取消、删除、校验都在 AI 中心。模型选择器放在页面底部操作栏最左（`variant="bar"`），用默认插槽（组件自带的 cpu-ai 图标按钮）。识别撞上 `NOT_READY`（`AiNotReadyError`）时页面只重新探测目录（`catalog.refresh()`），不弹下载相关文案。
+`ocr` 与 `table-extract` 页：`useAiCatalog(TOOL_ID)`，`modelReady = current.status === 'ready'`，探测完（`catalog.ready`）仍没有就绪模型时显示共用的 `<model-missing-notice />`（文案 `MSG_NO_MODEL`「无可用模型，去查看」，点击去 AI 中心）；模型没就绪时相册、拍照、识别等按钮**保持可点**，点击由 `useModelGate()`（`shared/modelGate.ts`）弹对话框「没有可用模型」，确认按钮「去下载」跳 AI 中心（`AI_CENTER_PATH`），取消只关闭；因 busy、没选图等造成的禁用不受影响。**页面不再读 `native.ai.status` 桩，也不调任何 `native.model.*`**，下载、取消、删除、校验都在 AI 中心。模型选择器放在页面底部操作栏最左（`variant="bar"`），用默认插槽（组件自带的 cpu-ai 图标按钮）。识别撞上 `NOT_READY`（`AiNotReadyError`）时页面重新探测目录（`catalog.refresh()`），仍没有就绪模型就弹同一个对话框（共用 `handleNotReady`）。
 
 ## 翻译页的拍照翻译（只改前端，真机未验证）
 

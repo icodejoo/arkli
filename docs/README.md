@@ -56,4 +56,5 @@
 - [端侧 logo 生成：模型与方案调研](research/logo-generation-on-device.md) — 位图扩散（MNN diffusion 支持 SD1.5/太乙/Sana/SD3.5，测试机 CPU 无 fp16 基本不可用）、小模型写 SVG、模板+图标库+字体排版三条路线的体积/耗时/许可对比；推荐模板排版为主、小 LLM 只出结构化参数，端侧小扩散模型待真机验证。draft。
 - [SD1.5 logo 模型端侧部署](research/sd15-on-device-deployment.md) — MNN 基座对 SD1.5 的支持现状（要重编、改官方管线）、MNN 与 stable-diffusion.cpp 对比（多档量化/分机型推荐 sd.cpp 更合适）、LCM/TAESD/量化/降分辨率等降门槛手段，推荐先做 sd.cpp 真机 POC。draft，真机数据空白。
 - [logo 专用小模型（第二轮）](research/logo-small-models.md) — 模板效果差后的续调研：SDXS 一步扩散+vtracer、Qwen LoRA 写 SVG、程序化合成；候选表、许可、spike 顺序。draft。
+- [whisper-tiny 的 MNN 版：本地语音识别调研](research/whisper-tiny-mnn.md) — MNN 官方无 whisper 发布物，但 sherpa-mnn 已带 whisper 离线识别代码、现用 so 免重编；社区 tiny/base MNN 文件（约 102/163MB，来源与许可不清）；tiny 中文字错率约 40%、英文也不及现用 zipformer，非流式、取消需自写解码循环；建议不替换，仅作离线文件转写的并存候选，含最小 POC 与待核实项。draft，真机数据空白。
 - [「一个木函」功能清单](research/woobx-feature-list.md) — 对标产品 116 项功能，按 11 类列出，含形态与置信度。draft。
