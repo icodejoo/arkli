@@ -13,6 +13,7 @@ import argparse
 import glob
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -194,6 +195,27 @@ class MnnBackend(OrtBackend):
         return self._r(self.j.forward([self._c(e), self._c(d)])[0])
 
 
+# 字节回退 token（如 <0x4D>）的匹配；multi-zh-hans 这类词表里英文/生僻字靠它拼 UTF-8 字节
+BYTE_TOKEN = re.compile(r"^<0x([0-9A-Fa-f]{2})>$")
+
+
+def join_tokens(ids, id2tok):
+    """把 token id 序列拼成文字：普通 token 直接拼，<0xXX> 先攒成字节再按 UTF-8 解码，▁ 换成空格。"""
+    out, buf = [], bytearray()
+    for i in ids:
+        m = BYTE_TOKEN.match(id2tok[i])
+        if m:
+            buf.append(int(m.group(1), 16))
+            continue
+        if buf:
+            out.append(buf.decode("utf-8", errors="replace"))
+            buf = bytearray()
+        out.append(id2tok[i])
+    if buf:
+        out.append(buf.decode("utf-8", errors="replace"))
+    return "".join(out).replace("▁", " ").strip()
+
+
 def recognize(be, feats, id2tok):
     """流式贪心解码一条音频；返回 (文字, 编码器总耗时秒)。"""
     st = be.init_states()
@@ -211,7 +233,7 @@ def recognize(be, feats, id2tok):
             if tid != 0:
                 hyp.append(tid)
                 dout = be.decoder(hyp[-be.ctx:])
-    return "".join(id2tok[i] for i in hyp[be.ctx:]).replace("▁", " ").strip(), t_enc
+    return join_tokens(hyp[be.ctx:], id2tok), t_enc
 
 
 def run_one(a):
