@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createToolStorage } from '../../shared/toolStorage'
-import { drawNames, isValidCount, loadNames, MAX_PICK, NAMES_KEY, parseNames, saveNames, TOOL_NS } from './logic'
+import { calcMainButton, createDebouncer, drawNames, isValidCount, loadNames, MAX_PICK, NAMES_KEY, needsPreviewRebuild, parseNames, PREVIEW_DEBOUNCE_MS, previewKey, saveNames, TOOL_NS } from './logic'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -111,5 +111,52 @@ describe('isValidCount', () => {
     expect(isValidCount(MAX_PICK + 1)).toBe(false)
     expect(isValidCount(1.5)).toBe(false)
     expect(isValidCount('2')).toBe(false)
+  })
+})
+
+describe('calcMainButton', () => {
+  const base = { rolling: false, autoStop: true, stopping: false, ocrBusy: false }
+  it('空闲：开抽、可点', () => {
+    expect(calcMainButton(base)).toEqual({ text: '开抽', disabled: false, loading: false, danger: false })
+  })
+  it('自动模式滚动中：禁用并转圈', () => {
+    expect(calcMainButton({ ...base, rolling: true })).toEqual({ text: '开抽', disabled: true, loading: true, danger: false })
+  })
+  it('手动模式滚动中：红色“停止”，可点且不转圈', () => {
+    expect(calcMainButton({ ...base, rolling: true, autoStop: false })).toEqual({ text: '停止', disabled: false, loading: false, danger: true })
+  })
+  it('手动模式减速中：禁用，不再红', () => {
+    const s = calcMainButton({ ...base, rolling: true, autoStop: false, stopping: true })
+    expect(s.disabled).toBe(true)
+    expect(s.danger).toBe(false)
+  })
+  it('识别中：禁用并转圈', () => {
+    expect(calcMainButton({ ...base, ocrBusy: true })).toEqual({ text: '识别中', disabled: true, loading: true, danger: false })
+  })
+})
+
+describe('roll-call: 预览重建与防抖', () => {
+  it('空名单不重建；有效且指纹变了才重建', () => {
+    expect(needsPreviewRebuild([], '')).toBe(false)
+    expect(needsPreviewRebuild(['a'], '')).toBe(true)
+    expect(needsPreviewRebuild(['a', 'b'], previewKey(['a', 'b']))).toBe(false)
+    expect(needsPreviewRebuild(['a', 'c'], previewKey(['a', 'b']))).toBe(true)
+  })
+  it('防抖：连续触发只执行一次，可取消', () => {
+    vi.useFakeTimers()
+    const fn = vi.fn()
+    const d = createDebouncer(fn, PREVIEW_DEBOUNCE_MS)
+    d.call()
+    vi.advanceTimersByTime(300)
+    d.call()
+    vi.advanceTimersByTime(300)
+    expect(fn).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(100)
+    expect(fn).toHaveBeenCalledTimes(1)
+    d.call()
+    d.cancel()
+    vi.advanceTimersByTime(1000)
+    expect(fn).toHaveBeenCalledTimes(1)
+    vi.useRealTimers()
   })
 })

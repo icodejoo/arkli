@@ -4,12 +4,35 @@ import {
   calcAtlasGrid,
   calcAtlasUv,
   calcRingMotion,
+  SETTLE_HOLD_MS,
   calcStopAngle,
+  ACTIVE_FRAME_MS,
+  IDLE_FRAME_MS,
+  calcPixelRatio,
+  calcTargetRounds,
+  rpmToRadPerMs,
+  rpsToRadPerMs,
+  calcApproachAngle,
+  normalizeAngle,
+  shouldRenderFrame,
+  calcSpinAngle,
+  calcStopTarget,
+  MANUAL_STOP_MS,
+  SPIN_RAD_PER_MS,
   DEFAULT_MAX_CHARS,
   ELLIPSIS,
   MIN_RINGS,
   SLOTS_PER_RING,
   truncateName,
+  calcDragAngle,
+  calcInertiaStep,
+  isHorizontalIntent,
+  clampInertiaSpeed,
+  smoothDragVelocity,
+  DRAG_RAD_PER_PX,
+  DRAG_INTENT_PX,
+  INERTIA_MAX_SPEED,
+  INERTIA_STOP_SPEED,
 } from './ring-layout'
 
 describe('ring-layout: truncateName', () => {
@@ -111,17 +134,135 @@ describe('ring-layout: calcStopAngle', () => {
 })
 
 describe('ring-layout: calcRingMotion', () => {
-  it('目标环最后停下，非目标环依次提前减速停下', () => {
+  it('所有转子同时停下', () => {
     const motionTarget = calcRingMotion(1, 3, 1)
     expect(motionTarget.stopRatio).toBe(1.0)
 
     const motionOther0 = calcRingMotion(0, 3, 1)
     const motionOther2 = calcRingMotion(2, 3, 1)
-    expect(motionOther0.stopRatio).toBeLessThan(1.0)
-    expect(motionOther2.stopRatio).toBeLessThan(1.0)
-    expect(motionOther0.stopRatio).toBeGreaterThanOrEqual(0.55)
+    expect(motionOther0.stopRatio).toBe(1.0)
+    expect(motionOther2.stopRatio).toBe(1.0)
 
     expect(motionOther0.direction).toBe(1)
     expect(motionTarget.direction).toBe(-1)
+  })
+})
+
+describe('ring-layout: 手动模式旋转与停止', () => {
+  const full = Math.PI * 2
+  const mod = (x: number) => ((x % full) + full) % full
+
+  it('匀速角度随时间线性增长，方向跟随', () => {
+    expect(calcSpinAngle(0, 1)).toBe(0)
+    expect(calcSpinAngle(900, 1)).toBeCloseTo(full)
+    expect(calcSpinAngle(450, -1)).toBeCloseTo(-Math.PI)
+    expect(calcSpinAngle(-5, 1)).toBe(0)
+  })
+
+  it('停止终点与目标对齐同余，且沿方向前进不回头', () => {
+    for (const dir of [1, -1] as const) {
+      for (const from of [0, 0.3, 5, 123.4, -7]) {
+        const align = calcStopAngle(5, 16, 4, dir)
+        const to = calcStopTarget(from, align, dir, MANUAL_STOP_MS)
+        expect(Math.min(mod(to - align), full - mod(to - align))).toBeCloseTo(0, 6)
+        expect(dir * (to - from)).toBeGreaterThanOrEqual(0)
+      }
+    }
+  })
+
+  it('行程足够：减速起速不低于匀速，且至多多一圈', () => {
+    const minTravel = (SPIN_RAD_PER_MS * MANUAL_STOP_MS) / 3
+    const to = calcStopTarget(1, calcStopAngle(0, 16, 4, 1), 1, MANUAL_STOP_MS)
+    expect(to - 1).toBeGreaterThanOrEqual(minTravel - 1e-9)
+    expect(to - 1).toBeLessThan(minTravel + full + 1e-9)
+  })
+})
+
+describe('ring-layout: 结算时间线', () => {
+  it('停顿 2 秒后进入结算静止态', () => {
+    expect(SETTLE_HOLD_MS).toBe(1000)
+  })
+})
+
+describe('ring-layout: 帧率节流与像素比', () => {
+  it('首帧必渲染，未到间隔跳过，到点渲染', () => {
+    expect(shouldRenderFrame(100, 0, IDLE_FRAME_MS)).toBe(true)
+    expect(shouldRenderFrame(116, 100, ACTIVE_FRAME_MS)).toBe(false)
+    expect(shouldRenderFrame(133.3, 100, ACTIVE_FRAME_MS)).toBe(true)
+    expect(shouldRenderFrame(133.3, 100, IDLE_FRAME_MS)).toBe(false)
+    expect(shouldRenderFrame(167, 100, IDLE_FRAME_MS)).toBe(true)
+  })
+  it('60Hz 抖动下 30fps 隔帧渲染', () => {
+    expect(shouldRenderFrame(100 + 33.2, 100, ACTIVE_FRAME_MS)).toBe(true)
+  })
+  it('像素比受 dpr、上限与最长边约束', () => {
+    expect(calcPixelRatio(1, 300, 300)).toBe(1)
+    expect(calcPixelRatio(3, 300, 300)).toBe(1.25)
+    expect(calcPixelRatio(3, 800, 400)).toBeCloseTo(0.75)
+  })
+})
+
+describe('ring-layout: 慢转衔接滚动', () => {
+  it('角度归一到 [0, 2π)', () => {
+    expect(normalizeAngle(-Math.PI / 2)).toBeCloseTo((3 * Math.PI) / 2)
+    expect(normalizeAngle(5 * Math.PI)).toBeCloseTo(Math.PI)
+    expect(normalizeAngle(0)).toBe(0)
+  })
+  it('逼近角度：起点连续、终点精确', () => {
+    expect(calcApproachAngle(1, 5, 0)).toBe(1)
+    expect(calcApproachAngle(1, 5, 1)).toBe(5)
+    expect(calcApproachAngle(1, 5, 0.5)).toBe(3)
+  })
+})
+
+describe('ring-layout: 拖动与惯性', () => {
+  it('拖动角度：向右为正、与位移成正比', () => {
+    expect(calcDragAngle(1, 0)).toBe(1)
+    expect(calcDragAngle(0, 100)).toBeCloseTo(100 * DRAG_RAD_PER_PX)
+    expect(calcDragAngle(1, -100)).toBeLessThan(1)
+  })
+  it('方向判定：位移不够或竖向占优不接管', () => {
+    expect(isHorizontalIntent(DRAG_INTENT_PX - 1, 0)).toBe(false)
+    expect(isHorizontalIntent(20, 30)).toBe(false)
+    expect(isHorizontalIntent(-20, 5)).toBe(true)
+  })
+  it('惯性：速度衰减、角度增量同号、最终归零', () => {
+    const s = calcInertiaStep(0.01, 16)
+    expect(s.velocity).toBeGreaterThan(0)
+    expect(s.velocity).toBeLessThan(0.01)
+    expect(s.delta).toBeGreaterThan(0)
+    expect(s.delta).toBeLessThan(0.01 * 16)
+    expect(calcInertiaStep(-0.01, 16).delta).toBeLessThan(0)
+    let v = 0.01
+    for (let i = 0; i < 1000 && v !== 0; i++) v = calcInertiaStep(v, 33).velocity
+    expect(v).toBe(0)
+    expect(calcInertiaStep(INERTIA_STOP_SPEED * 1.01, 1000).velocity).toBe(0)
+    expect(calcInertiaStep(0.01, 0)).toEqual({ delta: 0, velocity: 0.01 })
+  })
+  it('限幅与测速平滑', () => {
+    expect(clampInertiaSpeed(1)).toBe(INERTIA_MAX_SPEED)
+    expect(clampInertiaSpeed(-1)).toBe(-INERTIA_MAX_SPEED)
+    expect(clampInertiaSpeed(0.001)).toBe(0.001)
+    expect(smoothDragVelocity(0.5, 1, 0)).toBe(0.5)
+    expect(smoothDragVelocity(0, 0.1, 10)).toBeGreaterThan(0)
+    expect(smoothDragVelocity(0, 0.1, 10)).toBeLessThan(0.01)
+  })
+})
+
+describe('ring-layout: 转速换算', () => {
+  it('圈/秒、圈/分换算成弧度/毫秒', () => {
+    expect(rpsToRadPerMs(1)).toBeCloseTo((Math.PI * 2) / 1000)
+    expect(rpmToRadPerMs(1.5)).toBeCloseTo((Math.PI * 2) / 40000)
+  })
+  it('抽奖转速与时长折算整圈数，至少 2 圈', () => {
+    expect(calcTargetRounds(1, 5000)).toBe(5)
+    expect(calcTargetRounds(0.5, 3000)).toBe(2)
+  })
+  it('目标圈数可配置，其余环随之递减', () => {
+    expect(calcRingMotion(1, 3, 1, 8).extraRounds).toBe(8)
+    expect(calcRingMotion(0, 3, 1, 8).extraRounds).toBe(7)
+  })
+  it('自定义角速度参与匀速角度计算', () => {
+    expect(calcSpinAngle(1000, 1, rpsToRadPerMs(2))).toBeCloseTo(Math.PI * 4)
   })
 })

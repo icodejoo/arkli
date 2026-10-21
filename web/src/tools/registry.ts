@@ -198,7 +198,7 @@ export const tools: ToolMeta[] = [
   { id: 'game-2048', name: '2048', description: '滑动合并方块，冲击更高分', load: () => import('./game-2048/index.vue') },
   { id: 'minesweeper', name: '扫雷', description: '初中高三档难度，长按插旗，首击必安全', load: () => import('./minesweeper/index.vue') },
   { id: 'times-table', name: '九九乘法', description: '四选一或输入答案，统计连对与错题回顾', load: () => import('./times-table/index.vue') },
-  { id: 'roll-call', name: '随机点名', description: '粘贴、导入文本或拍照识别名单，随机抽人，可选不重复', tags: [TAG_AI], tasks: [{ task: 'ocr', entry: AI_METHODS.ocr }], load: () => import('./roll-call/index.vue') },
+  { id: 'roll-call', name: '随机点名', description: '粘贴、导入文本或拍照识别名单，随机抽人，可选不重复', tags: [TAG_AI], tasks: [{ task: 'ocr', entry: AI_METHODS.ocr }], load: () => import('./roll-call/index.vue'), setting: () => import('./roll-call/Setting.vue') },
   { id: 'torch', name: '手电筒', description: '后置闪光灯常亮，支持 SOS 和限频频闪', load: () => import('./torch/index.vue') },
   { id: 'speech-to-text', name: '语音转文字', description: '本地模型离线听写，边说边出字，可复制、存成文本', tags: [TAG_AI], models: [{ modelId: 'asr-zipformer-zh-en-mnn-w8', title: '语音识别 zipformer（MNN）', desc: '中英文流式听写' }], load: () => import('./speech-to-text/index.vue') },
   { id: 'logo', name: 'logo 设计', description: '输入品牌名，智能排版出 logo 方案；装了本地模型还能生成 AI 图形，可换版式、配色，存成 PNG', tags: [TAG_AI], tasks: [{ task: 'prompt', entry: AI_METHODS.run }, { task: 'logoSymbol', entry: AI_METHODS.logoSymbol }], load: () => import('./logo/index.vue') },

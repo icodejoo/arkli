@@ -104,3 +104,111 @@ export function saveNames(text: string, store: ToolStorage = createToolStorage(T
 export function isValidCount(v: unknown): v is number {
   return typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= MAX_PICK
 }
+
+/** 主按钮状态输入 */
+export interface MainButtonInput {
+  /** 正在抽签表演中 */
+  rolling: boolean
+  /** 自动停止开关 */
+  autoStop: boolean
+  /** 手动模式下已点停止、正在减速 */
+  stopping: boolean
+  /** 正在识别名单（OCR） */
+  ocrBusy: boolean
+}
+
+/** 主按钮展示状态 */
+export interface MainButtonState {
+  /** 文案 */
+  text: string
+  /** 是否禁用 */
+  disabled: boolean
+  /** 是否显示加载动画 */
+  loading: boolean
+  /** 是否红色（手动模式滚动中的“停止”） */
+  danger: boolean
+}
+
+/** 主按钮文案：开抽 */
+export const MAIN_TEXT_ROLL = '开抽'
+/** 主按钮文案：停止 */
+export const MAIN_TEXT_STOP = '停止'
+/** 主按钮文案：识别中 */
+export const MAIN_TEXT_OCR = '识别中'
+
+/**
+ * 计算主按钮状态：自动模式滚动中禁用并转圈；手动模式滚动中是红色可点的“停止”，减速中才禁用。
+ *
+ * @param s 当前页面状态
+ * @returns 主按钮展示状态
+ * @example calcMainButton({ rolling: true, autoStop: false, stopping: false, ocrBusy: false }) // 红色“停止”
+ */
+export function calcMainButton(s: MainButtonInput): MainButtonState {
+  const manualSpin = s.rolling && !s.autoStop
+  return {
+    text: s.ocrBusy ? MAIN_TEXT_OCR : manualSpin ? MAIN_TEXT_STOP : MAIN_TEXT_ROLL,
+    disabled: s.ocrBusy || (s.rolling && (s.autoStop || s.stopping)),
+    loading: s.ocrBusy || (s.rolling && s.autoStop),
+    danger: manualSpin && !s.stopping && !s.ocrBusy,
+  }
+}
+
+/** 名单变化后重建 3D 预览的防抖时长（毫秒） */
+export const PREVIEW_DEBOUNCE_MS = 400
+
+/**
+ * 名单的预览指纹：相同指纹不必重建转子。
+ *
+ * @param names 解析后的名单
+ * @returns 指纹字符串（空名单为空串）
+ * @example previewKey(['a', 'b']) // 'a\nb'
+ */
+export function previewKey(names: readonly string[]): string {
+  return names.join('\n')
+}
+
+/**
+ * 是否需要重建预览：名单有效且指纹与上次不同。
+ *
+ * @param names 解析后的名单
+ * @param lastKey 上次已生成预览的指纹
+ * @returns true 表示该重建
+ * @example needsPreviewRebuild(['a'], '') // true
+ */
+export function needsPreviewRebuild(names: readonly string[], lastKey: string): boolean {
+  return names.length > 0 && previewKey(names) !== lastKey
+}
+
+/** 防抖器 */
+export interface Debouncer {
+  /** 触发（重置计时） */
+  call: () => void
+  /** 取消尚未执行的触发 */
+  cancel: () => void
+}
+
+/**
+ * 创建防抖器：连续触发只在最后一次之后 ms 毫秒执行一次。
+ *
+ * @param fn 到点执行的函数
+ * @param ms 防抖毫秒
+ * @returns 防抖器
+ * @example const d = createDebouncer(sync, PREVIEW_DEBOUNCE_MS); d.call()
+ */
+export function createDebouncer(fn: () => void, ms: number): Debouncer {
+  let timer: ReturnType<typeof setTimeout> | null = null
+  const cancel = (): void => {
+    if (timer !== null) clearTimeout(timer)
+    timer = null
+  }
+  return {
+    call() {
+      cancel()
+      timer = setTimeout(() => {
+        timer = null
+        fn()
+      }, ms)
+    },
+    cancel,
+  }
+}
