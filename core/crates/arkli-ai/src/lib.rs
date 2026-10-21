@@ -19,6 +19,8 @@
 //! - [`matting`]：抠图（MODNet 人像 / U2Net-p 通用；缩放、归一化、单次前向、alpha 缩回原图尺寸）
 //! - [`matting_refine`]：抠图边缘细化（引导滤波收紧 alpha、Blur-Fusion 估计去污染前景色）
 //! - [`couplet`]：对联生成（GPT-2 字级模型；等长掩码、top-k 采样；目录加载在 feature `mnn-backend` 下）
+//! - `logo_gen` / `logo_post`（feature `mnn-backend`）：logo 符号生成（SDXS 一步文生图：分词、文本编码、UNet、一步采样、TAESD；
+//!   后处理：二值化、符号提取、质量闸门、vtracer 描摹成单色 SVG path）
 //! - `translate`（feature `mnn-backend`）：本地翻译（NLLB-200；MNN 三图后端，分词、束搜索、标点后处理）
 //!
 //! ## 测试
@@ -45,6 +47,12 @@ pub mod preprocess;
 pub mod provider;
 pub mod task;
 
+#[cfg(feature = "mnn-backend")]
+pub mod logo_gen;
+#[cfg(feature = "mnn-backend")]
+pub mod logo_post;
+#[cfg(all(test, feature = "mnn-backend"))]
+mod logo_real_tests;
 #[cfg(feature = "mnn-backend")]
 pub mod mnn;
 #[cfg(feature = "mnn-backend")]

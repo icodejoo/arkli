@@ -135,7 +135,7 @@ onBeforeUnmount(() => {
     </tool-group>
 
     <!-- 底部动作栏：复制结果，主按钮查询（查询中变成取消） -->
-    <bottom-actions :actions="{ copy: { disabled: !info } }" main :main-text="loading ? '取消' : '查询'" :main-type="loading ? 'danger' : 'primary'" :disabled="{ main: !inApp }" @main="lookup" @copy="copyAll" />
+    <bottom-actions :main-loading="loading" :actions="{ copy: { disabled: !info } }" main :main-text="loading ? '取消' : '查询'" :main-type="loading ? 'danger' : 'primary'" :disabled="{ main: !inApp }" @main="lookup" @copy="copyAll" />
   </div>
 </template>
 

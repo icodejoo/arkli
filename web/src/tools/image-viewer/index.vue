@@ -130,7 +130,7 @@ onBeforeUnmount(() => image.value?.release())
     <p v-else class="tool-hint">点底部「相册」或「拍照」选一张图，看看尺寸、相机参数和拍摄时间。全程在本机处理，不上传。</p>
 
     <!-- 底部动作栏：选图后自动解析，没有单独的开始按钮；右边主按钮是拍照 -->
-    <bottom-actions album main main-text="拍照" main-type="danger" :disabled="{ album: loading, main: loading }" @album="choose" @main="shoot" />
+    <bottom-actions :main-loading="loading" album main main-text="拍照" main-type="danger" :disabled="{ album: loading, main: loading }" @album="choose" @main="shoot" />
   </div>
 </template>
 

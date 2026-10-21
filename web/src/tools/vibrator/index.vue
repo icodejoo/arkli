@@ -127,7 +127,7 @@ onBeforeUnmount(() => {
     <p class="tool-hint">首次震动前需要先点一下页面；系统开了勿扰或关了触感反馈时，部分手机会不震。切到后台会自动停止。</p>
 
     <!-- 底部动作栏：主按钮开始震动（震动中变成停止） -->
-    <bottom-actions main :main-text="playing ? '停止' : '开始震动'" :main-type="playing ? 'danger' : 'primary'" :disabled="{ main: !playing && !canStart }" @main="playing ? stop() : start()" />
+    <bottom-actions :main-loading="playing" main :main-text="playing ? '停止' : '开始震动'" :main-type="playing ? 'danger' : 'primary'" :disabled="{ main: !playing && !canStart }" @main="playing ? stop() : start()" />
   </div>
 </template>
 

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 // 掷骰子：选个数与面数，六面骰画点阵，其余面数直接显示数字
 import BottomActions from '@/shared/BottomActions.vue'
+import { useFloatPause } from '@/shared/useFloatPause'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import CellPicker from '@/shared/CellPicker.vue'
 import { prefersReducedMotion } from '@/shared/motion'
-import { loadFlag, saveFlag, SOUND_KEY, VIBRATE_KEY, VIBRATE_LAND, VIBRATE_START } from '../coin-flip/logic'
+import { createSettleTimer, loadFlag, saveFlag, SOUND_KEY, VIBRATE_KEY, VIBRATE_LAND, VIBRATE_START } from '../coin-flip/logic'
 import { createSoundPlayer, tryVibrate } from '../coin-flip/feedback'
 import { MAX_DICE, MIN_DICE, PIPS, rollDice, SIDES_OPTIONS, type RollResult } from './logic'
 
@@ -25,10 +26,8 @@ const result = ref<RollResult | null>(null)
 const rolling = ref(false)
 /** 滚动时显示的占位点数 */
 const tumble = ref<number[]>([])
-/** 定时器句柄 */
-let timer: ReturnType<typeof setTimeout> | undefined
-/** 滚动中的随机跳动句柄 */
-let ticker: ReturnType<typeof setInterval> | undefined
+/** 动画定时器：到点结算，也可在浮起时提前结算 */
+const anim = createSettleTimer()
 /** 取 localStorage，不可用时为 undefined */
 function getStorage(): Storage | undefined {
   try {
@@ -74,18 +73,29 @@ function roll(): void {
   feedback('start')
   const fake = () => rollDice(n, sides.value).values
   tumble.value = fake()
-  ticker = setInterval(() => (tumble.value = fake()), TUMBLE_MS)
-  timer = setTimeout(() => {
-    clearInterval(ticker)
-    result.value = r
-    rolling.value = false
-    feedback('land')
-  }, ANIM_MS)
+  anim.start(
+    (early) => {
+      result.value = r
+      rolling.value = false
+      if (!early) feedback('land')
+    },
+    ANIM_MS,
+    { fn: () => (tumble.value = fake()), ms: TUMBLE_MS },
+  )
 }
 
+/**
+ * 浮起 / 离开前台：滚动中就直接结算到已定好的结果（回来看到的是结果，不会停在半途），
+ * 这次结算不播落地的震动和音效；没在滚动时什么也不做。
+ */
+useFloatPause({
+  pause: () => void anim.settleNow(),
+  /** 无需恢复：结果已经落定 */
+  resume: () => {},
+})
+
 onBeforeUnmount(() => {
-  clearTimeout(timer)
-  clearInterval(ticker)
+  anim.clear()
   sound.dispose()
 })
 </script>
@@ -130,7 +140,7 @@ onBeforeUnmount(() => {
     </tool-group>
 
     <!-- 底部动作栏：主按钮掷骰子 -->
-    <bottom-actions main main-text="掷！" :disabled="{ main: rolling }" @main="roll" />
+    <bottom-actions :main-loading="rolling" main main-text="掷！" :disabled="{ main: rolling }" @main="roll" />
   </div>
 </template>
 

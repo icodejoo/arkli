@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 通知自己：给自己发一条通知，可立即、N 分钟后或指定时间；待触发的提醒可在列表里取消
 import BottomActions from '@/shared/BottomActions.vue'
+import { useFloatPause } from '@/shared/useFloatPause'
 import CellPicker from '@/shared/CellPicker.vue'
 import type { CellOption } from '@/shared/cellPicker'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
@@ -107,14 +108,39 @@ async function remove(id: string): Promise<void> {
   await refresh()
 }
 
-onMounted(() => {
-  void refresh()
+/** 开启定时刷新（先清旧的，不会叠加）；倒计时按时间戳算，刷新只负责重绘与同步列表 */
+function startLoop(): void {
+  stopLoop()
   timer = setInterval(() => {
     now.value = Date.now()
     void refresh()
   }, TICK_MS)
+}
+
+/** 停掉定时刷新 */
+function stopLoop(): void {
+  clearInterval(timer)
+  timer = undefined
+}
+
+/**
+ * 浮起 / 离开前台：停轮询。已设的系统闹钟不取消（到点仍会提醒，与退出页面一致）；
+ * 回来时立刻刷新一次时间与列表（期间到点的提醒会从列表消失），再重开轮询。
+ */
+useFloatPause({
+  pause: stopLoop,
+  resume: () => {
+    now.value = Date.now()
+    void refresh()
+    startLoop()
+  },
 })
-onBeforeUnmount(() => clearInterval(timer))
+
+onMounted(() => {
+  void refresh()
+  startLoop()
+})
+onBeforeUnmount(stopLoop)
 </script>
 
 <template>
@@ -153,7 +179,7 @@ onBeforeUnmount(() => clearInterval(timer))
     <p class="tool-hint">到点由系统闹钟唤起，App 退到后台也会提醒。设备重启后未触发的提醒会失效。</p>
 
     <!-- 底部动作栏：主按钮提醒 -->
-    <bottom-actions main :main-text="busy ? '提交中' : submitText" :disabled="{ main: busy || !hosted }" @main="submit" />
+    <bottom-actions :main-loading="busy" main :main-text="busy ? '提交中' : submitText" :disabled="{ main: busy || !hosted }" @main="submit" />
   </div>
 </template>
 

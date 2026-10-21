@@ -47,6 +47,7 @@ import com.let188.arkli.files.FileEnv
 import com.let188.arkli.files.PendingSlot
 import com.let188.arkli.files.PickKind
 import com.let188.arkli.shortcut.ACTION_OPEN_TOOL
+import com.let188.arkli.shortcut.DeepLinkPolicy
 import com.let188.arkli.shortcut.EXTRA_ROUTE
 import com.let188.arkli.shortcut.ShortcutPolicy
 import com.let188.arkli.splash.SplashActivity
@@ -156,9 +157,12 @@ class MainActivity : ComponentActivity(), ActivityHost {
     /** 桌面快捷方式带来的首屏路由，首次创建页面后清空（崩溃重建回首页） */
     private var launchRoute: String? = null
 
-    /** 从 Intent 取经校验的工具路由；不合法或没有返回 null */
-    private fun routeOf(intent: Intent?): String? =
-        intent?.takeIf { it.action == ACTION_OPEN_TOOL }?.getStringExtra(EXTRA_ROUTE)?.takeIf { ShortcutPolicy.isToolRoute(it) }
+    /** 从 Intent 取经校验的工具路由（桌面快捷方式或深链接）；不合法或没有返回 null */
+    private fun routeOf(intent: Intent?): String? = when (intent?.action) {
+        ACTION_OPEN_TOOL -> intent.getStringExtra(EXTRA_ROUTE)?.takeIf { ShortcutPolicy.isToolRoute(it) }
+        Intent.ACTION_VIEW -> DeepLinkPolicy.routeOf(intent.dataString)
+        else -> null
+    }
 
     /** App 已在运行时点桌面快捷方式：直接切到对应工具页 */
     override fun onNewIntent(intent: Intent) {

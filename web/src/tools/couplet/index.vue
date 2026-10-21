@@ -493,7 +493,7 @@ onBeforeUnmount(() => abort?.abort())
       </div>
     </tool-group>
 
-    <bottom-actions :actions="{ copy: { disabled: !canPreview }, save: { disabled: !canPreview, text: '导出图' } }" ai main :main-text="runText" :main-type="busy ? 'danger' : 'primary'" @main="onRun" @copy="copyCurrent" @save="save">
+    <bottom-actions :main-loading="busy" :actions="{ copy: { disabled: !canPreview }, save: { disabled: !canPreview, text: '导出图' } }" ai main :main-text="runText" :main-type="busy ? 'danger' : 'primary'" @main="onRun" @copy="copyCurrent" @save="save">
       <template #ai>
         <model-picker :tool-id="TOOL_ID" variant="bar" :disabled="mode === 'random'" :extra="mode === 'quiz' ? corpusRow : undefined" @picked="onPickSource" />
       </template>

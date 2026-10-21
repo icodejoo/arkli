@@ -275,7 +275,7 @@ onBeforeUnmount(() => image.value?.release())
     </tool-group>
 
     <!-- 底部动作栏：相册 / 拍照选图，保存结果，主按钮生成 -->
-    <bottom-actions :actions="{ save: { disabled: !results.length || saving } }" album photo main :main-text="busy ? '生成中' : '生成'" :disabled="{ album: busy, photo: busy, main: busy || !image }" @album="choose" @photo="shoot" @main="run" @save="saveAll" />
+    <bottom-actions :main-loading="busy" :actions="{ save: { disabled: !results.length || saving } }" album photo main :main-text="busy ? '生成中' : '生成'" :disabled="{ album: busy, photo: busy, main: busy || !image }" @album="choose" @photo="shoot" @main="run" @save="saveAll" />
   </div>
 </template>
 

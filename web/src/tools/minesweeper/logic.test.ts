@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createGame, formatTime, LEVELS, minesLeft, neighbors, reveal, toggleFlag, type Game } from './logic'
+import { createGame, formatTime, isClockTicking, LEVELS, minesLeft, neighbors, reveal, toggleFlag, type Game } from './logic'
 
 /** 可复现的伪随机 */
 function seeded(seed: number): () => number {
@@ -111,5 +111,14 @@ describe('formatTime', () => {
     expect(formatTime(7)).toBe('007')
     expect(formatTime(5000)).toBe('999')
     expect(formatTime(-3)).toBe('000')
+  })
+})
+
+describe('isClockTicking（浮起回来是否接着走字）', () => {
+  it('只有进行中走字', () => {
+    expect(isClockTicking('playing')).toBe(true)
+    expect(isClockTicking('ready')).toBe(false)
+    expect(isClockTicking('won')).toBe(false)
+    expect(isClockTicking('lost')).toBe(false)
   })
 })

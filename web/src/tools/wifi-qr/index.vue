@@ -112,7 +112,7 @@ async function openWifi(): Promise<void> {
     <tool-group v-else class="tool-hint wq-empty">填好名称和密码后，二维码会显示在这里</tool-group>
 
     <!-- 底部动作栏：二维码是实时画出来的，主操作就是保存 -->
-    <bottom-actions main main-text="保存二维码" :disabled="{ main: !qr || saving }" @main="save" />
+    <bottom-actions :main-loading="saving" main main-text="保存二维码" :disabled="{ main: !qr || saving }" @main="save" />
   </div>
 </template>
 

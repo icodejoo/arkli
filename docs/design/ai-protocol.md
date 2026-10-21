@@ -302,6 +302,33 @@ OCR 实际改动量（作为参照）：原生新增 `OcrService.kt`、`AndroidO
 - 前端：`AI_METHODS.matting`、`AiTask` / `AiEntry` / `AiTaskMap.matting`、`aiMatting`、`TASK_LABELS.matting`、registry 的 `tasks: [{ task: 'matting', entry }]`；`aiCatalog.test.ts` 夹具加两个提供者。
 - 同步的测试列表：`AiFixtures`（`NoMatting`）、契约测试（id / 层 / 会话 / sample / `HiddenMatting` 说谎者）、`AiSessionDerivationTest`，新增 `MattingServiceTest`、`AiMattingPolicyTest`，`AiInvokeTest` 加两条。缺口同前：四处手写列表仍要人工同步。
 
+## logo 符号接入记录（第四个按 checklist 接入的任务）
+
+任务 `logoSymbol`（wire 名；`isText=false`，专用端口 `AiPort.Logo` / `LogoEngine`，`AiCall.Logo`，桥方法 `native.ai.logoSymbol`），提供者 `local-logo-sdxs`（L1，SDXS-512 DreamShaper 一步文生图 + 二值化 + 质量闸门 + vtracer，模型 `sdxs512-mnn-w8`，约 525MB）。只做原生与协议，**不含前端页面**（C 批）。按 checklist 实际动了这些地方：
+
+| checklist | logo 的做法 |
+|---|---|
+| 1~2 任务与端口 | `AiTask.LOGO_SYMBOL`、`AiModule.METHOD_LOGO`、`AiPort.Logo`（并进 `DEDICATED`） |
+| 3 输入输出 | `AiLogoPolicy.parse`（`prompt` trim 后非空、UTF-8 ≤ 2000 字节；`seed` 0~2^53-1，缺省由服务随机并在结果回报；`removeRing` 缺省 true）、`resultJson`（`svgPaths`、闸门结果与原因、特征、各段耗时、种子、驻留方式） |
+| 4 `AiCall` | `AiCall.Logo`，补 `toCall` 与 `dispatch` |
+| 5 服务与提供者 | `LogoService`（互斥、让位、驻留选择、取消、卸载先取消）、`LocalLogoProvider`（无报价约束、无可调参数）、`AndroidLogo.kt`（UniFFI 桥，线程数固定 4） |
+| 6 登记 | `AiModule.providers(..., logo, models)`、`install` 里 `LogoRuntime.get` 与 `AiLogoHandler`；回收、预热、卸载、删模型前释放自动覆盖（`AiRecycle` 新增 `releaseExcept`，见下） |
+| 7 模型清单 | `models.json` 的 `sdxs512-mnn-w8`：单包 zip（与抠图一致），`LogoService.REQUIRED_FILES` 与清单逐一对应 |
+| 8 测试 | `AiFixtures`（`NoLogo`）、契约测试（id/层/入口/sample/会话/`HiddenLogo` 说谎者）、`AiSessionDerivationTest`；新增 `LogoServiceTest`、`AiLogoPolicyTest`，`AiSessionDerivationTest` 加 `releaseExcept` 用例 |
+| 9 Rust | A 批：`arkli-ai::logo_gen` / `logo_post`、`arkli-ffi::logo`（`logo_load/generate/cancel/stage/unload`） |
+
+**几个与前面任务不同的决定**：
+
+- **并发：同一时刻只允许一个生成在飞，新请求直接拒绝**（不排队）。原因：Rust 只记录最后一次登记的取消令牌，并发会让 `logo_cancel` 取消不到正在跑的那次。入口用原子标志，已有生成（含排队等 `AiHeavyGate` 的）时第二个请求立刻回 `INTERNAL`「正在生成，请稍候」（桥错误码里没有 BUSY；前端应在界面上禁止重复点击，把这个当兜底）。
+- **让位**：生成前先 `AiRecycle.releaseExcept("local-logo-sdxs")` 卸掉其他所有已常驻的会话（Qwen 约 800MB、抠图、对联……），再加载 SDXS；让位在 `AiHeavyGate` **之外**执行，因为别的服务卸载自己要排闸门，闸门不可重入。反方向（SDXS 已常驻时再加载 Qwen）**没有**让位：Qwen 的预热仍是页面触发，两者同时常驻会超出内存安全线，logo 页离开时应 `aiUnload` 自己，或在页面层避免同时预热（C 批处理）。
+- **驻留方式**：默认常驻（热态单张约 8 s）；加载时取 `ActivityManager.MemoryInfo.availMem`，**让位之后**可用内存低于「常驻峰值 1307MB + 安全余量 512MB = 1819MB」就改用每段用完即卸载（峰值约 720MB，4 张约 49 s）。判据在 `AiLogoPolicy.chooseResidency`（纯函数可单测）；已加载的会话沿用，内存回升也不中途切换，卸载后重新加载才重新判定。结果 `residency` 字段回报本次用的方式。
+- **线程数固定 4**，不跟随 AI 中心的 MNN 线程设置：真机 8 线程比 4 线程慢约 15%（大小核混用）。电源模式等公用设置仍通过 `MnnRuntimeOptions.apply` 生效。
+- **取消延迟**：一步前向无法中途打断，只在 分词 / 文本编码 / UNet / 解码 / 后处理 各段之间检查，所以取消延迟**最长约一次 UNet（真机 6~8 秒）**；取消后会话保留，下一次调用正常（`LogoServiceTest` 覆盖）。`native.task.cancel` 经 `runCancellable` 调 `logo_cancel`。
+- **卸载先取消再卸载**：Rust 的 `logo_generate` 持全局锁跑完整次生成，不先取消的话 `logo_unload` 会被卡住最长约 10 秒、期间内存仍是峰值。`LogoService.unload` 先递增取消纪元并调 `logo_cancel`，再排闸门卸载；还在排队等闸门、尚未登记令牌的生成靠纪元检查在开跑前退出（`LogoServiceTest` 覆盖 cancel 在 unload 之前、以及排队期间被卸载不再开跑）。残留窗口：取消恰好落在“通过纪元检查”与“Rust 登记令牌”之间的几微秒，该次生成会跑完（最长约 10 秒），随后卸载照常完成。
+- **许可**：模型 CreativeML OpenRAIL-M / OpenRAIL++-M（含使用限制），随包带 4 个许可文本与 NOTICE，见 `scripts/mnn/data/sdxs/`。
+
+**缺口（如实记录）**：契约测试的四处手写提供者列表仍要人工同步（同 OCR、对联、抠图）；桥错误码没有 BUSY，并发拒绝借用了 `INTERNAL`。
+
 ## 已知局限
 
 - 共用探测只在首次使用与打开选择器时刷新：装了/卸了交接类应用后，L3 是否出现要等下次打开选择器；本地模型的下载状态走 store 推送，不受影响。

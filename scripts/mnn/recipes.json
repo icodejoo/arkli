@@ -1,5 +1,5 @@
 {
-  "_说明": "每个模型的转换配方，由 convert_all.py 读取。路径前缀：dl: 下载目录；split: NLLB 拆图目录；asr: 语音 fp32 模型目录；data: scripts/mnn/data。nllb 的 tokenizer 是 vocab_build.py 产出的 v2 词表；notice / model_json 由 convert_all.py 生成进产物目录。variants.<名>.quant 是 MNNConvert 的量化参数（graph 级可在 quant_by_graph 里覆盖）；所有变体共用 graphs 的输入输出名。",
+  "_说明": "每个模型的转换配方，由 convert_all.py 读取。路径前缀：dl: 下载目录；split: NLLB 拆图目录；couplet / sdxs: 前处理产物目录；asr: 语音 fp32 模型目录；data: scripts/mnn/data。nllb 的 tokenizer 是 vocab_build.py 产出的 v2 词表；notice / model_json 由 convert_all.py 生成进产物目录。variants.<名>.quant 是 MNNConvert 的量化参数（graph 级可在 quant_by_graph 里覆盖）；所有变体共用 graphs 的输入输出名。",
   "models": {
     "siglip2": {
       "group": "siglip2",
@@ -164,6 +164,44 @@
         "fp32": {"id": "couplet-gpt2-mnn-fp32", "quant": [],
                  "quant_label": "mnn-fp32", "quant_desc": "no weight quantization (the token embedding table is still stored in-graph as int8 with a per-row scale)",
                  "display_name": "GPT-2 Chinese couplet (MNN fp32 weights)"}
+      }
+    },
+    "sdxs": {
+      "group": "sdxs",
+      "display_name": "本地符号生成模型（SDXS-512 DreamShaper）",
+      "license": "creativeml-openrail-m / openrail++（见随包 NOTICE）",
+      "release_tag": "sdxs-mnn-v1",
+      "prepare": "sdxs",
+      "default": "w8",
+      "graphs": [
+        {"name": "text_encoder", "input": "sdxs:text_encoder.onnx", "output": "text_encoder.mnn"},
+        {"name": "unet", "input": "sdxs:unet.onnx", "output": "unet.mnn"},
+        {"name": "vae_decoder", "input": "sdxs:vae_decoder.onnx", "output": "vae_decoder.mnn"}
+      ],
+      "copy": [
+        "sdxs:tokenizer.json",
+        "data:sdxs/LICENSE-CreativeML-OpenRAIL-PlusPlus-M.txt",
+        "data:sdxs/LICENSE-CreativeML-OpenRAIL-M.txt",
+        "data:sdxs/LICENSE-MIT-TAESD.txt",
+        "data:sdxs/LICENSE-MIT-OpenAI-CLIP.txt"
+      ],
+      "notice": "data:sdxs/NOTICE.txt",
+      "variants": {
+        "w8": {
+          "id": "sdxs512-mnn-w8",
+          "quant": ["--weightQuantBits", "8"],
+          "quant_by_graph": {"vae_decoder": []},
+          "quant_label": "mnn-w8",
+          "quant_desc": "MNN 8-bit weight quantization for text_encoder and unet; vae_decoder kept as fp32",
+          "display_name": "SDXS-512 DreamShaper (MNN 8-bit)"
+        },
+        "fp32": {
+          "id": "sdxs512-mnn-fp32",
+          "quant": [],
+          "quant_label": "mnn-fp32",
+          "quant_desc": "no weight quantization (fp32 weights; desktop peak 5.6GB, for verification only, not for mobile)",
+          "display_name": "SDXS-512 DreamShaper (MNN fp32 weights, verification only)"
+        }
       }
     }
   }

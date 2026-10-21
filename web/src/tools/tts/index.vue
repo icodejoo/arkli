@@ -223,7 +223,7 @@ onBeforeUnmount(() => {
     <p class="tool-hint">用系统自带的语音引擎，不联网。保存为音频只在 Arkli 应用里可用，长文本会分成几段文件。</p>
 
     <!-- 底部动作栏：保存为音频，主按钮朗读（朗读中变成停止） -->
-    <bottom-actions :actions="{ save: { disabled: !hosted || !canSpeak || saving, text: '存音频' } }" main :main-text="speaking ? `停止${progress ? `（${progress}）` : ''}` : '朗读'" :main-type="speaking ? 'danger' : 'primary'" :disabled="{ main: !speaking && !canSpeak }" @main="speaking ? onStop() : onSpeak()" @save="onSave" />
+    <bottom-actions :main-loading="speaking" :actions="{ save: { disabled: !hosted || !canSpeak || saving, text: '存音频' } }" main :main-text="speaking ? `停止${progress ? `（${progress}）` : ''}` : '朗读'" :main-type="speaking ? 'danger' : 'primary'" :disabled="{ main: !speaking && !canSpeak }" @main="speaking ? onStop() : onSpeak()" @save="onSave" />
   </div>
 </template>
 

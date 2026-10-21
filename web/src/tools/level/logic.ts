@@ -242,3 +242,52 @@ export function startGravity(opt: GravityOptions): () => void {
     opt.target.removeEventListener(EVENT_MOTION, handler as (e: never) => void)
   }
 }
+
+/** 可暂停的监听句柄 */
+export interface PausableListener {
+  /** 开始监听；先停掉上一次 */
+  begin(): void
+  /** 彻底停止，恢复时不会重订 */
+  end(): void
+  /** 浮起暂停：取消订阅并记住“在监听”；没在监听或已暂停时无副作用 */
+  pause(): void
+  /** 取回恢复：仅当暂停前在监听才重订；其余无副作用 */
+  resume(): void
+}
+
+/**
+ * 给“订阅/取消订阅”包一层暂停与恢复，保证幂等（普通路由切换也会触发）。
+ *
+ * @param start 真正开始监听的函数，返回停止函数
+ * @returns 句柄
+ * @example
+ * const h = createPausableListener(() => startGravity(opt))
+ * h.begin(); h.pause(); h.resume(); h.end()
+ */
+export function createPausableListener(start: () => () => void): PausableListener {
+  let stop: (() => void) | null = null
+  let suspended = false
+  return {
+    begin() {
+      suspended = false
+      stop?.()
+      stop = start()
+    },
+    end() {
+      suspended = false
+      stop?.()
+      stop = null
+    },
+    pause() {
+      if (!stop) return
+      stop()
+      stop = null
+      suspended = true
+    },
+    resume() {
+      if (!suspended) return
+      suspended = false
+      stop = start()
+    },
+  }
+}

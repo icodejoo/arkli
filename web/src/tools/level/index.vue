@@ -1,8 +1,9 @@
 <script setup lang="ts">
 // 水平仪：读重力方向，圆形气泡看平放，条形看立放；可校准零点、锁定读数
 import BottomActions from '@/shared/BottomActions.vue'
+import { useFloatPause } from '@/shared/useFloatPause'
 import { computed, onBeforeUnmount, ref } from 'vue'
-import { applyZero, bubbleOffset, foldToQuarter, formatDeg, inPlaneAngle, isSteady, startGravity, tiltFromGravity, totalTilt, type MotionSourceLike, type MotionStatus, type Tilt, type Vec3 } from './logic'
+import { applyZero, bubbleOffset, createPausableListener, foldToQuarter, formatDeg, inPlaneAngle, isSteady, startGravity, tiltFromGravity, totalTilt, type MotionSourceLike, type MotionStatus, type Tilt, type Vec3 } from './logic'
 
 /** 立放判定：总倾斜超过这个角度走条形的平面内算法 */
 const STANDING_DEG = 45
@@ -33,8 +34,6 @@ const zeroBar = ref(0)
 const locked = ref<{ tilt: Tilt; bar: number; standing: boolean } | null>(null)
 /** 是否被拒绝权限 */
 const denied = ref(false)
-/** 停止监听函数 */
-let stop: (() => void) | null = null
 
 /** 是否需要先点按钮授权（iOS 的做法） */
 const needPermission = computed(() => typeof (window.DeviceMotionEvent as unknown as PermissionApi | undefined)?.requestPermission === 'function')
@@ -74,14 +73,18 @@ const barStyle = computed(() => {
   return { transform: `translateX(${dx * BAR_HALF}px)` }
 })
 
-/** 开始监听 */
-function begin(): void {
-  stop?.()
-  stop = startGravity({
+/** 可暂停的重力监听；校准零点、锁定读数都在本组件状态里，暂停不会丢 */
+const listener = createPausableListener(() =>
+  startGravity({
     target: window as unknown as MotionSourceLike,
     onVector: (v) => (vec.value = v),
     onStatus: (s) => (status.value = s),
-  })
+  }),
+)
+
+/** 开始监听 */
+function begin(): void {
+  listener.begin()
 }
 
 /** 点授权按钮：请求权限，通过后开始监听 */
@@ -117,7 +120,9 @@ function toggleLock(): void {
 }
 
 if (!needPermission.value) begin()
-onBeforeUnmount(() => stop?.())
+// 浮起时取消重力订阅，取回时重订
+useFloatPause({ pause: () => listener.pause(), resume: () => listener.resume() })
+onBeforeUnmount(() => listener.end())
 </script>
 
 <template>

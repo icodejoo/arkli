@@ -272,7 +272,7 @@ onBeforeUnmount(cleanup)
     </tool-group>
 
     <!-- 底部动作栏：相册 / 拍照选图，保存与分享结果，主按钮开始抠图 -->
-    <bottom-actions ai
+    <bottom-actions :main-loading="busy" ai
       :actions="{ save: { disabled: !result || busy }, share: { disabled: !result || busy } }"
       album
       photo

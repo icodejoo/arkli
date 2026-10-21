@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex">
+  <title>用 Arkli 打开</title>
+  <style>
+    /* 亮暗色主题变量 */
+    :root {
+      --bg-color: #f6f8fa;
+      --card-bg: #ffffff;
+      --text-primary: #1f2328;
+      --text-secondary: #656d76;
+      --btn-primary-bg: #1677ff;
+      --btn-primary-color: #ffffff;
+      --btn-secondary-bg: #f3f4f6;
+      --btn-secondary-color: #1f2328;
+      --btn-secondary-border: #e5e7eb;
+      --tip-bg: #fffbe6;
+      --tip-border: #ffe58f;
+      --tip-color: #d46b08;
+      --card-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-color: #0d1117;
+        --card-bg: #161b22;
+        --text-primary: #f0f6fc;
+        --text-secondary: #8b949e;
+        --btn-primary-bg: #2f81f7;
+        --btn-secondary-bg: #21262d;
+        --btn-secondary-color: #c9d1d9;
+        --btn-secondary-border: #30363d;
+        --tip-bg: #2b2111;
+        --tip-border: #594214;
+        --tip-color: #e3b341;
+        --card-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+      }
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* 微信顶部提示条 */
+    .wechat-tip {
+      position: sticky;
+      top: 0;
+      width: 100%;
+      background-color: var(--tip-bg);
+      color: var(--tip-color);
+      border-bottom: 1px solid var(--tip-border);
+      padding: 12px 16px;
+      font-size: 14px;
+      line-height: 1.4;
+      text-align: center;
+      z-index: 10;
+    }
+
+    .page-container {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+    }
+
+    .card {
+      background-color: var(--card-bg);
+      border-radius: 20px;
+      box-shadow: var(--card-shadow);
+      padding: 40px 24px;
+      width: 100%;
+      max-width: 380px;
+      text-align: center;
+    }
+
+    .app-icon { font-size: 48px; line-height: 1; margin-bottom: 18px; }
+    .title { font-size: 22px; font-weight: 700; margin-bottom: 8px; word-break: break-word; }
+    .subtitle { font-size: 14px; color: var(--text-secondary); margin-bottom: 30px; line-height: 1.5; }
+    .actions { display: flex; flex-direction: column; gap: 12px; }
+
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 13px 20px;
+      font-size: 16px;
+      font-weight: 600;
+      text-decoration: none;
+      border-radius: 9999px;
+      text-align: center;
+      border: 1px solid transparent;
+      user-select: none;
+    }
+    .btn:active { opacity: 0.85; }
+    .btn-primary { background-color: var(--btn-primary-bg); color: var(--btn-primary-color); }
+    .btn-secondary { background-color: var(--btn-secondary-bg); color: var(--btn-secondary-color); border-color: var(--btn-secondary-border); }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <!-- 微信环境提示条 -->
+  <div id="wechat-tip" class="wechat-tip" hidden>
+    微信里无法直接打开 App：请点右上角 ···，选择「在浏览器中打开」
+  </div>
+
+  <main class="page-container">
+    <div class="card">
+      <div class="app-icon">📦</div>
+      <h1 id="title" class="title">Arkli 小工具箱</h1>
+      <p id="subtitle" class="subtitle">体积小、功能多的安卓小工具集合</p>
+      <div class="actions">
+        <a id="open-btn" class="btn btn-primary" href="#" hidden>用 Arkli 打开</a>
+        <a id="download-btn" class="btn btn-secondary" href="https://github.com/icodejoo/Arkli/releases">下载 Arkli</a>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    (function () {
+      /** 工具名映射文件的绝对地址（404 页可能在任意路径下渲染，不能用相对路径） */
+      var TOOLS_JSON_URL = '/arkli/t/tools.json';
+      /** 唤起 App 的自定义协议前缀 */
+      var SCHEME_TOOL_PREFIX = 'arkli://tool/';
+      /** 工具路径：/arkli/t/<id>，id 规则与 App 内校验一致 */
+      var TOOL_PATH_REGEX = /^\/arkli\/t\/([a-z0-9][a-z0-9-]{0,63})\/?$/;
+      /** 微信内置浏览器标识 */
+      var WECHAT_UA_REGEX = /MicroMessenger/i;
+
+      /** 微信内置浏览器里显示“请在浏览器中打开”提示 */
+      function checkWeChat() {
+        if (WECHAT_UA_REGEX.test(navigator.userAgent)) {
+          document.getElementById('wechat-tip').hidden = false;
+        }
+      }
+
+      /** 按当前路径初始化页面：命中工具路径则显示“用 Arkli 打开” */
+      function initPage() {
+        checkWeChat();
+        var match = location.pathname.match(TOOL_PATH_REGEX);
+        if (!match) return;
+        var toolId = match[1];
+        var titleEl = document.getElementById('title');
+        var openBtn = document.getElementById('open-btn');
+        titleEl.textContent = toolId;
+        document.getElementById('subtitle').textContent = '用 Arkli 打开这个工具';
+        openBtn.href = SCHEME_TOOL_PREFIX + toolId;
+        openBtn.hidden = false;
+        // 名称映射拿不到时静默保留 id
+        fetch(TOOLS_JSON_URL)
+          .then(function (res) { return res.ok ? res.json() : null; })
+          .then(function (data) {
+            if (data && typeof data === 'object' && Object.prototype.hasOwnProperty.call(data, toolId) && typeof data[toolId] === 'string') {
+              titleEl.textContent = data[toolId];
+            }
+          })
+          .catch(function () {});
+      }
+
+      initPage();
+    })();
+  </script>
+</body>
+</html>

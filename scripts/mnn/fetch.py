@@ -4,7 +4,7 @@
 本脚本绝不执行下载来的任何内容；解压 tar 用 tarfile 的 data 过滤器，拒绝越界路径。
 
 用法：
-  python -I fetch.py siglip2 nllb asr ocr      下载指定分组（缺省：全部转换用分组，不含 baseline）
+  python -I fetch.py siglip2 nllb asr ocr sdxs 下载指定分组（sdxs 约 1.8GB）（缺省：转换用分组，不含 baseline 与 sdxs，这两个需显式指定）
   python -I fetch.py baseline                  评测对照用的现网模型（q4_half、NLLB int4、语音 int8），体积不小，按需
   python -I fetch.py --list                    只列出分组与文件，不下载
 环境变量 ARKLI_MNN_DL 可改下载目录；已存在且校验通过的文件直接跳过（所以可以把旧下载物硬链接进来复用）。
@@ -41,6 +41,7 @@ def hf(repo, path):
 
 NLLB_REPO = "Xenova/nllb-200-distilled-600M"
 SIGLIP_REPO = "onnx-community/siglip2-base-patch16-224-ONNX"
+SDXS_REPO = "IDKiro/sdxs-512-dreamshaper"
 
 # 分组 -> [(相对 dl_dir 的路径, 字节数, sha256, [url...])]
 FILES = {
@@ -93,6 +94,33 @@ FILES = {
         ("couplet/couplet-clean-dataset_LICENSE_MIT.txt", 1068, "e5ba66a650e1701d75ba5706af41b6dfaca7297c97ae8c93d7458db9c90d1e05",
          [f"{GH_COUPLET}/couplet-clean-dataset_LICENSE_MIT.txt"]),
     ],
+    # SDXS-512 DreamShaper（文生图/符号生成，1 步推理）：模型索引、调度器、文本编码器、分词器、UNet 与 TAESD VAE
+    "sdxs": [
+        ("sdxs/model_index.json", 523, "4d18feafb537f185598af080e8894d99a00425e9ab7861d31c832043c68c840c",
+         hf(SDXS_REPO, "model_index.json")),
+        ("sdxs/scheduler/scheduler_config.json", 480, "91d57030b1a965f4878c952acaaa84d6956b640697b69fc642a13d3bf83e5e9c",
+         hf(SDXS_REPO, "scheduler/scheduler_config.json")),
+        ("sdxs/text_encoder/config.json", 724, "52e29b35e93261515dc07bf248ec8398a729e54f1886e946f8c095ede26be29b",
+         hf(SDXS_REPO, "text_encoder/config.json")),
+        ("sdxs/text_encoder/model.safetensors", 492265168, "5cd76eb3ed326974cfd66795384e890742dfdb5a80f5f4e4cb1547d51ec75d86",
+         hf(SDXS_REPO, "text_encoder/model.safetensors")),
+        ("sdxs/tokenizer/merges.txt", 524619, "9fd691f7c8039210e0fced15865466c65820d09b63988b0174bfe25de299051a",
+         hf(SDXS_REPO, "tokenizer/merges.txt")),
+        ("sdxs/tokenizer/special_tokens_map.json", 472, "c4864a9376a8401918425bed71fc14fc0e81f9b59ec45c1cf96cccb2df508eac",
+         hf(SDXS_REPO, "tokenizer/special_tokens_map.json")),
+        ("sdxs/tokenizer/tokenizer_config.json", 737, "19d7b034cb0cc3ce9766c2231373ab8aa8991fc72e2c8f76558bfaae3de0d563",
+         hf(SDXS_REPO, "tokenizer/tokenizer_config.json")),
+        ("sdxs/tokenizer/vocab.json", 1059962, "e089ad92ba36837a0d31433e555c8f45fe601ab5c221d4f607ded32d9f7a4349",
+         hf(SDXS_REPO, "tokenizer/vocab.json")),
+        ("sdxs/unet/config.json", 1725, "cd3c93365b0b198163761cc39e1949412b96be7cd200bc17ae25fd16a1f976b1",
+         hf(SDXS_REPO, "unet/config.json")),
+        ("sdxs/unet/diffusion_pytorch_model.safetensors", 1263018648, "a9cb7932239b22d318f20d80c0062be5f06c9e96b620d3719db49b31f23927cf",
+         hf(SDXS_REPO, "unet/diffusion_pytorch_model.safetensors")),
+        ("sdxs/vae/config.json", 635, "ad96f19ac8241278e5a472fe8bfec939bc80addea71c17f2501019b712cda23d",
+         hf(SDXS_REPO, "vae/config.json")),
+        ("sdxs/vae/diffusion_pytorch_model.safetensors", 9793292, "d7956d561b1efbd861ad9b03fd8f01510f9e87eddc07bdfd20837009433f6ee5",
+         hf(SDXS_REPO, "vae/diffusion_pytorch_model.safetensors")),
+    ],
     # 评测对照用：现网 ORT 版 SigLIP2 q4_half、NLLB int4、语音 int8
     "baseline": [
         ("siglip2/q4_half.onnx", 54662805, "6b4ea1ecba627b754df325d86cc971620ac961b47d81310a3c0659827dff217a",
@@ -105,7 +133,7 @@ FILES = {
          [f"{GH_ASR}/{ASR_PREFIX}-int8-2026-06-05.tar.bz2"]),
     ],
 }
-# 缺省下载的分组（baseline 体积大且只用于对照，需显式指定）
+# 缺省下载的分组（baseline 体积大且只用于对照、sdxs 约 1.8GB 且只给 logo 工具用，都需显式指定）
 DEFAULT_GROUPS = ["siglip2", "nllb", "asr", "ocr", "ocr6", "couplet"]
 # 要解压的包：tar 相对路径 -> 解压目录
 EXTRACT = {"asr/asr-fp32.tar.bz2": "asr/fp32", "asr/asr-int8.tar.bz2": "asr/int8"}

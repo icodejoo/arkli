@@ -7,6 +7,7 @@ import { computed, onBeforeUnmount, onDeactivated, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { showFailToast, showSuccessToast } from 'vant'
 import BottomActions from '@/shared/BottomActions.vue'
+import { useFloatBusy } from '@/shared/useFloatPause'
 import ModelPicker from '@/shared/ModelPicker.vue'
 import { copyText } from '@/shared/clipboard'
 import { AI_CENTER_PATH, MSG_NO_MODEL, type PickerSection } from '@/shared/modelPicker'
@@ -77,6 +78,8 @@ const imageMode = computed(() => !!photo.value?.hasImages)
 const photoBusy = computed(() => !!photo.value?.busy)
 /** 是否有事在忙（文字或图片） */
 const working = computed(() => busy.value || photoBusy.value)
+// 拍照翻译处理中（识别+翻译，停用会被中止）不让浮起；文字翻译已由主按钮 loading 自动汇报
+useFloatBusy(() => photoBusy.value)
 /** 主按钮能否点：图片模式要有图、两个模型就绪且不在处理（处理中禁用）；文字模式有文字且模型就绪（翻译中可点以取消） */
 const canGo = computed(() => {
   if (imageMode.value) return !photoBusy.value && !!photo.value?.modelsReady && !tooFewLangs.value
@@ -325,7 +328,7 @@ async function copy(text: string): Promise<void> {
     </tool-group>
 
     <!-- 底部动作栏：左 AI（翻译模型 + 图片模式下的识别模型），中拍照、相册，右主按钮「翻译」 -->
-    <bottom-actions
+    <bottom-actions :main-loading="busy"
       ai
       album
       photo

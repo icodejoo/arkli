@@ -132,7 +132,7 @@ function onClear(): void {
     </tool-group>
 
     <!-- 底部动作栏：左边相册识图，右边主按钮扫码（取景扫码是原生页，不走拍照项） -->
-    <bottom-actions album main main-text="扫码" :disabled="{ album: !hosted || busy, main: !hosted || busy }" @album="onPickImage" @main="onScan" />
+    <bottom-actions :main-loading="busy" album main main-text="扫码" :disabled="{ album: !hosted || busy, main: !hosted || busy }" @album="onPickImage" @main="onScan" />
   </div>
 </template>
 

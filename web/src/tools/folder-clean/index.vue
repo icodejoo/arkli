@@ -311,7 +311,7 @@ onBeforeUnmount(() => abort?.abort())
     </template>
 
     <!-- 底部动作栏：主按钮扫描；扫描出结果后切成「删除」（danger，点后仍有二次确认弹窗）；扫描 / 删除进行中变成「取消」；重新扫描放插槽 -->
-    <bottom-actions v-if="hosted" main :main-text="mainText" :main-type="mainType" :disabled="{ main: mainDisabled }" @main="onMain">
+    <bottom-actions :main-loading="busy" v-if="hosted" main :main-text="mainText" :main-type="mainType" :disabled="{ main: mainDisabled }" @main="onMain">
       <van-action-bar-icon v-if="scanned && !busy" icon="replay" text="重新扫描" :disabled="!token" @click="onScan" />
     </bottom-actions>
   </div>

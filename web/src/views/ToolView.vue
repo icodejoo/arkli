@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 工具容器页：顶部导航栏 + 内容区（安全区内边距），按路由 id 异步加载工具组件
 import { computed, defineAsyncComponent, nextTick, ref, watchEffect, type Component } from 'vue'
+import { showConfirmDialog } from 'vant'
 import { useRoute, useRouter } from 'vue-router'
 import { showToast } from 'vant'
 import { isNativeAvailable } from '@/native/bridge'
@@ -8,13 +9,33 @@ import CameraIcon from '~icons/cil/camera?width=1em&height=1em'
 import KeyboardIcon from '~icons/cil/keyboard?width=1em&height=1em'
 import { MODE_CAMERA, MODE_QUERY, findTool } from '@/tools/registry'
 import PinToolSheet from '@/shared/PinToolSheet.vue'
-import { MENU_KEY_PIN, buildMenuActions } from '@/shared/pinToolSheet'
+import { copyText } from '@/shared/clipboard'
+import {
+  MENU_KEY_APK,
+  MENU_KEY_COPY_LINK,
+  MENU_KEY_FLOAT,
+  MENU_KEY_PIN,
+  MENU_KEY_REFRESH,
+  MENU_KEY_SETTINGS,
+  MENU_KEY_STAR,
+  SETTINGS_ROUTE,
+  TOAST_COPY_FAILED,
+  TOAST_FLOAT_BUSY,
+  floatReplaceMessage,
+  TOAST_LINK_COPIED,
+  buildMenuActions,
+  buildToolDeepLink,
+  refreshApp,
+  type MenuActionItem,
+} from '@/shared/pinToolSheet'
 import { useToolsStore } from '@/stores/tools'
 import { useFavoritesStore } from '@/stores/favorites'
 import { shareApp, shareAppLink } from '@/shared/appShare'
+import { shareIconSrc } from '@/shared/shareSheetIcons'
+import { useFloatStore, decideFloat } from '@/stores/float'
+import { useLiveTools } from '@/shared/floatLive'
+import { ToolStage } from '@/shared/ToolStage'
 
-/** 同一个 ToolView 里最多同时保活几个工具：从取色器跳颜色助手再返回时，取色器的状态（选好的图片、主色、倍数）得以保留 */
-const KEEP_ALIVE_MAX = 3
 /** 工具 id 到异步组件的缓存：重复 defineAsyncComponent 会得到不同的组件对象，keep-alive 就命中不了 */
 const asyncTools = new Map<string, Component>()
 
@@ -41,6 +62,8 @@ const props = defineProps<{ id: string }>()
 const router = useRouter()
 /** 工具 store */
 const store = useToolsStore()
+/** 分享面板每行放几个图标 */
+const SHARE_PER_ROW = 5
 /** 收藏 store */
 const favorites = useFavoritesStore()
 /** 当前工具是否已收藏 */
@@ -61,35 +84,101 @@ function toggleCamera(): void {
   else query[MODE_QUERY] = MODE_CAMERA
   router.replace({ query })
 }
-/** 当前工具的异步组件；id 不存在时为 null。每个工具只建一次异步包装，keep-alive 才认得出「同一个工具」 */
-const ToolComponent = computed(() => (meta.value ? asyncToolOf(meta.value.id, meta.value.load) : null))
+/** 浮窗 store */
+const floatStore = useFloatStore()
+/** 保活的工具 id 列表：前台工具 + 被浮起的工具（状态机见 shared/floatLive.ts） */
+const live = useLiveTools(() => props.id)
+
+/**
+ * 按 id 取工具的异步组件；id 不存在时为 null。每个工具只建一次异步包装。
+ *
+ * @param id 工具 id
+ * @returns 异步组件或 null
+ */
+function resolveTool(id: string): Component | null {
+  const m = findTool(id)
+  return m ? asyncToolOf(m.id, m.load) : null
+}
+
+/** 点“浮窗”：忙碌只提示；已有别的浮窗先确认替换；然后浮起并回到上一页 */
+async function floatCurrent(): Promise<void> {
+  const m = meta.value
+  if (!m) return
+  const decision = decideFloat(floatStore.isBusy(m.id), floatStore.floating, m.id)
+  if (decision === 'busy') {
+    showToast(TOAST_FLOAT_BUSY)
+    return
+  }
+  if (decision === 'confirm' && floatStore.floating) {
+    try {
+      await showConfirmDialog({ title: '替换浮窗', message: floatReplaceMessage(floatStore.floating.name) })
+    } catch {
+      return
+    }
+  }
+  if (!floatStore.float(m.id)) return
+  shareSheet.value = false
+  goBack()
+}
 
 /** 切换收藏并提示 */
 function toggleStar(): void {
   showToast(favorites.toggle(props.id) ? '已收藏' : '已取消收藏')
 }
 
-/** 胶囊菜单面板是否显示 */
+/** 胶囊底部分享面板是否显示 */
 const shareSheet = ref(false)
 /** “添加到桌面”面板是否显示 */
 const pinSheet = ref(false)
-/** 胶囊菜单项：两项分享，有原生宿主时再加“添加到桌面” */
-const shareActions = computed(() => buildMenuActions(isNativeAvailable()))
+/** 分享面板选项：两行（分享/收藏/添加到桌面；刷新/复制链接/设置） */
+const shareActions = computed(() => {
+  const items = buildMenuActions(isNativeAvailable(), starred.value)
+    .flat()
+    .map((item) => ({ ...item, icon: shareIconSrc(item.icon) }))
+  const rows = []
+  for (let i = 0; i < items.length; i += SHARE_PER_ROW) rows.push(items.slice(i, i + SHARE_PER_ROW))
+  return rows
+})
+
+/** 复制当前工具的深链接并提示 */
+async function copyToolLink(): Promise<void> {
+  try {
+    showToast((await copyText(buildToolDeepLink(props.id))) ? TOAST_LINK_COPIED : TOAST_COPY_FAILED)
+  } catch {
+    showToast(TOAST_COPY_FAILED)
+  }
+}
 
 /**
- * 选好菜单项后执行：添加到桌面先关菜单再开固定面板；链接直接发文字，安装包先导出再发。
+ * 选好分享面板项后执行：刷新、设置、收藏、复制链接、添加到桌面（先关面板再开固定面板），其余为分享。
  *
- * @param action 被选中的菜单项
+ * @param option 被选中的面板项（van-share-sheet 的 select 事件第一个参数）
  */
-async function onSharePick(action: { key?: string }): Promise<void> {
-  if (action.key === MENU_KEY_PIN) {
-    shareSheet.value = false
-    await nextTick()
-    pinSheet.value = true
-    return
+async function onSharePick(option: MenuActionItem): Promise<void> {
+  switch (option.key) {
+    case MENU_KEY_REFRESH:
+      refreshApp()
+      return
+    case MENU_KEY_SETTINGS:
+      router.push(SETTINGS_ROUTE)
+      return
+    case MENU_KEY_STAR:
+      toggleStar()
+      return
+    case MENU_KEY_COPY_LINK:
+      await copyToolLink()
+      return
+    case MENU_KEY_FLOAT:
+      await floatCurrent()
+      return
+    case MENU_KEY_PIN:
+      shareSheet.value = false
+      await nextTick()
+      pinSheet.value = true
+      return
   }
   try {
-    const ok = action.key === 'apk' ? await shareApp() : await shareAppLink()
+    const ok = option.key === MENU_KEY_APK ? await shareApp() : await shareAppLink()
     if (!ok) showToast('没能拉起分享')
   } catch {
     showToast('分享失败')
@@ -130,7 +219,7 @@ watchEffect(() => {
           :aria-label="cameraOn ? '切回查询' : '拍照识别'"
           @click.stop="toggleCamera"
         />
-        <!-- 小程序风格胶囊：左「…」唤起系统分享，右收藏 -->
+        <!-- 小程序风格胶囊：左「…」唤起底部分享面板，右收藏 -->
         <div class="shell__capsule">
           <button type="button" class="shell__capsule-btn" aria-label="分享" @click.stop="shareSheet = true">
             <van-icon name="ellipsis" />
@@ -147,13 +236,11 @@ watchEffect(() => {
         </div>
       </template>
     </van-nav-bar>
-    <van-action-sheet v-model:show="shareSheet" :actions="shareActions" cancel-text="取消" close-on-click-action @select="onSharePick" />
+    <van-share-sheet v-model:show="shareSheet" class="shell__share" :options="shareActions" cancel-text="取消" @select="onSharePick" />
     <pin-tool-sheet v-if="meta" v-model:show="pinSheet" :tool="meta" />
     <main class="shell__body">
-      <!-- keep-alive：工具之间互相跳转（如取色器 → 颜色助手）再返回时保留状态；离开工具页（回首页等）整个 ToolView 卸载，缓存随之释放 -->
-      <keep-alive v-if="ToolComponent" :max="KEEP_ALIVE_MAX">
-        <component :is="ToolComponent" :key="props.id" />
-      </keep-alive>
+      <!-- 工具舞台：前台工具 + 被浮起的工具各自保活，其余离开即卸载；工具之间互跳（取色器 → 颜色助手）再返回仍保留状态 -->
+      <tool-stage v-if="meta" :ids="live" :active-id="props.id" :resolve="resolveTool" />
       <van-empty v-else description="没有找到这个工具" />
     </main>
   </div>
@@ -178,6 +265,7 @@ watchEffect(() => {
     display: inline-flex;
     align-items: center;
   }
+
 
   // 摄像头按钮与胶囊之间留空
   &__cam {
@@ -233,6 +321,42 @@ watchEffect(() => {
     margin: 0 auto;
     padding: var(--page-pad);
     padding-bottom: calc(var(--page-pad) + var(--safe-bottom));
+  }
+}
+</style>
+
+<!-- 底部分享面板被 teleport 到 body，根元素拿不到 scoped 的 data-v 属性，所以这块样式不能带 scoped -->
+<style lang="scss">
+.shell__share {
+  // 一行 5 个：每项占 1/5 宽，图标在项内居中，文案允许换行
+  .van-share-sheet__options {
+    padding-left: 0;
+  }
+
+  .van-share-sheet__option {
+    flex: 0 0 20%;
+    min-width: 0;
+  }
+
+  .van-share-sheet__image-icon {
+    margin: 0 auto;
+  }
+
+  .van-share-sheet__name {
+    text-align: center;
+    line-height: 1.3;
+  }
+
+  // 图标是彩色 svg（img）：做成圆角方块，底色跟随主题，内边距 20% 让图标占方块的 6 成
+  .van-share-sheet__image-icon {
+    box-sizing: border-box;
+    padding: calc(var(--van-share-sheet-icon-size) * 0.2);
+    background: var(--c-surface-active);
+    border-radius: 12px;
+  }
+
+  .van-share-sheet__name {
+    color: var(--c-text-muted);
   }
 }
 </style>

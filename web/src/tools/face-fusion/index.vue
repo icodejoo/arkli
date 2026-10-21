@@ -126,7 +126,7 @@ onBeforeUnmount(() => {
     </tool-group>
 
     <!-- 底部动作栏：两个槽位各自选图，这里只放保存与主按钮开始融合 -->
-    <bottom-actions ai :actions="{ save: { disabled: !results.length || saving } }" main :main-text="busy ? '融合中' : '开始融合'" :disabled="{ main: busy || !!problem || !ready }" @main="run" @save="saveAll">
+    <bottom-actions :main-loading="busy" ai :actions="{ save: { disabled: !results.length || saving } }" main :main-text="busy ? '融合中' : '开始融合'" :disabled="{ main: busy || !!problem || !ready }" @main="run" @save="saveAll">
       <template #ai><model-picker :tool-id="TOOL_ID" variant="bar" /></template>
     </bottom-actions>
   </div>

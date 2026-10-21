@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 画板：Pointer Events 画笔，笔画存成栈，撤销/重做靠重绘；导出 PNG 走 saveBlob
 import BottomActions from '@/shared/BottomActions.vue'
+import { useFloatPause } from '@/shared/useFloatPause'
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import { showFailToast, showSuccessToast } from 'vant'
 import { canvasToBlob, createCanvas, releaseCanvas, saveBlob } from '@/shared/image-io'
@@ -184,13 +185,19 @@ function onMove(e: PointerEvent): void {
   scheduleRedraw()
 }
 
-/** 抬笔或被打断：把当前笔画入栈 */
-function onUp(e: PointerEvent): void {
+/** 把正在画的笔画收笔入栈；没有在画则什么也不做 */
+function commitCurrent(): void {
   const s = current.value
-  if (!s || e.pointerId !== activeId) return
+  if (!s) return
   activeId = -1
   current.value = null
   stack.value = addStroke(stack.value, s)
+}
+
+/** 抬笔或被打断：把当前笔画入栈 */
+function onUp(e: PointerEvent): void {
+  if (!current.value || e.pointerId !== activeId) return
+  commitCurrent()
   scheduleRedraw()
 }
 
@@ -255,20 +262,56 @@ async function exportPng(): Promise<void> {
   }
 }
 
-onMounted(() => {
-  resize()
+/** 开始监听容器尺寸（先停再开，不会重复） */
+function watchSize(): void {
+  unwatchSize()
   if (typeof ResizeObserver !== 'undefined' && wrapEl.value) {
     observer = new ResizeObserver(resize)
     observer.observe(wrapEl.value)
   } else {
     window.addEventListener('resize', resize)
   }
+}
+
+/** 停止监听容器尺寸 */
+function unwatchSize(): void {
+  observer?.disconnect()
+  observer = undefined
+  window.removeEventListener('resize', resize)
+}
+
+/** 取消排队中的重绘帧 */
+function cancelScheduled(): void {
+  if (raf) cancelAnimationFrame(raf)
+  raf = 0
+}
+
+/**
+ * 浮起 / 离开前台：把正在画的一笔收笔入栈、同步画完最后一帧（不再等 rAF），再取消排队帧并停掉尺寸监听；
+ * 回来时重新监听并按当前宽度校准画布。画布位图与笔画栈都保留，内容不丢。
+ * 导出中（saving）由底栏 main-loading 自动汇报 busy，不会走到这里。
+ */
+useFloatPause({
+  pause: () => {
+    commitCurrent()
+    cancelScheduled()
+    redraw()
+    unwatchSize()
+  },
+  resume: () => {
+    watchSize()
+    resize()
+  },
+})
+
+onMounted(() => {
+  resize()
+  watchSize()
 })
 
 onBeforeUnmount(() => {
-  observer?.disconnect()
-  window.removeEventListener('resize', resize)
-  if (raf) cancelAnimationFrame(raf)
+  unwatchSize()
+  cancelScheduled()
 })
 </script>
 
@@ -325,7 +368,7 @@ onBeforeUnmount(() => {
     <p class="tool-hint">清空不能撤销。画板内容不会自动保存，离开页面就没了。</p>
 
     <!-- 底部动作栏：画板没有「生成」一步，主操作就是保存为图片 -->
-    <bottom-actions main main-text="保存为图片" :disabled="{ main: saving }" @main="exportPng" />
+    <bottom-actions :main-loading="saving" main main-text="保存为图片" :disabled="{ main: saving }" @main="exportPng" />
   </div>
 </template>
 

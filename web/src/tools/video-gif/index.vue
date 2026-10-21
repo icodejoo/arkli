@@ -259,7 +259,7 @@ onBeforeUnmount(() => {
     </template>
 
     <!-- 底部动作栏：相册选视频，保存 GIF，主按钮开始转换（转换中变成取消） -->
-    <bottom-actions :actions="{ save: { disabled: !gifBlob || saving, text: '保存 GIF' } }" v-if="hosted" album main :main-text="running ? '取消' : '开始转换'" :main-type="running ? 'danger' : 'primary'" :disabled="{ album: running, main: !running && !canRun }" @album="onPick" @main="running ? onCancel() : onConvert()" @save="onSave" />
+    <bottom-actions :main-loading="running" :actions="{ save: { disabled: !gifBlob || saving, text: '保存 GIF' } }" v-if="hosted" album main :main-text="running ? '取消' : '开始转换'" :main-type="running ? 'danger' : 'primary'" :disabled="{ album: running, main: !running && !canRun }" @album="onPick" @main="running ? onCancel() : onConvert()" @save="onSave" />
   </div>
 </template>
 

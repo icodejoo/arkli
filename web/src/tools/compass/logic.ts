@@ -191,6 +191,10 @@ export interface CompassSession {
   begin(): void
   /** 停止监听并禁止再开始（授权弹窗异步返回时组件可能已卸载） */
   dispose(): void
+  /** 浮起暂停：取消订阅但记住“正在监听”；没在监听或已暂停时无副作用 */
+  pause(): void
+  /** 取回恢复：仅当暂停前在监听才重新订阅；其余情况无副作用 */
+  resume(): void
 }
 
 /**
@@ -206,16 +210,31 @@ export interface CompassSession {
 export function createCompassSession(start: () => () => void): CompassSession {
   let stop: (() => void) | undefined
   let disposed = false
+  /** 是否因暂停而停了监听（恢复时据此重订） */
+  let suspended = false
   return {
     begin() {
       if (disposed) return
+      suspended = false
       stop?.()
       stop = start()
     },
     dispose() {
       disposed = true
+      suspended = false
       stop?.()
       stop = undefined
+    },
+    pause() {
+      if (disposed || !stop) return
+      stop()
+      stop = undefined
+      suspended = true
+    },
+    resume() {
+      if (disposed || !suspended) return
+      suspended = false
+      stop = start()
     },
   }
 }

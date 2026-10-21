@@ -19,6 +19,12 @@ E:\venv\arkli-mnn\Scripts\pip install -r scripts\mnn\requirements.txt
 $env:ARKLI_MNNCONVERT = "E:\workspaces\arkli\native\mnn\.work\build-tools\MNNConvert.exe"
 ```
 
+**只在导出 SDXS（`convert_all.py sdxs`）时才需要 torch**，且要单独装（CPU 版走 PyTorch 官方源；`requirements.txt` 里故意不放 `--extra-index-url`，避免它对其余依赖生效造成依赖混淆）：
+
+```powershell
+E:\venv\arkli-mnn\Scripts\pip install torch==2.14.1+cpu --index-url https://download.pytorch.org/whl/cpu
+```
+
 不要调用 pip 版 MNN 带的 `mnnconvert` 命令：它会带机器 ID 上报阿里云，还会自动 `pip install aliyun-log-python-sdk`。
 `mnnconv.py` 只走固定提交的 exe，找不到才退到 `_tools.mnnconvert` 底层函数（产物与 exe 等价，仅 UUID 的 27 字节不同）。
 
@@ -26,10 +32,10 @@ $env:ARKLI_MNNCONVERT = "E:\workspaces\arkli\native\mnn\.work\build-tools\MNNCon
 
 ```powershell
 $py = "E:\venv\arkli-mnn\Scripts\python.exe"
-& $py -I scripts\mnn\fetch.py                     # 下载并校验原版（约 4.6GB，aria2；已有且校验通过的会跳过）
+& $py -I scripts\mnn\fetch.py                     # 下载并校验原版（缺省不含 baseline 与 sdxs，它们要显式指定；aria2；已有且校验通过的会跳过）
 & $py -I scripts\mnn\vocab_audit.py               # （可选）NLLB 词表覆盖率审计，见下文“NLLB 词表”
 & $py -I scripts\mnn\vocab_build.py               # NLLB 六语言词表 v2 -> dl\nllb-tok-v2（nllb 转换前必须先做）
-& $py -I scripts\mnn\convert_all.py               # 转四类模型的默认变体
+& $py -I scripts\mnn\convert_all.py               # 转各模型的默认变体（缺省不含 sdxs，需显式指定）
 & $py -I scripts\mnn\eval_siglip.py --images <图片目录>
 & $py -I scripts\mnn\make_eval_set.py            # （data/sentences_m6.tsv 已提交，改语料时才需重生成）
 & $py -I scripts\mnn\eval_nllb.py
@@ -37,10 +43,11 @@ $py = "E:\venv\arkli-mnn\Scripts\python.exe"
 & $py -I scripts\mnn\eval_ocr.py
 & $py -I scripts\mnn\fetch.py couplet && & $py -I scripts\mnn\convert_all.py couplet   # 对联 GPT-2（默认 w6hqq，产物 couplet-gpt2-mnn）
 & $py -I scripts\mnn\eval_couplet.py mnn_w6=<产物目录>\model.mnn
+& $py -I scripts\mnn\fetch.py sdxs && & $py -I scripts\mnn\convert_all.py sdxs       # SDXS-512 DreamShaper（需显式指定，约 1.8GB，先按上面装 torch；默认 w8，产物 sdxs512-mnn-w8）
 & $py -I scripts\mnn\ocr_case.py --out <目录>   # （可选）Rust 真库 OCR 测试用例：case.rgb + expect.txt
 & $py -I scripts\mnn\pack.py siglip2-mnn-w8       # 登记字节数与 sha256，生成 models.json 条目片段
 # 单包发布：打可复现 zip 并把 archive/files 回写清单，再 gh release upload <tag> <zip>（只新增资产，别删旧的）
-& $py -I scripts\mnn\pack.py <产物目录> --tag siglip2-mnn-v1 --zip E:\workspacesrkli-models\_zip --apply app\src\mainssetsi\models.json
+& $py -I scripts\mnn\pack.py <产物目录> --tag siglip2-mnn-v1 --zip E:\workspaces\arkli-models\_zip --apply app\src\main\assets\ai\models.json
 ```
 
 - 目录：默认全放 `native/mnn/.work/convert/`（已被 `.gitignore` 忽略）。环境变量 `ARKLI_MNN_WORK`（根）、`ARKLI_MNN_DL`、`ARKLI_MNN_SPLIT`、`ARKLI_MNN_OUT` 可分别改。
@@ -70,7 +77,7 @@ $py = "E:\venv\arkli-mnn\Scripts\python.exe"
 | `recipes.json` | - | - | 每个模型的输入、输出名、各变体的量化参数与清单 id、release tag |
 | `fetch.py` | 分组名 | `dl/` 下的原版文件 | URL 与 sha256 写死；aria2 下载；校验不过就停（文件留着，别用）；`baseline` 分组是对照用的现网模型 |
 | `mnnconv.py` | onnx、MNNConvert 参数 | `.mnn` | 统一转换入口；可当命令行用，参数原样透传 |
-| `convert_all.py` | `recipes.json` | `out/<清单 id>/` | 一键转换；nllb 先自动做前处理（拆图目录里 `tokenizer.sha256` 记录词表，变了会重做并重转）；nllb 产物目录还含 `model.json`、`NOTICE.txt`、LICENSE；`convert.json` 记录转换参数与转换器 sha |
+| `convert_all.py` | `recipes.json` | `out/<清单 id>/` | 一键转换；nllb / couplet / sdxs 自动做前处理（sdxs 自动调用 `sdxs_prepare.py` 导出三图与 tokenizer.json）；随包生成 `model.json`（若有）、`NOTICE.txt`（若有）与 LICENSE；`convert.json` 记录转换参数与转换器 sha |
 | `dequant_nbits.py` | ORT 的 `MatMulNBits` int4 onnx | 标准 MatMul + fp32 的 onnx | 只在拿现网 int4 包做对照实验时用，生产转换不用 |
 | `vocab_audit.py` | 原版/待审 tokenizer.json、官方 `sentencepiece.bpe.model`（可选）、`data/audit_*.txt` | 覆盖率报告 | GB2312 6763 字单字覆盖、原版有而待审丢了的字、六语语料 UNK 与分词一致率、BPE 合并链完整性；SPM 用手写 protobuf 解析，不依赖 sentencepiece |
 | `vocab_build.py` | 原版与随包 tokenizer.json、审计语料 | `dl/nllb-tok-v2/tokenizer.json` + `vocab_build.json` | 词表 v2 = 随包集 ∪ 补充集 + BPE 闭包 + 标点规范化补丁；自检可达性与分词一致；`--gold-out` 另存“原版全词表 + 同 normalizer”的金标准 |
@@ -87,6 +94,7 @@ $py = "E:\venv\arkli-mnn\Scripts\python.exe"
 | `ocr_case.py` | 合成图目录（缺省生成） | `case.rgb`（前 8 字节小端 u32 宽高，其后 RGB）与 `expect.txt`（真值，一行一句） | 给 Rust 真库测试 `mnn::real_tests::真库跑通ocr管线` 与 `arkli-ffi` 的 `真库经ffi识别并可卸载重载` 用（环境变量 `ARKLI_OCR_RGB` / `ARKLI_OCR_EXPECT` / `ARKLI_OCR_DIR` / `ARKLI_MNN_DYLIB`） |
 | `fetch.py ocr ocr6` / `convert_all.py ocr6` | HF 官方 PP-OCRv6 small 的 det/rec ONNX 与 rec 的 `inference.yml` | `ppocrv6-small-mnn-fp16`（det/rec fp16，cls 沿用 v5 的） | 字典取自 yml（需 PyYAML）；评测见 migration 文档“M8 升级”一节 |
 | `couplet_prepare.py` | 对联 fp32 ONNX（带 past） | 无 KV cache、词嵌入 int8 的 `model_e8.onnx` | 去掉 24 个 past 与 present，Concat 改 Identity，past_len 换常量 0；`--int8-embed` 把 wte 改成图内 int8 + 逐行 scale（MNN 的权重量化不量化 Gather 常量），lm_head 用独立 fp32 副本交给 MNN 量化；`convert_all.py couplet` 会自动调用 |
+| `sdxs_prepare.py` | SDXS fp32 原版目录（HF 布局） | `text_encoder.onnx`、`unet.onnx`、`vae_decoder.onnx`、`tokenizer.json` | PyTorch 导出 ONNX（时间步固定 999，带精度对拍自检）并从 vocab/merges 构造标准 CLIP BPE tokenizer.json；`convert_all.py sdxs` 会自动调用；产物目录含三个 .mnn、tokenizer.json、NOTICE.txt 与 4 个 LICENSE |
 | `eval_couplet.py` | 产物 `.mnn`/`.onnx`、`data/couplet/pairs.tsv`（52 条自写上联+真下联） | 对 ORT fp32 的 logits 余弦/top-1、等长约束贪心一致率、困惑度涨幅、7 字耗时 | MNN 经 ctypes 调 `arkli-mnn.dll`（同 Rust 的 C ABI，memory=low）；门槛：余弦均值 >= 0.999、top-1 >= 0.95、困惑度涨幅 <= 2% |
 | `pack.py` | 产物目录 | 字节数、sha256、`models.json` 条目片段；`--zip` 另出可复现 zip 与 `<zip>.json`，`--apply` 回写清单 | 默认只读；上传 release 由人执行；`ppocr_keys.txt` 登记为 `tokenizer` |
 | `data/sentences.tsv` | - | - | NLLB 评测句子（原 29 句） |

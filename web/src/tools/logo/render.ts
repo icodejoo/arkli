@@ -2,7 +2,8 @@
 // 文字不依赖 SVG 当图片再画进 canvas（Android WebView 里系统字体在 SVG 图片中不可靠），导出一律走 Canvas 2D 直接画。
 
 import { buildScene } from './scene'
-import type { IconItem, LogoParams, Scene, SceneItem, TextItem } from './types'
+import { buildSymbolScene } from './symbolScene'
+import type { IconItem, LogoParams, Scene, SceneItem, SymbolItem, TextItem } from './types'
 
 /** 图标原始视窗边长（Lucide 为 24） */
 export const ICON_VIEWBOX = 24
@@ -50,6 +51,13 @@ function textSvg(it: TextItem): string {
   return `<text x="${n(it.x)}" y="${n(it.y)}" font-size="${n(it.size)}" font-weight="${it.weight}" font-family="${family}" text-anchor="${it.anchor}" fill="${escapeXml(it.color)}"${spacing}${italic}>${escapeXml(it.text)}</text>`
 }
 
+/** 符号图元 → SVG（外层平移缩放到容器，每条路径再按 vtracer 的 translate 偏移，单色填充） */
+function symbolSvg(it: SymbolItem): string {
+  const k = Math.round((it.size / it.vb) * 10000) / 10000
+  const paths = it.paths.map((p) => `<path d="${escapeXml(p.d)}" transform="translate(${n(p.tx)} ${n(p.ty)})"/>`).join('')
+  return `<g transform="translate(${n(it.x)} ${n(it.y)}) scale(${k})" fill="${escapeXml(it.color)}">${paths}</g>`
+}
+
 /** 单个图元 → SVG 片段 */
 function itemSvg(it: SceneItem): string {
   switch (it.k) {
@@ -63,6 +71,8 @@ function itemSvg(it: SceneItem): string {
       return iconSvg(it)
     case 'text':
       return textSvg(it)
+    case 'symbol':
+      return symbolSvg(it)
   }
 }
 
@@ -79,6 +89,17 @@ export function renderSvg(scene: Scene): string {
 }
 
 /**
+ * 参数 → 场景：带 AI 符号走符号版式，否则走模板。
+ *
+ * @param p logo 参数
+ * @returns 场景
+ * @example const scene = sceneOf(params)
+ */
+export function sceneOf(p: LogoParams): Scene {
+  return p.symbol ? buildSymbolScene(p) : buildScene(p)
+}
+
+/**
  * 参数 → SVG 字符串。
  *
  * @param p logo 参数
@@ -86,7 +107,7 @@ export function renderSvg(scene: Scene): string {
  * @example el.innerHTML = renderLogoSvg(params)
  */
 export function renderLogoSvg(p: LogoParams): string {
-  return renderSvg(buildScene(p))
+  return renderSvg(sceneOf(p))
 }
 
 /** Canvas 2D 里画圆角矩形（不依赖较新的 roundRect） */
@@ -162,7 +183,24 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene): void {
       case 'text':
         drawText(ctx, it)
         break
+      case 'symbol':
+        drawSymbol(ctx, it)
+        break
     }
+    ctx.restore()
+  }
+}
+
+/** 符号图元：先缩放到容器，再逐条路径平移后用 Path2D 单色填充 */
+function drawSymbol(ctx: CanvasRenderingContext2D, it: SymbolItem): void {
+  ctx.translate(it.x, it.y)
+  const k = it.size / it.vb
+  ctx.scale(k, k)
+  ctx.fillStyle = it.color
+  for (const p of it.paths) {
+    ctx.save()
+    ctx.translate(p.tx, p.ty)
+    ctx.fill(new Path2D(p.d))
     ctx.restore()
   }
 }
@@ -205,7 +243,7 @@ export function exportSize(scene: Pick<Scene, 'w' | 'h'>, longSide = EXPORT_LONG
  * @example drawLogoToCanvas(el, params, 800)
  */
 export function drawLogoToCanvas(canvas: HTMLCanvasElement, p: LogoParams, longSide = EXPORT_LONG_SIDE): void {
-  const scene = buildScene(p)
+  const scene = sceneOf(p)
   const { width, height, scale } = exportSize(scene, longSide)
   canvas.width = width
   canvas.height = height

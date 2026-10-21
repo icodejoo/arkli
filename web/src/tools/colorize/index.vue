@@ -123,7 +123,7 @@ onBeforeUnmount(() => image.value?.release())
     </tool-group>
 
     <!-- 底部动作栏：相册 / 拍照选图，保存结果，主按钮开始上色 -->
-    <bottom-actions ai :actions="{ save: { disabled: !results.length || saving } }" album photo main :main-text="busy ? '上色中' : '开始上色'" :disabled="{ album: busy, photo: busy, main: busy || !!problem || !image || !ready }" @album="choose" @photo="shoot" @main="run" @save="saveAll">
+    <bottom-actions :main-loading="busy" ai :actions="{ save: { disabled: !results.length || saving } }" album photo main :main-text="busy ? '上色中' : '开始上色'" :disabled="{ album: busy, photo: busy, main: busy || !!problem || !image || !ready }" @album="choose" @photo="shoot" @main="run" @save="saveAll">
       <template #ai><model-picker :tool-id="TOOL_ID" variant="bar" /></template>
     </bottom-actions>
   </div>

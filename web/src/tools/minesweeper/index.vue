@@ -1,11 +1,12 @@
 <script setup lang="ts">
 // 扫雷：点开格子，长按插旗；首次点击必不踩雷
 import BottomActions from '@/shared/BottomActions.vue'
+import { useFloatPause } from '@/shared/useFloatPause'
 import CellPicker from '@/shared/CellPicker.vue'
 import type { CellOption } from '@/shared/cellPicker'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { createLongPress } from '@/views/useLongPress'
-import { createGame, formatTime, LEVELS, minesLeft, reveal, toggleFlag, type Game, type Level } from './logic'
+import { createGame, formatTime, isClockTicking, LEVELS, minesLeft, reveal, toggleFlag, type Game, type Level } from './logic'
 
 /** 计时刷新间隔（毫秒） */
 const TICK_MS = 1000
@@ -62,6 +63,22 @@ function stopTimer(): void {
   timer = undefined
 }
 
+/** 开始走字（已在走则不重复开） */
+function startTimer(): void {
+  if (!timer) timer = setInterval(() => seconds.value++, TICK_MS)
+}
+
+/**
+ * 浮起 / 离开前台：停表，已用秒数保留；回来时对局仍在进行中才接着走字。
+ * 浮起期间不走字，所以回来后的用时不含浮起的时间。
+ */
+useFloatPause({
+  pause: stopTimer,
+  resume: () => {
+    if (isClockTicking(game.value.status)) startTimer()
+  },
+})
+
 /** 点按格子：吞掉长按后的 click，其余按模式翻开或插旗 */
 function onTap(i: number): void {
   if (press.consumeClick()) return
@@ -79,7 +96,7 @@ function restart(): void {
 watch(
   () => game.value.status,
   (s) => {
-    if (s === 'playing' && !timer) timer = setInterval(() => seconds.value++, TICK_MS)
+    if (isClockTicking(s)) startTimer()
     if (s === 'won' || s === 'lost') stopTimer()
   },
 )

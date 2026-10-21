@@ -555,6 +555,23 @@ export function planByKeywords(req: PlanRequest): LogoPlan[] {
 }
 
 /**
+ * 按现有行业词表（INDUSTRY_WORDS）匹配输入文本命中的图标分组，供 AI 符号概念映射复用，不改变 planByKeywords 的行为。
+ *
+ * @param text 品牌名、标语、描述拼起来的文本（大小写不敏感）
+ * @returns 命中的分组（去重，按词表顺序）；没命中为空数组
+ * @example matchIndustryGroups('山屿咖啡') // ['food']
+ */
+export function matchIndustryGroups(text: string): IconGroup[] {
+  const t = (text ?? EMPTY_STRING).toLowerCase()
+  const out: IconGroup[] = []
+  if (!t) return out
+  for (const item of INDUSTRY_WORDS) {
+    if (t.includes(item.word.toLowerCase()) && !out.includes(item.group)) out.push(item.group)
+  }
+  return out
+}
+
+/**
  * 综合生成方案：结合大模型调用与关键词规则兜底
  *
  * @param req 方案生成请求参数

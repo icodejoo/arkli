@@ -40,7 +40,10 @@ enum class AiTask(val wire: String, val isText: Boolean) {
     COUPLET("couplet", false),
 
     /** 抠图（输入是图片，输出是带透明通道的 PNG，走 `native.ai.matting`，不走 `native.ai.run`） */
-    MATTING("matting", false);
+    MATTING("matting", false),
+
+    /** logo 符号生成（输入是英文提示词，输出单色 SVG path，走 `native.ai.logoSymbol`，不走 `native.ai.run`） */
+    LOGO_SYMBOL("logoSymbol", false);
 
     companion object {
         /**

@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
-  applyOffset, chartPoints, clampOffset, formatDb, gaugeFraction, loadOffset, noiseLevel, OFFSET_KEY, RingBuffer, ringCapacity, saveOffset,
+  applyOffset, chartPoints, clampOffset, createPauseGate, formatDb, gaugeFraction, loadOffset, noiseLevel, OFFSET_KEY, RingBuffer, ringCapacity, saveOffset,
   StatsTracker,
 } from './logic'
 
@@ -130,5 +130,80 @@ describe('显示换算', () => {
       [400, 0],
     ])
     expect(chartPoints([70], 1, 400, 100)).toEqual([[0, 50]])
+  })
+})
+
+describe('createPauseGate', () => {
+  /** 造一个可控的闸 */
+  function make(active: boolean) {
+    const state = { active, mic: active }
+    const suspend = vi.fn(async () => void (state.mic = false))
+    const restore = vi.fn(async () => void (state.mic = true))
+    const gate = createPauseGate({ isActive: () => state.active, suspend, restore })
+    return { state, suspend, restore, gate }
+  }
+  /** 等链上的微任务跑完 */
+  const flush = () => new Promise((r) => setTimeout(r, 0))
+
+  it('测量中暂停释放麦克风，恢复后重新启动', async () => {
+    const m = make(true)
+    m.gate.pause()
+    await flush()
+    expect(m.state.mic).toBe(false)
+    m.gate.resume()
+    await flush()
+    expect(m.state.mic).toBe(true)
+  })
+  it('没在测量时暂停/恢复什么都不做', async () => {
+    const m = make(false)
+    m.gate.pause()
+    m.gate.resume()
+    await flush()
+    expect(m.suspend).not.toHaveBeenCalled()
+    expect(m.restore).not.toHaveBeenCalled()
+  })
+  it('重复暂停/恢复幂等', async () => {
+    const m = make(true)
+    m.gate.pause()
+    m.gate.pause()
+    m.gate.resume()
+    m.gate.resume()
+    await flush()
+    expect(m.suspend).toHaveBeenCalledTimes(1)
+    expect(m.restore).toHaveBeenCalledTimes(1)
+  })
+  it('suspend 与 restore 严格串行：停完才启动', async () => {
+    const order: string[] = []
+    let release!: () => void
+    const gate = createPauseGate({
+      isActive: () => true,
+      suspend: () => new Promise<void>((r) => (release = () => (order.push('stopped'), r()))),
+      restore: () => void order.push('started'),
+    })
+    gate.pause()
+    gate.resume()
+    await flush()
+    expect(order).toEqual([])
+    release()
+    await flush()
+    expect(order).toEqual(['stopped', 'started'])
+  })
+  it('暂停中 suspended 为真；启动做到一半被暂停，取回时补启动', async () => {
+    const m = make(false)
+    m.gate.pause()
+    expect(m.gate.suspended).toBe(true)
+    m.gate.deferStart()
+    m.gate.resume()
+    await flush()
+    expect(m.gate.suspended).toBe(false)
+    expect(m.restore).toHaveBeenCalledTimes(1)
+  })
+  it('suspend 抛错不阻塞后续恢复', async () => {
+    const restore = vi.fn()
+    const gate = createPauseGate({ isActive: () => true, suspend: () => Promise.reject(new Error('x')), restore })
+    gate.pause()
+    gate.resume()
+    await flush()
+    expect(restore).toHaveBeenCalled()
   })
 })

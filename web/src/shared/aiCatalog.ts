@@ -37,6 +37,7 @@ export const TASK_LABELS: Record<AiTask, string> = {
   ocr: '文字识别',
   couplet: '对联',
   matting: '抠图',
+  logoSymbol: 'logo 符号',
 }
 
 /**

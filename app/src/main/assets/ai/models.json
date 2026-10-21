@@ -514,6 +514,79 @@
       ]
     },
     {
+      "id": "sdxs512-mnn-w8",
+      "displayName": "本地符号生成模型（SDXS-512 DreamShaper，MNN 8 位）",
+      "version": "1",
+      "dir": "models/sdxs512-mnn-w8",
+      "totalBytes": 553991973,
+      "license": "creativeml-openrail-m / openrail++（见随包 NOTICE）",
+      "archive": {
+        "name": "sdxs512-mnn-w8-1.zip",
+        "bytes": 440897857,
+        "sha256": "cc840d6f9a3571fefd0e32837a624074582ae642f2d1810ebc407491ec4a989f",
+        "role": "archive",
+        "urls": [
+          "https://github.com/icodejoo/arkli/releases/download/logo-sdxs-mnn-v1/sdxs512-mnn-w8-1.zip"
+        ]
+      },
+      "files": [
+        {
+          "name": "LICENSE-CreativeML-OpenRAIL-M.txt",
+          "bytes": 14385,
+          "sha256": "be351ebe7ac01bcdbb018639aadcfd38f136b7dc3f2a3d4d3a24db51d1b210ef",
+          "role": "aux"
+        },
+        {
+          "name": "LICENSE-CreativeML-OpenRAIL-PlusPlus-M.txt",
+          "bytes": 14109,
+          "sha256": "19b6998b569b53ac1fc2158a8a3202c8699a9a4605b47075715d9c96be7fb6d0",
+          "role": "aux"
+        },
+        {
+          "name": "LICENSE-MIT-OpenAI-CLIP.txt",
+          "bytes": 1064,
+          "sha256": "987e63b32f6c89ff5160e429458a872ff048e6860b590a3912e938f9da8f14db",
+          "role": "aux"
+        },
+        {
+          "name": "LICENSE-MIT-TAESD.txt",
+          "bytes": 1073,
+          "sha256": "261497cf8e9ed613ed1fa5ddf48af32cdf50545b2ccd9edd7eacc91fb9255d6e",
+          "role": "aux"
+        },
+        {
+          "name": "NOTICE.txt",
+          "bytes": 2331,
+          "sha256": "01317f6cf1459f7b2d4bc71d8021126bc43985095a28d82dd8e367077c6563b9",
+          "role": "aux"
+        },
+        {
+          "name": "text_encoder.mnn",
+          "bytes": 238319872,
+          "sha256": "9fe71d58322dcc990a088d9b214e49bb257966cb62953cf366b152160fe7da22",
+          "role": "model"
+        },
+        {
+          "name": "tokenizer.json",
+          "bytes": 3642763,
+          "sha256": "b9ba4a00823421f394e89564621bd81ef15a1c4d8ba81bcf7a911b950a205938",
+          "role": "tokenizer"
+        },
+        {
+          "name": "unet.mnn",
+          "bytes": 307091988,
+          "sha256": "ee58ac287dc6cd872589ace9008ec99e31b1c01d4285ccb727e82d01b531c24e",
+          "role": "model"
+        },
+        {
+          "name": "vae_decoder.mnn",
+          "bytes": 4904388,
+          "sha256": "0921096a48cad9ec45783d6437c572b05e9494df74554b6ab1dd139837e81974",
+          "role": "model"
+        }
+      ]
+    },
+    {
       "id": "couplet-corpus",
       "displayName": "对联语料库（73.6 万副，随机模式用）",
       "version": "1",

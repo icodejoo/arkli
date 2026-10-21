@@ -84,6 +84,7 @@ ToolMeta.models?: ToolModelOption[]  // 过渡：{ modelId, title, desc }，L1 �
 | `couplet` | `couplet@native.ai.couplet`、`prompt@native.ai.run` | 对联页：对下联用 local-couplet，大模型用 local-qwen；页面按提供者 id 读就绪状态，选择值不起作用；语料库（数据包）不在选择器里 |
 | `speech-to-text` | —（走 `native.speech.*`，不走 `native.ai.*`，页面内不放选择器） | `asr-zipformer-zh-en-mnn-w8` |
 | `ai-writer` | `prompt@native.ai.run`（起名、标题、润色、扩写、缩写；选择器放在页面里） | — |
+| `logo` | `prompt@native.ai.run`（Qwen：推荐概念词、挑排版参数）、`logoSymbol@native.ai.logoSymbol`（SDXS：AI 符号）；页面按提供者 id 读就绪状态，选择值不起作用（同对联） | — |
 | `image-upscale`、`object-count`、`face-fusion`、`colorize` | — | 各自的占位 id（清单里没有，显示「未接入」） |
 
 没有工具声明 `summarize` / `prompt` 等文本任务（`summarize` 工具是纯前端抽取式摘要，不走 AI），所以 Qwen 目前只在翻译页出现；声明了文本任务的工具会自动出现 Qwen（L2）、可用的交接（L3）与 L4 占位，有单测覆盖。

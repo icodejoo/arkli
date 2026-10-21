@@ -111,7 +111,7 @@ async function copy(): Promise<void> {
     </template>
 
     <!-- 底部动作栏：复制结果，主按钮转换（首次要加载拼音词典） -->
-    <bottom-actions :actions="{ copy: { disabled: !result?.text, text: '复制结果' } }" main :main-text="loading ? '加载词典中' : '转换'" :disabled="{ main: loading }" @main="run" @copy="copy" />
+    <bottom-actions :main-loading="loading" :actions="{ copy: { disabled: !result?.text, text: '复制结果' } }" main :main-text="loading ? '加载词典中' : '转换'" :disabled="{ main: loading }" @main="run" @copy="copy" />
   </div>
 </template>
 

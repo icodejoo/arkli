@@ -75,6 +75,16 @@ object AiRecycle {
     }
 
     /**
+     * 卸载除 [keepId] 以外的全部已登记会话：大模型加载前先让位（如 logo 生成前卸掉常驻的 Qwen）。
+     * 额外可回收项（语音识别器等）不动。
+     *
+     * @param keepId 要保留的提供者 id
+     * @return 实际卸掉的提供者 id
+     */
+    suspend fun releaseExcept(keepId: String): List<String> =
+        AiLifecyclePolicy.unloadAll(sessions.filter { it.first != keepId })
+
+    /**
      * 异步卸载全部已加载的 AI 会话，立刻返回。
      *
      * @param reason 触发原因，只写日志

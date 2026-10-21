@@ -20,17 +20,18 @@
 ## 设计
 - [总体架构](design/architecture.md) — 分层职责、工具归属规则、目录、体积策略、构建流水线。active。
 - [Bridge 协议](design/bridge-protocol.md) — 小工具页与原生/Rust 之间的消息格式、错误码、大数据传输。active。
+- [浮窗](design/float-window.md) — 微信小程序式 App 内浮窗：单浮窗、ToolView 保活状态机、圆球、暂停/忙碌接口与工具适配清单。draft。
 
 - [工具落地总览与待决策](design/tools-overview.md) — 116 项汇总、全部新增依赖、设计间冲突与待拍板清单。draft。
 - [公共基础设施草案](design/platform-infrastructure.md) — bridge v2、统一方法表、安全、权限、模型与数据包、实施顺序。draft。
 - [对联语料库与对联页](design/couplet-corpus.md) — 73.6 万副语料的数据包格式、原生随机访问、前端不重复随机算法、对联页三模式。active。
 - [本地模型下载管理](design/model-download.md) — native.model.* 的清单格式、退役模型回收（retired）、下载器安全设计、状态机、外部目录导入、真机验证与后续优化。active。
-- [统一 AI 协议](design/ai-protocol.md) — AiRouter 选提供者、统一入口 native.ai.invoke 的分派（旧方法为别名）、能力=端口不变量、报价 offers（任务+入口+约束）与按约束校验输入、生命周期从提供者派生、文本生成预设与按次采样（第 6 步）、前端 AI 目录与 aiInvoke、后续步骤。OCR 作为第一个按新协议接入的任务（M8）与“新增一个 AI 任务的 checklist”，以及 AI 中心“参数调整”（`AiTunable`、`native.ai.params.*`、补参优先级、契约不变量 8~11）。active。
+- [统一 AI 协议](design/ai-protocol.md) — AiRouter 选提供者、统一入口 native.ai.invoke 的分派（旧方法为别名）、能力=端口不变量、报价 offers（任务+入口+约束）与按约束校验输入、生命周期从提供者派生、文本生成预设与按次采样（第 6 步）、前端 AI 目录与 aiInvoke、后续步骤。OCR 作为第一个按新协议接入的任务（M8）与“新增一个 AI 任务的 checklist”，logo 符号接入记录（`logoSymbol`：互斥拒绝并发、让位、驻留方式判据、卸载先取消、取消延迟），以及 AI 中心“参数调整”（`AiTunable`、`native.ai.params.*`、补参优先级、契约不变量 8~11）。active。
 - [端侧联网调研（Qwen3.5-0.8B）](design/agent-research.md) — 固定流水线而非自由 ReAct：拆问题→维基搜索→带出处回答；预算、搜索源、未验证项。draft。
 - [模型选择器](design/model-picker.md) — AI 工具的模型选择：工具声明 tasks、目录自动算可选项、四种状态、选择存提供者 id 与旧值迁移；参数调整只在 AI 中心、工具页禁碰。文字识别页只读目录、缺模型提示条。active。
 - [图片类工具](design/tools/image.md) — 21 项。draft。
 - [抠图（人像 / 通用）](design/tools/matting.md) — MODNet 与 U2Net-p 两个本地 MNN 模型，外加实验模型 PP-MattingV2 / BiRefNet-lite；选型与真机数据、`native.ai.matting` 协议、取消限制、模型 release 已发布（单包 zip）。active。
-- [logo 设计](design/tools/logo.md) — 模板排版式 logo 工具：自研渲染 + Lucide 图标子集，本地 Qwen 只挑参数，没模型走关键词规则；参数结构、体积、许可、限制与待真机验证项。draft。
+- [logo 设计](design/tools/logo.md) — logo 工具：模板排版（自研渲染 + Lucide 图标子集，本地 Qwen 只挑参数，没模型走关键词规则）+ 本地 SDXS 生成 AI 符号（行业词表 4 个物体词、逐张生成可取消、质量闸门排序与模板补位、未就绪行为）；参数结构、体积、许可、限制与待真机验证项。draft。
 - [音视频与 AI 类工具](design/tools/media-ai.md) — 10 项。draft。
 - [文本与计算类工具](design/tools/text-calc.md) — 22 项。draft。
 - [开发者、编码与网络类工具](design/tools/dev-net.md) — 17 项。draft。

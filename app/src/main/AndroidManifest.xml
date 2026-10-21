@@ -67,6 +67,20 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- 深链接（App Links）：https://icodejoo.github.io/arkli/t/<工具id>，autoVerify 依赖该域名上的 assetlinks.json（见 site/） -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="icodejoo.github.io" android:pathPrefix="/arkli/t/" />
+            </intent-filter>
+            <!-- 深链接兜底协议：arkli://tool/<工具id>，网页落地页的“用 Arkli 打开”按钮用它 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="arkli" android:host="tool" />
+            </intent-filter>
         </activity>
         <!-- 原生启动动画：透明主题盖在 MainActivity 上，MainActivity 在下面预热 WebView -->
         <activity

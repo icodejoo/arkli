@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createSSRApp, h } from 'vue'
+import { createSSRApp, h, provide } from 'vue'
 import { renderToString } from 'vue/server-renderer'
+import { createPinia, setActivePinia } from 'pinia'
+import { useFloatStore } from '@/stores/float'
 import BottomActions from './BottomActions.vue'
+import { FLOAT_TOOL_ID } from './useFloatPause'
 
-// 动作栏与子项换成桩，只看渲染出的 key / 文案 / 禁用
+// 动作栏与子项换成桩，只看渲染出的 key / 文案 / 禁用 / loading
 vi.mock('vant/es/action-bar/index.mjs', async () => {
   const { defineComponent, h } = await import('vue')
   return { ActionBar: defineComponent({ setup: (_p, { slots }) => () => h('nav', slots.default?.()) }) }
@@ -21,8 +24,20 @@ vi.mock('vant/es/action-bar-button/index.mjs', async () => {
   const { defineComponent, h } = await import('vue')
   return {
     ActionBarButton: defineComponent({
+      inheritAttrs: false,
       props: { text: String, type: String, color: String, disabled: Boolean },
-      setup: (p) => () => h('b', { class: 'btn', 'data-type': p.type, 'data-color': p.color, 'data-off': String(p.disabled) }, p.text),
+      setup: (p, { attrs }) => () =>
+        h(
+          'b',
+          {
+            class: ['btn', attrs.class].filter(Boolean).join(' '),
+            'data-type': p.type,
+            'data-color': p.color,
+            'data-off': String(p.disabled),
+            'aria-busy': attrs['aria-busy'],
+          },
+          p.text,
+        ),
     }),
   }
 })
@@ -154,5 +169,92 @@ describe('BottomActions', () => {
     expect(html).toContain('复制')
     expect(warn).toHaveBeenCalled()
     warn.mockRestore()
+  })
+
+  // 主按钮 loading 相关测试
+  it('loading 为真时主按钮带 ba-main--loading 类与 aria-busy，未 loading 时两者都没有', async () => {
+    const loadingHtml = await render({ main: true, mainLoading: true })
+    expect(loadingHtml).toContain('ba-main--loading')
+    expect(loadingHtml).toContain('aria-busy="true"')
+
+    const normalHtml = await render({ main: true, mainLoading: false })
+    expect(normalHtml).not.toContain('ba-main--loading')
+    expect(normalHtml).not.toContain('aria-busy')
+
+    const defaultHtml = await render({ main: true })
+    expect(defaultHtml).not.toContain('ba-main--loading')
+    expect(defaultHtml).not.toContain('aria-busy')
+  })
+
+  it('actions 对象写法中 main.loading 同样生效', async () => {
+    const html = await render({ actions: { main: { loading: true } } })
+    expect(html).toContain('ba-main--loading')
+    expect(html).toContain('aria-busy="true"')
+
+    const notLoading = await render({ actions: { main: { loading: false } } })
+    expect(notLoading).not.toContain('ba-main--loading')
+    expect(notLoading).not.toContain('aria-busy')
+  })
+
+  it('loading 不影响 disabled 状态（data-off 不变）', async () => {
+    const disabledAndLoading = await render({ main: true, mainLoading: true, disabled: { main: true } })
+    expect(disabledAndLoading).toContain('data-off="true"')
+    expect(disabledAndLoading).toContain('ba-main--loading')
+
+    const enabledAndLoading = await render({ main: true, mainLoading: true, disabled: { main: false } })
+    expect(enabledAndLoading).toContain('data-off="false"')
+    expect(enabledAndLoading).toContain('ba-main--loading')
+  })
+
+  it('#main 具名插槽作用域暴露 loading 状态', async () => {
+    const htmlOn = await render(
+      { main: true, mainLoading: true },
+      { main: (s) => h('span', { class: 'custom-main' }, `加载中:${String(s.loading)}`) },
+    )
+    expect(htmlOn).toContain('加载中:true')
+
+    const htmlOff = await render(
+      { main: true, mainLoading: false },
+      { main: (s) => h('span', { class: 'custom-main' }, `加载中:${String(s.loading)}`) },
+    )
+    expect(htmlOff).toContain('加载中:false')
+  })
+
+  it('loading 仅添加视觉效果，不改变主按钮文案', async () => {
+    const defaultText = await render({ main: true, mainLoading: true })
+    expect(defaultText).toContain('生成')
+
+    const customText = await render({ main: true, mainLoading: true, mainText: '立即处理' })
+    expect(customText).toContain('立即处理')
+  })
+})
+
+describe('BottomActions 自动汇报忙碌给浮窗', () => {
+  /** 在带工具 id 的子树里渲染 */
+  async function renderIn(id: string, props: Record<string, unknown>): Promise<void> {
+    await renderToString(
+      createSSRApp({
+        setup() {
+          provide(FLOAT_TOOL_ID, id)
+          return () => h(BottomActions, props)
+        },
+      }),
+    )
+  }
+
+  it('mainLoading 为 true 时该工具忙碌', async () => {
+    setActivePinia(createPinia())
+    await renderIn('ruler', { main: true, mainLoading: true })
+    expect(useFloatStore().isBusy('ruler')).toBe(true)
+  })
+  it('actions 里 main.loading 同样算忙碌', async () => {
+    setActivePinia(createPinia())
+    await renderIn('dice', { actions: { main: { loading: true } } })
+    expect(useFloatStore().isBusy('dice')).toBe(true)
+  })
+  it('没在加载就不忙碌', async () => {
+    setActivePinia(createPinia())
+    await renderIn('ruler', { main: true, mainLoading: false })
+    expect(useFloatStore().isBusy('ruler')).toBe(false)
   })
 })

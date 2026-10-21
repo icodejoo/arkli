@@ -273,6 +273,18 @@ export function progressOf(st: TimerState, s: Settings, now: number): number {
 }
 
 /**
+ * 是否该保持屏幕常亮：开关打开且正在进行中才亮；浮起 / 回来时按它重新申请。
+ *
+ * @param keepOn 常亮开关
+ * @param status 计时状态
+ * @returns 该常亮为 true
+ * @example wantsAwake(true, 'running') // true
+ */
+export function wantsAwake(keepOn: boolean, status: Status): boolean {
+  return keepOn && status === 'running'
+}
+
+/**
  * 毫秒格式化成 `mm:ss`，向上取整到秒（剩 0.3 秒显示 00:01，到点才显示 00:00）。
  *
  * @param ms 毫秒

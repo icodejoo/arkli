@@ -176,3 +176,69 @@ export function saveFlag(storage: BoolStorage | undefined, key: string, value: b
     // 存储不可用时忽略
   }
 }
+
+/** 可提前结算的动画定时器 */
+export interface SettleTimer {
+  /**
+   * 开始一段动画：ms 毫秒后调用 finish(false)；可选 tick 在期间周期性调用。
+   * 上一段还没结束时先清掉它（不结算）。
+   *
+   * @param finish 结算回调，early 为 true 表示被提前结算（浮起时用，不必再播音效震动）
+   * @param ms 动画总时长（毫秒）
+   * @param tick 期间的周期回调（如骰子点数跳动）
+   */
+  start(finish: (early: boolean) => void, ms: number, tick?: { fn: () => void; ms: number }): void
+  /** 动画进行中则立刻结算（finish(true)）并返回 true；没有进行中的动画返回 false */
+  settleNow(): boolean
+  /** 清掉定时器但不结算，卸载时用 */
+  clear(): void
+  /** 是否有动画在进行 */
+  readonly pending: boolean
+}
+
+/**
+ * 创建可提前结算的动画定时器：抛硬币 / 掷骰子 / 点名都是“先定好结果、动画只做表演”，
+ * 工具被浮起时直接结算到最终结果，回来时看到的就是结果，不会停在半途或被丢掉。
+ *
+ * @returns 定时器
+ * @example
+ * const t = createSettleTimer()
+ * t.start((early) => { show(result); if (!early) beep() }, 900)
+ * t.settleNow() // 浮起时
+ */
+export function createSettleTimer(): SettleTimer {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let ticker: ReturnType<typeof setInterval> | undefined
+  let finish: ((early: boolean) => void) | undefined
+  /** 清掉两个定时器与待结算回调 */
+  const clear = (): void => {
+    clearTimeout(timer)
+    clearInterval(ticker)
+    timer = undefined
+    ticker = undefined
+    finish = undefined
+  }
+  /** 取出回调、清场后结算 */
+  const settle = (early: boolean): void => {
+    const f = finish
+    clear()
+    f?.(early)
+  }
+  return {
+    start(f, ms, tick) {
+      clear()
+      finish = f
+      if (tick) ticker = setInterval(tick.fn, tick.ms)
+      timer = setTimeout(() => settle(false), ms)
+    },
+    settleNow() {
+      if (!finish) return false
+      settle(true)
+      return true
+    },
+    clear,
+    get pending() {
+      return finish !== undefined
+    },
+  }
+}

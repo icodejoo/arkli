@@ -11,6 +11,7 @@ export const AI_METHODS = {
   ocr: 'native.ai.ocr',
   couplet: 'native.ai.couplet',
   matting: 'native.ai.matting',
+  logoSymbol: 'native.ai.logoSymbol',
   upscale: 'native.ai.upscale',
   classify: 'native.ai.classify',
   matte: 'native.ai.matte',

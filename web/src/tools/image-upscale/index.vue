@@ -160,7 +160,7 @@ onBeforeUnmount(() => {
     </tool-group>
 
     <!-- 底部动作栏：相册 / 拍照选图，保存结果，主按钮开始放大 -->
-    <bottom-actions ai :actions="{ save: { disabled: !result || saving } }" album photo main :main-text="busy ? '放大中' : '开始放大'" :disabled="{ album: busy, photo: busy, main: busy || !image || !ready || !!estimate?.tooBig }" @album="choose" @photo="shoot" @main="run" @save="save">
+    <bottom-actions :main-loading="busy" ai :actions="{ save: { disabled: !result || saving } }" album photo main :main-text="busy ? '放大中' : '开始放大'" :disabled="{ album: busy, photo: busy, main: busy || !image || !ready || !!estimate?.tooBig }" @album="choose" @photo="shoot" @main="run" @save="save">
       <template #ai><model-picker :tool-id="TOOL_ID" variant="bar" /></template>
     </bottom-actions>
   </div>

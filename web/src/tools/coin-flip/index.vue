@@ -1,10 +1,11 @@
 <script setup lang="ts">
 // 抛硬币：点一下抛一次，可连抛并统计；先定结果再播动画
 import BottomActions from '@/shared/BottomActions.vue'
+import { useFloatPause } from '@/shared/useFloatPause'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import CellPicker from '@/shared/CellPicker.vue'
 import { prefersReducedMotion } from '@/shared/motion'
-import { countSides, flipCoin, flipCoins, loadFlag, MAX_FLIPS, saveFlag, SIDE_LABEL, SOUND_KEY, VIBRATE_KEY, VIBRATE_LAND, VIBRATE_START, type CoinSide } from './logic'
+import { countSides, createSettleTimer, flipCoin, flipCoins, loadFlag, MAX_FLIPS, saveFlag, SIDE_LABEL, SOUND_KEY, VIBRATE_KEY, VIBRATE_LAND, VIBRATE_START, type CoinSide } from './logic'
 import { createSoundPlayer, tryVibrate } from './feedback'
 
 /** 动画时长（毫秒），需与样式里的 --flip-ms 一致 */
@@ -39,8 +40,8 @@ const animated = ref(true)
 const batch = ref(1)
 /** 本轮历史结果（最新在前） */
 const history = ref<CoinSide[]>([])
-/** 定时器句柄 */
-let timer: ReturnType<typeof setTimeout> | undefined
+/** 动画定时器：到点结算，也可在浮起时提前结算 */
+const anim = createSettleTimer()
 /** 取 localStorage，不可用时为 undefined */
 function getStorage(): Storage | undefined {
   try {
@@ -79,11 +80,11 @@ function toss(): void {
   const n = Math.min(Math.max(Math.floor(batch.value) || 1, 1), MAX_FLIPS)
   const results = n === 1 ? [flipCoin()] : flipCoins(n)
   const last = results[results.length - 1]
-  const finish = () => {
+  const finish = (early = false) => {
     side.value = last
     history.value = results.slice().reverse().concat(history.value).slice(0, 500)
     flipping.value = false
-    feedback('land')
+    if (!early) feedback('land')
   }
   /** 结果与当前朝向不同，要多翻半圈才能落到对应面 */
   const extra = last === side.value ? 0 : HALF_TURN
@@ -96,7 +97,7 @@ function toss(): void {
   flipping.value = true
   feedback('start')
   angle.value += SPIN_TURNS * FULL_TURN + extra
-  timer = setTimeout(finish, ANIM_MS)
+  anim.start(finish, ANIM_MS)
 }
 
 /** 清空历史 */
@@ -104,8 +105,18 @@ function reset(): void {
   history.value = []
 }
 
+/**
+ * 浮起 / 离开前台：翻转中就直接结算到已定好的结果（记入历史、硬币落到对应面），
+ * 这次结算不播落地的震动和音效；没在翻转时什么也不做。
+ */
+useFloatPause({
+  pause: () => void anim.settleNow(),
+  /** 无需恢复：结果已经落定 */
+  resume: () => {},
+})
+
 onBeforeUnmount(() => {
-  clearTimeout(timer)
+  anim.clear()
   sound.dispose()
 })
 </script>
@@ -164,7 +175,7 @@ onBeforeUnmount(() => {
     </tool-group>
 
     <!-- 底部动作栏：主按钮抛硬币（点硬币也行） -->
-    <bottom-actions main main-text="抛！" :disabled="{ main: flipping }" @main="toss" />
+    <bottom-actions :main-loading="flipping" main main-text="抛！" :disabled="{ main: flipping }" @main="toss" />
   </div>
 </template>
 

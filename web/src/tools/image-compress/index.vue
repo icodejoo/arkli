@@ -390,7 +390,7 @@ onBeforeUnmount(() => {
     </tool-group>
 
     <!-- 底部动作栏：相册 / 拍照追加图片，保存全部结果，主按钮开始压缩（处理中变成取消） -->
-    <bottom-actions
+    <bottom-actions :main-loading="busy"
       album
       photo
       main

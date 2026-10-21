@@ -450,7 +450,7 @@ onBeforeUnmount(() => {
     </template>
 
     <!-- 底部动作栏：合成页有相册 / 拍照、保存与「合成 GIF」；分解页有相册（选 GIF）、全部保存与「开始分解」 -->
-    <bottom-actions
+    <bottom-actions :main-loading="tab === 'compose' ? compose.busy.value : split.busy.value"
       album
       :photo="tab === 'compose'"
       main

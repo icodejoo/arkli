@@ -1,0 +1,22 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.let188.arkli",
+      "sha256_cert_fingerprints": [
+        "C0:F7:B5:7A:A2:F5:47:8D:9A:59:77:B2:AE:18:FA:15:A3:EC:13:A6:20:00:44:29:A9:F6:7F:FC:36:38:C2:E3"
+      ]
+    }
+  },
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.let188.arkli.debug",
+      "sha256_cert_fingerprints": [
+        "C0:F7:B5:7A:A2:F5:47:8D:9A:59:77:B2:AE:18:FA:15:A3:EC:13:A6:20:00:44:29:A9:F6:7F:FC:36:38:C2:E3"
+      ]
+    }
+  }
+]

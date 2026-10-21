@@ -123,7 +123,7 @@ onBeforeUnmount(() => {
     </template>
 
     <!-- 底部动作栏：复制正文、保存为文件，主按钮获取源码（请求中变成取消） -->
-    <bottom-actions :actions="{ copy: { disabled: !shown }, save: { disabled: !shown, text: '保存' } }" main :main-text="loading ? '取消' : '获取源码'" :main-type="loading ? 'danger' : 'primary'" :disabled="{ main: !inApp }" @main="fetchSource" @copy="copyBody" @save="saveBody" />
+    <bottom-actions :main-loading="loading" :actions="{ copy: { disabled: !shown }, save: { disabled: !shown, text: '保存' } }" main :main-text="loading ? '取消' : '获取源码'" :main-type="loading ? 'danger' : 'primary'" :disabled="{ main: !inApp }" @main="fetchSource" @copy="copyBody" @save="saveBody" />
   </div>
 </template>
 

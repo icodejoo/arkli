@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { applyZero, bubbleOffset, foldToQuarter, formatDeg, GRAVITY, inPlaneAngle, isSteady, isValidVec, lowPass, startGravity, tiltFromGravity, totalTilt } from './logic'
+import { applyZero, bubbleOffset, foldToQuarter, formatDeg, GRAVITY, inPlaneAngle, isSteady, isValidVec, lowPass, createPausableListener, startGravity, tiltFromGravity, totalTilt } from './logic'
 
 /** 重力常量简写 */
 const G = GRAVITY
@@ -147,5 +147,60 @@ describe('startGravity', () => {
     vi.advanceTimersByTime(200)
     expect(t.has()).toBe(false)
     expect(ss).toEqual(['waiting'])
+  })
+})
+
+describe('createPausableListener', () => {
+  /** 造一个计数的 start */
+  function make() {
+    let live = 0
+    const start = vi.fn(() => {
+      live++
+      return () => void live--
+    })
+    return { start, live: () => live }
+  }
+  it('暂停取消订阅，恢复重订', () => {
+    const m = make()
+    const h = createPausableListener(m.start)
+    h.begin()
+    h.pause()
+    expect(m.live()).toBe(0)
+    h.resume()
+    expect(m.live()).toBe(1)
+  })
+  it('重复暂停/恢复幂等', () => {
+    const m = make()
+    const h = createPausableListener(m.start)
+    h.begin()
+    h.pause()
+    h.pause()
+    h.resume()
+    h.resume()
+    expect(m.start).toHaveBeenCalledTimes(2)
+    expect(m.live()).toBe(1)
+  })
+  it('没在监听时暂停/恢复无副作用', () => {
+    const m = make()
+    const h = createPausableListener(m.start)
+    h.pause()
+    h.resume()
+    expect(m.start).not.toHaveBeenCalled()
+  })
+  it('end 后恢复不重订', () => {
+    const m = make()
+    const h = createPausableListener(m.start)
+    h.begin()
+    h.pause()
+    h.end()
+    h.resume()
+    expect(m.live()).toBe(0)
+  })
+  it('begin 先停掉上一次', () => {
+    const m = make()
+    const h = createPausableListener(m.start)
+    h.begin()
+    h.begin()
+    expect(m.live()).toBe(1)
   })
 })

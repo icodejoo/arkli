@@ -145,7 +145,7 @@ onBeforeUnmount(() => {
     </tool-group>
 
     <!-- 底部动作栏：两个槽位各自点图选图，这里只放保存与主按钮合成 -->
-    <bottom-actions :actions="{ save: { disabled: !results.length || saving, text: '保存 PNG' } }" main :main-text="busy ? '合成中' : '合成'" :disabled="{ main: busy || !surface || !inner }" @main="run" @save="saveAll" />
+    <bottom-actions :main-loading="busy" :actions="{ save: { disabled: !results.length || saving, text: '保存 PNG' } }" main :main-text="busy ? '合成中' : '合成'" :disabled="{ main: busy || !surface || !inner }" @main="run" @save="saveAll" />
   </div>
 </template>
 

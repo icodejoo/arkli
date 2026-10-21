@@ -104,8 +104,8 @@ export const DEFAULT_MAX_VISIBLE = 4
 /** 主按钮配色 */
 export type MainType = 'primary' | 'danger' | 'warning' | 'default'
 
-/** 单项配置：true 启用；对象可覆盖文案 / 图标 / 颜色 / 禁用，`false` 等于不启用 */
-export type BottomActionOption = boolean | { disabled?: boolean; text?: string; icon?: string; color?: string }
+/** 单项配置：true 启用；对象可覆盖文案 / 图标 / 颜色 / 禁用 / 加载中（仅 main 项生效），`false` 等于不启用 */
+export type BottomActionOption = boolean | { disabled?: boolean; text?: string; icon?: string; color?: string; loading?: boolean }
 
 /** `actions` 入参：key 数组，或 `{ key: true | 覆盖项 }` 对象 */
 export type BottomActionsInput = readonly BottomActionKey[] | Partial<Record<BottomActionKey, BottomActionOption>>
@@ -122,6 +122,8 @@ export interface LegacyActionProps {
   iconColor?: string
   /** 按项禁用 */
   disabled?: Partial<Record<BottomActionKey, boolean>>
+  /** 主按钮加载中（心跳折线动画，不自动禁用、不吞点击） */
+  mainLoading?: boolean
 }
 
 /** 归一化后的一项 */
@@ -138,6 +140,8 @@ export interface NormalizedAction {
   disabled: boolean
   /** 颜色：主按钮为背景色，图标项为前景色 */
   color?: string
+  /** 是否处于加载中（仅 main 项可能为 true） */
+  loading: boolean
 }
 
 /** 插槽作用域：替换某一项时可直接复用的状态与点击回调 */
@@ -150,6 +154,8 @@ export interface BottomActionSlotScope {
   color?: string
   /** 是否禁用 */
   disabled: boolean
+  /** 是否处于加载中（仅 main 项可能为 true） */
+  loading: boolean
   /** 触发该项对应的事件 */
   click: () => void
 }
@@ -199,6 +205,7 @@ export function normalizeActions(
       tone: ('tone' in def ? def.tone : undefined) ?? 'default',
       disabled: o.disabled ?? !!legacy.disabled?.[def.key],
       color: o.color ?? (isMain ? legacy.mainColor : legacy.iconColor),
+      loading: isMain ? Boolean(o.loading ?? legacy.mainLoading) : false,
     })
   }
   return result
