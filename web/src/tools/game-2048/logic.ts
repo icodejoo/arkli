@@ -1,4 +1,5 @@
 // 2048：棋盘移动合并、随机出块、结束判断与最高分存储（纯函数，与 Vue 解耦）
+import { createToolStorage, type ToolStorage } from '@/shared/toolStorage'
 
 /** 棋盘边长 */
 export const SIZE = 4
@@ -6,8 +7,12 @@ export const SIZE = 4
 export const FOUR_RATE = 0.1
 /** 胜利目标方块 */
 export const WIN_TILE = 2048
-/** 最高分存储键 */
-export const BEST_KEY = 'arkli:game-2048:best'
+/** 持久缓存命名空间 */
+export const STORE_NS = 'game-2048'
+/** 最高分缓存键（命名空间内） */
+export const BEST_KEY = 'best'
+/** 旧版最高分 localStorage 键，仅用于迁移 */
+export const LEGACY_BEST_KEY = 'arkli:game-2048:best'
 
 /** 棋盘：长度 SIZE*SIZE 的行优先数组，0 表示空格 */
 export type Board = readonly number[]
@@ -167,32 +172,26 @@ export function step(board: Board, dir: Dir, rand: Rand = Math.random): MoveResu
 }
 
 /**
- * 读取最高分，失败返回 0。
+ * 读取最高分（会一次性迁移旧键），失败返回 0。
  *
+ * @param store 持久缓存，默认 2048 的实例
  * @returns 最高分
  */
-export function loadBest(): number {
-  try {
-    const v = Number(localStorage.getItem(BEST_KEY))
-    return Number.isFinite(v) && v > 0 ? v : 0
-  } catch {
-    return 0
-  }
+export function loadBest(store: ToolStorage = createToolStorage(STORE_NS)): number {
+  store.adoptLegacy(LEGACY_BEST_KEY, BEST_KEY)
+  const v = Number(store.get<unknown>(BEST_KEY, 0))
+  return Number.isFinite(v) && v > 0 ? v : 0
 }
 
 /**
  * 保存最高分，失败静默忽略。
  *
  * @param score 分数
+ * @param store 持久缓存，默认 2048 的实例
  * @returns 是否写入成功
  */
-export function saveBest(score: number): boolean {
-  try {
-    localStorage.setItem(BEST_KEY, String(Math.round(score)))
-    return true
-  } catch {
-    return false
-  }
+export function saveBest(score: number, store: ToolStorage = createToolStorage(STORE_NS)): boolean {
+  return store.set(BEST_KEY, Math.round(score))
 }
 
 /**

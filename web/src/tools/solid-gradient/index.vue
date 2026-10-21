@@ -3,6 +3,8 @@
 import BottomActions from '@/shared/BottomActions.vue'
 import ColorPicker from '@/shared/ColorPicker.vue'
 import { computed, ref } from 'vue'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import ImageResultList from '@/shared/ImageResultList.vue'
 import { useImageResults } from '@/shared/useImageResults'
 import { canvasToBlob, createCanvas, releaseCanvas } from '@/shared/image-io'
@@ -10,6 +12,9 @@ import {
   addStop,
   checkSize,
   gradientCss,
+  isValidAngle,
+  isValidColor,
+  isValidStops,
   linearLine,
   normalizeStops,
   radialCircle,
@@ -17,6 +22,7 @@ import {
   SIZE_PRESETS,
   STOP_MAX,
   STOP_MIN,
+  TOOL_NS,
   type ColorStop,
   type SizePreset,
 } from './logic'
@@ -30,17 +36,26 @@ const ANGLE_DEFAULT = 135
 /** 预览框最大宽高比（过高的竖图预览框封顶，避免占满屏） */
 const PREVIEW_MAX_RATIO = 1.6
 
-/** 类型：solid 纯色，linear 线性，radial 径向 */
-const kind = ref<'solid' | 'linear' | 'radial'>('linear')
-/** 纯色值 */
-const solid = ref(SOLID_DEFAULT)
-/** 色标 */
-const stops = ref<ColorStop[]>([
+/** 类型取值 */
+type Kind = 'solid' | 'linear' | 'radial'
+/** 可选类型 */
+const KINDS: Kind[] = ['solid', 'linear', 'radial']
+/** 默认色标 */
+const STOPS_DEFAULT: ColorStop[] = [
   { color: '#ff7a59', pos: 0 },
   { color: '#4f8cff', pos: 100 },
-])
-/** 线性渐变角度 */
-const angle = ref(ANGLE_DEFAULT)
+]
+
+/** 持久缓存 */
+const store = createToolStorage(TOOL_NS)
+/** 类型：solid 纯色，linear 线性，radial 径向（持久化） */
+const kind = usePersistedRef<Kind>(store, 'kind', 'linear', (v) => KINDS.includes(v))
+/** 纯色值（持久化） */
+const solid = usePersistedRef<string>(store, 'solid', SOLID_DEFAULT, isValidColor)
+/** 色标（持久化） */
+const stops = usePersistedRef<ColorStop[]>(store, 'stops', STOPS_DEFAULT.map((s) => ({ ...s })), isValidStops)
+/** 线性渐变角度（持久化） */
+const angle = usePersistedRef<number>(store, 'angle', ANGLE_DEFAULT, isValidAngle)
 /** 宽（输入框） */
 const width = ref(1080)
 /** 高（输入框） */

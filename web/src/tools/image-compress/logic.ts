@@ -121,6 +121,37 @@ export function defaultOptions(): CompressOptions {
   }
 }
 
+/** 可选输出格式 */
+const FORMATS: readonly CompressFormat[] = ['jpeg', 'webp', 'png']
+/** 可选 PNG 模式 */
+const PNG_MODES: readonly PngMode[] = ['lossless', 'palette']
+
+/**
+ * 把缓存里读出的选项洗成合法选项：字段缺失或非法就用默认值；目标体积是输入框内容，不恢复。
+ *
+ * @param raw 缓存原值（任意类型）
+ * @param webpOk 当前能否编码 WebP，不能时 webp 回落默认格式
+ * @returns 合法的完整选项
+ * @example sanitizeOptions({ format: 'png', quality: 999 }, true).quality // 默认质量
+ */
+export function sanitizeOptions(raw: unknown, webpOk = true): CompressOptions {
+  const d = defaultOptions()
+  if (!raw || typeof raw !== 'object') return d
+  const r = raw as Partial<Record<keyof CompressOptions, unknown>>
+  const inRange = (v: unknown, min: number, max: number): v is number => typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max
+  return {
+    ...d,
+    format: FORMATS.includes(r.format as CompressFormat) && (webpOk || r.format !== 'webp') ? (r.format as CompressFormat) : d.format,
+    quality: inRange(r.quality, QUALITY_MIN, QUALITY_MAX) ? r.quality : d.quality,
+    maxEdge: EDGE_PRESETS.includes(r.maxEdge as number) ? (r.maxEdge as number) : d.maxEdge,
+    useTarget: typeof r.useTarget === 'boolean' ? r.useTarget : d.useTarget,
+    pngMode: PNG_MODES.includes(r.pngMode as PngMode) ? (r.pngMode as PngMode) : d.pngMode,
+    colors: inRange(r.colors, COLORS_MIN, COLORS_MAX) ? r.colors : d.colors,
+    dither: typeof r.dither === 'boolean' ? r.dither : d.dither,
+    keepExif: typeof r.keepExif === 'boolean' ? r.keepExif : d.keepExif,
+  }
+}
+
 /**
  * 当前路径下的选项可用性。Canvas 兜底只有质量、最长边与格式。
  *

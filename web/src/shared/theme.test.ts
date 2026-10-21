@@ -5,16 +5,24 @@ vi.hoisted(() => {
   ;(globalThis as unknown as { window: unknown }).window = {}
 })
 
-import { applyDark, DARK_CLASS, DARK_QUERY, loadThemeMode, parseThemeMode, resolveDark, saveThemeMode, THEME_MODES, THEME_STORAGE_KEY } from './theme'
+import { createToolStorage } from './toolStorage'
+import { applyDark, DARK_CLASS, DARK_QUERY, LEGACY_THEME_KEY, loadThemeMode, parseThemeMode, resolveDark, saveThemeMode, THEME_MODES, THEME_STORAGE_KEY } from './theme'
 
-/** 内存存储 */
-function memStorage(init: Record<string, string> = {}) {
+/** 内存存储（带 ToolStorage 所需的 key/length/removeItem） */
+function memBackend(init: Record<string, string> = {}) {
   const data = { ...init }
   return {
     data,
     getItem: (k: string) => data[k] ?? null,
     setItem: (k: string, v: string) => {
       data[k] = v
+    },
+    removeItem: (k: string) => {
+      delete data[k]
+    },
+    key: (i: number) => Object.keys(data)[i] ?? null,
+    get length() {
+      return Object.keys(data).length
     },
   }
 }
@@ -36,11 +44,22 @@ describe('parseThemeMode / 持久化', () => {
     for (const m of Object.values(THEME_MODES)) expect(parseThemeMode(m)).toBe(m)
   })
   it('存取往返，默认跟随系统', () => {
-    const s = memStorage()
+    const b = memBackend()
+    const s = createToolStorage('app', b)
     expect(loadThemeMode(s)).toBe('system')
     saveThemeMode('dark', s)
-    expect(s.data[THEME_STORAGE_KEY]).toBe('dark')
+    expect(b.data[THEME_STORAGE_KEY]).toBe('"dark"')
     expect(loadThemeMode(s)).toBe('dark')
+  })
+  it('旧键迁移：读到旧值并写入新键、删旧键', () => {
+    const b = memBackend({ [LEGACY_THEME_KEY]: 'light' })
+    expect(loadThemeMode(createToolStorage('app', b))).toBe('light')
+    expect(b.data[THEME_STORAGE_KEY]).toBe('"light"')
+    expect(b.data[LEGACY_THEME_KEY]).toBeUndefined()
+  })
+  it('缓存里是非法值：回落跟随系统', () => {
+    const b = memBackend({ [THEME_STORAGE_KEY]: '"blue"' })
+    expect(loadThemeMode(createToolStorage('app', b))).toBe('system')
   })
   it('存储不可用或抛错时静默', () => {
     const bad = {
@@ -51,8 +70,9 @@ describe('parseThemeMode / 持久化', () => {
         throw new Error('denied')
       },
     }
-    expect(loadThemeMode(bad)).toBe('system')
-    expect(() => saveThemeMode('dark', bad)).not.toThrow()
+    const s = createToolStorage('app', { ...bad, key: () => null, length: 0, removeItem: () => undefined })
+    expect(loadThemeMode(s)).toBe('system')
+    expect(() => saveThemeMode('dark', s)).not.toThrow()
     expect(loadThemeMode(undefined)).toBe('system')
   })
 })
@@ -90,10 +110,14 @@ describe('public/theme-init.js 与 resolveDark 一致', () => {
   it('全部组合结果相同', () => {
     for (const saved of [null, 'light', 'dark', 'system', 'junk']) {
       for (const systemDark of [false, true]) {
-        const got = runInit((k) => (k === THEME_STORAGE_KEY ? saved : null), systemDark)
+        const got = runInit((k) => (k === THEME_STORAGE_KEY && saved != null ? JSON.stringify(saved) : null), systemDark)
         expect(got, `${saved}/${systemDark}`).toBe(resolveDark(parseThemeMode(saved), systemDark))
       }
     }
+  })
+  it('新键缺失时首帧兼容旧键原文，不闪', () => {
+    expect(runInit((k) => (k === LEGACY_THEME_KEY ? 'dark' : null), false)).toBe(true)
+    expect(runInit((k) => (k === LEGACY_THEME_KEY ? 'light' : null), true)).toBe(false)
   })
   it('存储抛错时按跟随系统', () => {
     const deny = () => {

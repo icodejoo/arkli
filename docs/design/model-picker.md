@@ -80,7 +80,7 @@ ToolMeta.models?: ToolModelOption[]  // 过渡：{ modelId, title, desc }，L1 �
 |---|---|---|
 | `waste-sort` | `classifyImage` | `siglip2-mnn-w8`（并入 `local-clip`；2026-10-15 起由 `siglip2-q4_half` 换成 MNN 版） |
 | `translate` | `translate@native.ai.translate` | — |
-| `ocr`、`table-extract` | `ocr@native.ai.ocr`（M8；图片转表格用同一个文字识别任务，并带 `ai` 标签以出现选择器） | — |
+| `ocr`、`table-extract`、`roll-call`（随机点名，相册/拍照识别名单） | `ocr@native.ai.ocr`（M8；图片转表格用同一个文字识别任务，并带 `ai` 标签以出现选择器） | — |
 | `couplet` | `couplet@native.ai.couplet`、`prompt@native.ai.run` | 对联页：对下联用 local-couplet，大模型用 local-qwen；页面按提供者 id 读就绪状态，选择值不起作用；语料库（数据包）不在选择器里 |
 | `speech-to-text` | —（走 `native.speech.*`，不走 `native.ai.*`，页面内不放选择器） | `asr-zipformer-zh-en-mnn-w8` |
 | `ai-writer` | `prompt@native.ai.run`（起名、标题、润色、扩写、缩写；选择器放在页面里） | — |

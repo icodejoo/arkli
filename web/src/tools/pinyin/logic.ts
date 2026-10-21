@@ -99,3 +99,31 @@ function collectHints(lib: PinyinLib, text: string, surname: boolean): Polyphoni
   }
   return hints
 }
+
+/** 持久缓存命名空间 */
+export const STORE_NS = 'pinyin'
+/** 可选声调写法值 */
+export const TONE_VALUES: readonly ToneStyle[] = ['mark', 'num', 'none']
+/** 可选拼音样式值 */
+export const PATTERN_VALUES: readonly PinyinPattern[] = ['full', 'first']
+/** 可选分隔符值 */
+export const SEPARATOR_VALUES: readonly string[] = [' ', '', '-', '_']
+
+/**
+ * 把缓存里读出的选项整理成合法选项：缺项或不在可选范围内的字段回落默认。
+ *
+ * @param raw 缓存里读出的任意值
+ * @returns 完整合法的选项（新对象）
+ * @example sanitizeOptions({ tone: 'x' }).tone // 'mark'
+ */
+export function sanitizeOptions(raw: unknown): PinyinOptions {
+  const o = (raw && typeof raw === 'object' ? raw : {}) as Partial<PinyinOptions>
+  const D = DEFAULT_OPTIONS
+  return {
+    tone: TONE_VALUES.includes(o.tone as ToneStyle) ? (o.tone as ToneStyle) : D.tone,
+    pattern: PATTERN_VALUES.includes(o.pattern as PinyinPattern) ? (o.pattern as PinyinPattern) : D.pattern,
+    keepOther: typeof o.keepOther === 'boolean' ? o.keepOther : D.keepOther,
+    separator: typeof o.separator === 'string' && SEPARATOR_VALUES.includes(o.separator) ? o.separator : D.separator,
+    surname: typeof o.surname === 'boolean' ? o.surname : D.surname,
+  }
+}

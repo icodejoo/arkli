@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { createToolStorage } from '../../shared/toolStorage'
 import {
   buildTicks,
   CARD_MM,
@@ -21,14 +22,32 @@ import {
   sortMarksByPosition,
   STEP_MM,
   togglePick,
-  type KvStorage,
+  isHexColor,
+  LEGACY_SCALE_KEY,
+  SCALE_KEY,
+  TOOL_NS,
   type RulerMark,
 } from './logic'
 
-/** 内存版存储 */
-function memStore(init: Record<string, string> = {}): KvStorage {
-  const m = { ...init }
-  return { getItem: (k) => (k in m ? m[k] : null), setItem: (k, v) => void (m[k] = v) }
+/** 内存版存储后端；throws 为真时读写抛错 */
+function memBackend(init: Record<string, string> = {}, throws = false) {
+  const m = new Map(Object.entries(init))
+  const chk = () => {
+    if (throws) throw new Error('x')
+  }
+  return {
+    getItem: (k: string) => (chk(), m.get(k) ?? null),
+    setItem: (k: string, v: string) => (chk(), void m.set(k, v)),
+    removeItem: (k: string) => void m.delete(k),
+    key: (i: number) => [...m.keys()][i] ?? null,
+    get length() {
+      return m.size
+    },
+  }
+}
+/** 建测试用持久缓存 */
+function memStore(init: Record<string, string> = {}, throws = false) {
+  return createToolStorage(TOOL_NS, memBackend(init, throws))
 }
 
 describe('scaleFromCalibration', () => {
@@ -79,27 +98,34 @@ describe('formatLength', () => {
 describe('存取校准比例', () => {
   it('存了能读回', () => {
     const s = memStore()
-    expect(saveScale(s, 5.2)).toBe(true)
+    expect(saveScale(5.2, s)).toBe(true)
     expect(loadScale(s)).toBe(5.2)
   })
   it('没存、损坏、越界都得 null', () => {
     expect(loadScale(memStore())).toBeNull()
-    expect(loadScale(memStore({ 'arkli:ruler:scale': 'abc' }))).toBeNull()
-    expect(loadScale(memStore({ 'arkli:ruler:scale': '99' }))).toBeNull()
-    expect(loadScale(undefined)).toBeNull()
+    expect(loadScale(memStore({ [`${TOOL_NS}_${SCALE_KEY}`]: '"abc"' }))).toBeNull()
+    expect(loadScale(memStore({ [`${TOOL_NS}_${SCALE_KEY}`]: '99' }))).toBeNull()
+  })
+  it('迁移旧键', () => {
+    const b = memBackend({ [LEGACY_SCALE_KEY]: '5.2' })
+    expect(loadScale(createToolStorage(TOOL_NS, b))).toBe(5.2)
+    expect(b.getItem(LEGACY_SCALE_KEY)).toBeNull()
   })
   it('存储抛错时不崩', () => {
-    const bad: KvStorage = {
-      getItem: () => {
-        throw new Error('x')
-      },
-      setItem: () => {
-        throw new Error('x')
-      },
-    }
+    const bad = memStore({}, true)
     expect(loadScale(bad)).toBeNull()
-    expect(saveScale(bad, 4)).toBe(false)
-    expect(saveScale(memStore(), -1)).toBe(false)
+    expect(saveScale(4, bad)).toBe(false)
+    expect(saveScale(-1, memStore())).toBe(false)
+  })
+})
+
+describe('isHexColor', () => {
+  it('只认十六进制色值', () => {
+    expect(isHexColor('#fff')).toBe(true)
+    expect(isHexColor('#A1B2C3')).toBe(true)
+    expect(isHexColor('red')).toBe(false)
+    expect(isHexColor('#12')).toBe(false)
+    expect(isHexColor(null)).toBe(false)
   })
 })
 

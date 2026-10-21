@@ -4,10 +4,12 @@ import BottomActions from '@/shared/BottomActions.vue'
 import { useFloatPause } from '@/shared/useFloatPause'
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import { showFailToast, showSuccessToast } from 'vant'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { canvasToBlob, createCanvas, releaseCanvas, saveBlob } from '@/shared/image-io'
 import {
   addStroke, appendPoint, canRedo, canUndo, canvasScale, clampWidth, clearStack, createStack, DEFAULT_BG,
-  DEFAULT_COLOR, exportName, MAX_WIDTH, MIN_WIDTH, pixelSize, redo, undo, type Pt, type Stroke, type StrokeStack,
+  DEFAULT_COLOR, exportName, isValidWidth, MAX_WIDTH, MIN_WIDTH, pixelSize, redo, TOOL_NS, undo, type Pt, type Stroke, type StrokeStack,
 } from './logic'
 
 /** 画布高度占宽度的比例 */
@@ -31,12 +33,14 @@ const wrapEl = ref<HTMLDivElement>()
 const stack = shallowRef<StrokeStack>(createStack())
 /** 当前正在画的笔画 */
 const current = shallowRef<Stroke | null>(null)
-/** 画笔颜色 */
-const color = ref(DEFAULT_COLOR)
-/** 背景色 */
-const bg = ref(DEFAULT_BG)
-/** 线宽 */
-const width = ref(DEFAULT_WIDTH)
+/** 持久缓存 */
+const store = createToolStorage(TOOL_NS)
+/** 画笔颜色（持久化） */
+const color = usePersistedRef<string>(store, 'color', DEFAULT_COLOR, (v) => PALETTE.includes(v))
+/** 背景色（持久化） */
+const bg = usePersistedRef<string>(store, 'bg', DEFAULT_BG, (v) => BG_PALETTE.includes(v))
+/** 线宽（持久化） */
+const width = usePersistedRef<number>(store, 'width', DEFAULT_WIDTH, isValidWidth)
 /** 是否橡皮模式 */
 const erasing = ref(false)
 /** 画布 CSS 宽 */

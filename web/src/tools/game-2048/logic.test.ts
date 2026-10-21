@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { addRandomTile, BEST_KEY, canMove, emptyBoard, hasWon, loadBest, move, newGame, saveBest, slideLine, step, swipeDir } from './logic'
+import { createToolStorage, type StorageLike } from '@/shared/toolStorage'
+import { addRandomTile, BEST_KEY, LEGACY_BEST_KEY, STORE_NS, canMove, emptyBoard, hasWon, loadBest, move, newGame, saveBest, slideLine, step, swipeDir } from './logic'
 
 /** 把 4x4 二维写法转成一维 */
 const b = (rows: number[][]) => rows.flat()
@@ -113,17 +114,42 @@ describe('swipeDir', () => {
 })
 
 describe('最高分存储', () => {
-  it('读写往返', () => {
+  /** 内存后端 */
+  function mem(): { back: StorageLike; m: Map<string, string> } {
     const m = new Map<string, string>()
-    vi.stubGlobal('localStorage', { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => m.set(k, v) })
-    expect(loadBest()).toBe(0)
-    expect(saveBest(1234)).toBe(true)
-    expect(m.get(BEST_KEY)).toBe('1234')
-    expect(loadBest()).toBe(1234)
+    const back: StorageLike = {
+      getItem: (k) => m.get(k) ?? null,
+      setItem: (k, v) => void m.set(k, v),
+      removeItem: (k) => void m.delete(k),
+      key: (i) => [...m.keys()][i] ?? null,
+      get length() {
+        return m.size
+      },
+    }
+    return { back, m }
+  }
+  it('读写往返', () => {
+    const { back, m } = mem()
+    const st = createToolStorage(STORE_NS, back)
+    expect(loadBest(st)).toBe(0)
+    expect(saveBest(1234, st)).toBe(true)
+    expect(m.get(`${STORE_NS}_${BEST_KEY}`)).toBe('1234')
+    expect(loadBest(st)).toBe(1234)
+  })
+  it('旧键迁移', () => {
+    const { back, m } = mem()
+    m.set(LEGACY_BEST_KEY, '777')
+    expect(loadBest(createToolStorage(STORE_NS, back))).toBe(777)
+    expect(m.has(LEGACY_BEST_KEY)).toBe(false)
+  })
+  it('非法缓存值回落 0', () => {
+    const { back, m } = mem()
+    m.set(`${STORE_NS}_${BEST_KEY}`, '"abc"')
+    expect(loadBest(createToolStorage(STORE_NS, back))).toBe(0)
   })
   it('存储不可用时静默', () => {
-    vi.stubGlobal('localStorage', undefined)
-    expect(loadBest()).toBe(0)
-    expect(saveBest(5)).toBe(false)
+    const st = createToolStorage(STORE_NS, null)
+    expect(loadBest(st)).toBe(0)
+    expect(saveBest(5, st)).toBe(false)
   })
 })

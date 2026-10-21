@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import {
   BG_OPTIONS,
   DEFAULT_REFINE,
   REFINE_OPTIONS,
   REFINE_STORAGE_KEY,
-  loadRefine,
   normalizeRefine,
-  saveRefine,
   shouldRerunOnRefine,
   MATTING_MODES, MODE_HINTS, MODE_LABELS, PROVIDER_OF_MODE, bgColorOf, modeOfProvider, outputName, resultUrl, summaryOf,
 } from './logic'
@@ -71,11 +71,6 @@ describe('文件名与地址', () => {
 })
 
 describe('边缘细化档位', () => {
-  /** 内存存储替身 */
-  const memory = (init?: string) => {
-    const m = new Map<string, string>(init ? [[REFINE_STORAGE_KEY, init]] : [])
-    return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v) }
-  }
   it('四档按 关/轻/标准/强 排列，默认强', () => {
     expect(REFINE_OPTIONS.map((o) => o.label)).toEqual(['关', '轻', '标准', '强'])
     expect(REFINE_OPTIONS.map((o) => o.value)).toEqual(['off', 'light', 'standard', 'strong'])
@@ -87,25 +82,23 @@ describe('边缘细化档位', () => {
     expect(normalizeRefine(null)).toBe('strong')
     expect(normalizeRefine(3)).toBe('strong')
   })
-  it('没有记录用默认；有记录读出；脏数据回落；存储抛错也不崩', () => {
-    expect(loadRefine(memory())).toBe('strong')
-    expect(loadRefine(memory('off'))).toBe('off')
-    expect(loadRefine(memory('bogus'))).toBe('strong')
-    const boom = {
-      getItem: () => {
-        throw new Error('blocked')
+  it('持久化：旧键迁入、非法缓存回落默认、读回', () => {
+    const mem = new Map<string, string>([[REFINE_STORAGE_KEY, 'light']])
+    const backend = {
+      get length() {
+        return mem.size
       },
-      setItem: () => {
-        throw new Error('blocked')
-      },
+      key: (i: number) => [...mem.keys()][i] ?? null,
+      getItem: (k: string) => mem.get(k) ?? null,
+      setItem: (k: string, v: string) => void mem.set(k, v),
+      removeItem: (k: string) => void mem.delete(k),
     }
-    expect(loadRefine(boom)).toBe('strong')
-    expect(() => saveRefine('light', boom)).not.toThrow()
-  })
-  it('saveRefine 写入后能读回', () => {
-    const st = memory()
-    saveRefine('standard', st)
-    expect(loadRefine(st)).toBe('standard')
+    const st = createToolStorage('matting', backend)
+    st.adoptLegacy(REFINE_STORAGE_KEY, 'refine', normalizeRefine)
+    expect(mem.has(REFINE_STORAGE_KEY)).toBe(false)
+    expect(usePersistedRef(st, 'refine', DEFAULT_REFINE, (v) => normalizeRefine(v) === v).value).toBe('light')
+    st.set('refine', 'bogus')
+    expect(usePersistedRef(st, 'refine', DEFAULT_REFINE, (v) => normalizeRefine(v) === v).value).toBe('strong')
   })
   it('切换档位：有结果且档位变了才重跑；没出图或没变只记住', () => {
     expect(shouldRerunOnRefine('strong', 'light', true)).toBe(true)

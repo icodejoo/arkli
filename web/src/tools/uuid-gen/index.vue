@@ -3,6 +3,8 @@
 import { computed, ref } from 'vue'
 import { showFailToast, showSuccessToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import {
   BATCH_MAX,
   generateIds,
@@ -15,11 +17,13 @@ import {
   type IdKind,
 } from './logic'
 
+/** 本工具的持久缓存 */
+const store = createToolStorage('uuid-gen')
 /** 默认批量数量 */
 const DEFAULT_COUNT = 5
 
 /** 当前类型 */
-const kind = ref<IdKind>('uuid4')
+const kind = usePersistedRef<IdKind>(store, 'kind', 'uuid4', (v) => ID_KINDS.some((k) => k.id === v))
 /** 数量 */
 const count = ref(DEFAULT_COUNT)
 /** NanoID 长度 */
@@ -27,9 +31,9 @@ const size = ref(NANOID_DEFAULT_SIZE)
 /** NanoID 字符集 */
 const alphabet = ref(NANOID_DEFAULT_ALPHABET)
 /** 大写（仅 UUID） */
-const upper = ref(false)
+const upper = usePersistedRef(store, 'upper', false, (v) => typeof v === 'boolean')
 /** 去连字符（仅 UUID） */
-const noDash = ref(false)
+const noDash = usePersistedRef(store, 'noDash', false, (v) => typeof v === 'boolean')
 /** 生成结果 */
 const list = ref<string[]>([])
 

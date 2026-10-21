@@ -510,3 +510,6 @@ export function logoAdvice(ecc: EccLevel, textLength: number, plan: LogoPlan): L
     longNote: isLong ? '内容较长，扫码成功率会下降，建议使用短链或去掉多余参数（纠错建议 H）' : '',
   }
 }
+
+/** 持久缓存命名空间 */
+export const STORE_NS = 'qrcode-gen'

@@ -5,12 +5,16 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { showFailToast, showToast } from 'vant'
 import { isNativeAvailable } from '@/native/bridge'
 import { onTtsEvent, saveSpeech, speak, stopSpeaking, ttsStatus, type SavedSpeech, type TtsEvent } from '@/native/tts'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { share } from '@/native/system'
 import {
   clampFactor, createReader, currentChunk, DEFAULT_LANG, describeError, FACTOR_RANGE, INSTALL_GUIDE, nextChunk, NO_ENGINE_GUIDE, PAGE_MAX_TEXT,
   progressLabel, SAVE_CHUNK, splitText, usableLangs, type LangOption, type Reader,
 } from './logic'
 
+/** 本工具的持久缓存 */
+const store = createToolStorage('tts')
 /** 滑块步长 */
 const FACTOR_STEP = 0.1
 /** wav 的 mime，分享用 */
@@ -21,11 +25,11 @@ const hosted = isNativeAvailable()
 /** 输入文本 */
 const text = ref('')
 /** 语言码 */
-const lang = ref(DEFAULT_LANG)
+const lang = usePersistedRef(store, 'lang', DEFAULT_LANG, (v) => typeof v === 'string' && v !== '')
 /** 语速 */
-const rate = ref(1)
+const rate = usePersistedRef(store, 'rate', 1, (v) => typeof v === 'number' && v >= FACTOR_RANGE.min && v <= FACTOR_RANGE.max)
 /** 音调 */
-const pitch = ref(1)
+const pitch = usePersistedRef(store, 'pitch', 1, (v) => typeof v === 'number' && v >= FACTOR_RANGE.min && v <= FACTOR_RANGE.max)
 /** 引擎是否可用 */
 const available = ref(true)
 /** 可选语言 */

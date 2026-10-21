@@ -6,9 +6,10 @@ vi.hoisted(() => {
 })
 
 import type { NetCallFn } from '@/native/net'
+import { createToolStorage, type StorageLike, type ToolStorage } from '@/shared/toolStorage'
 import {
-  cacheKey, convert, currencyLabel, CURRENCIES, decimalsFor, fetchRates, formatAmount, formatCachedAt, formatConverted, formatRate,
-  parseAmount, parseErApi, parseFrankfurter, parseRate, readCache, roundHalfUp, writeCache, type RateTable, type StorageLike,
+  CACHE_KEY_PREFIX, cacheKey, convert, currencyLabel, CURRENCIES, decimalsFor, fetchRates, formatAmount, formatCachedAt, formatConverted, formatRate,
+  parseAmount, parseErApi, parseFrankfurter, parseRate, readCache, roundHalfUp, writeCache, type RateTable,
 } from './logic'
 
 /** frankfurter 样例 */
@@ -34,7 +35,21 @@ function seq(...steps: Array<unknown | Error>) {
 /** 内存存储 */
 function memStore(): StorageLike & { data: Record<string, string> } {
   const data: Record<string, string> = {}
-  return { data, getItem: (k) => data[k] ?? null, setItem: (k, v) => void (data[k] = v) }
+  return {
+    data,
+    getItem: (k) => data[k] ?? null,
+    setItem: (k, v) => void (data[k] = v),
+    removeItem: (k) => void delete data[k],
+    key: (i) => Object.keys(data)[i] ?? null,
+    get length() {
+      return Object.keys(data).length
+    },
+  }
+}
+/** 测试用持久缓存：命名空间键落在内存里 */
+function memTool(): { st: ToolStorage; back: ReturnType<typeof memStore> } {
+  const back = memStore()
+  return { st: createToolStorage('exchange-rate', back), back }
 }
 
 describe('币种表', () => {
@@ -110,32 +125,34 @@ describe('fetchRates', () => {
 describe('缓存', () => {
   const table: RateTable = { base: 'CNY', date: '2026-10-12', rates: { CNY: 1, USD: 0.14 }, source: 'frankfurter' }
   it('键名', () => {
-    expect(cacheKey('CNY')).toBe('arkli.exchange-rate.v1.CNY')
+    expect(cacheKey('CNY')).toBe('rates_CNY')
   })
   it('写入再读出', () => {
-    const st = memStore()
+    const { st } = memTool()
     expect(writeCache(table, 1234, st)).toBe(true)
     expect(readCache('CNY', st)).toEqual({ table, savedAt: 1234 })
     expect(readCache('USD', st)).toBeNull()
   })
   it('损坏数据返回 null', () => {
-    const st = memStore()
-    st.data[cacheKey('CNY')] = '{bad'
+    const { st, back } = memTool()
+    back.data['exchange-rate_' + cacheKey('CNY')] = '{bad'
     expect(readCache('CNY', st)).toBeNull()
-    st.data[cacheKey('CNY')] = JSON.stringify({ savedAt: 1, table: { base: 'CNY', rates: {} } })
+    st.set(cacheKey('CNY'), { savedAt: 1, table: { base: 'CNY', rates: {} } })
     expect(readCache('CNY', st)).toBeNull()
-    st.data[cacheKey('CNY')] = JSON.stringify({ table })
+    st.set(cacheKey('CNY'), { table })
     expect(readCache('CNY', st)).toBeNull()
   })
+  it('旧键一次性迁移', () => {
+    const { st, back } = memTool()
+    back.data[CACHE_KEY_PREFIX + 'CNY'] = JSON.stringify({ table, savedAt: 99 })
+    expect(readCache('CNY', st)).toEqual({ table, savedAt: 99 })
+    expect(back.data[CACHE_KEY_PREFIX + 'CNY']).toBeUndefined()
+  })
   it('存储抛错时不崩', () => {
-    const bad: StorageLike = {
-      getItem: () => {
-        throw new Error('blocked')
-      },
-      setItem: () => {
-        throw new Error('blocked')
-      },
+    const boom = (): never => {
+      throw new Error('blocked')
     }
+    const bad = createToolStorage('x', { getItem: boom, setItem: boom, removeItem: boom, key: () => null, length: 0 })
     expect(writeCache(table, 1, bad)).toBe(false)
     expect(readCache('CNY', bad)).toBeNull()
   })

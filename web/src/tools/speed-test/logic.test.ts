@@ -6,9 +6,10 @@ vi.hoisted(() => {
 })
 
 import type { NetCallFn } from '@/native/net'
+import { createToolStorage } from '@/shared/toolStorage'
 import {
-  formatMBps, formatMbps, formatMs, formatTime, HISTORY_KEY, HISTORY_MAX, latencyStats, loadHistory, measureLatency, parseHistory,
-  pushHistory, saveHistory, type HistoryEntry, type StorageLike,
+  formatMBps, formatMbps, formatMs, formatTime, HISTORY_KEY, HISTORY_MAX, HISTORY_STORE_KEY, TOOL_NS, latencyStats, loadHistory, measureLatency, parseHistory,
+  pushHistory, saveHistory, type HistoryEntry,
 } from './logic'
 
 /** 造一条历史 */
@@ -17,9 +18,18 @@ function entry(ts: number): HistoryEntry {
 }
 
 /** 内存存储 */
-function memStore(init: Record<string, string> = {}): StorageLike & { data: Record<string, string> } {
+function memStore(init: Record<string, string> = {}) {
   const data = { ...init }
-  return { data, getItem: (k) => data[k] ?? null, setItem: (k, v) => void (data[k] = v) }
+  return {
+    data,
+    getItem: (k: string) => data[k] ?? null,
+    setItem: (k: string, v: string) => void (data[k] = v),
+    removeItem: (k: string) => void delete data[k],
+    key: (i: number) => Object.keys(data)[i] ?? null,
+    get length() {
+      return Object.keys(data).length
+    },
+  }
 }
 
 describe('latencyStats', () => {
@@ -96,19 +106,28 @@ describe('历史记录', () => {
   })
   it('save / load 往返', () => {
     const st = memStore()
-    expect(saveHistory([entry(1), entry(2)], st)).toBe(true)
-    expect(st.data[HISTORY_KEY]).toBeTruthy()
-    expect(loadHistory(st)).toEqual([entry(1), entry(2)])
+    const store = createToolStorage(TOOL_NS, st)
+    expect(saveHistory([entry(1), entry(2)], store)).toBe(true)
+    expect(st.data[`${TOOL_NS}_${HISTORY_STORE_KEY}`]).toBeTruthy()
+    expect(loadHistory(store)).toEqual([entry(1), entry(2)])
+  })
+  it('迁移旧键', () => {
+    const st = memStore({ [HISTORY_KEY]: JSON.stringify([entry(7)]) })
+    expect(loadHistory(createToolStorage(TOOL_NS, st))).toEqual([entry(7)])
+    expect(st.data[HISTORY_KEY]).toBeUndefined()
   })
   it('存储抛错时不崩', () => {
-    const bad: StorageLike = {
+    const bad = createToolStorage(TOOL_NS, {
       getItem: () => {
         throw new Error('blocked')
       },
       setItem: () => {
         throw new Error('blocked')
       },
-    }
+      removeItem: () => {},
+      key: () => null,
+      length: 0,
+    })
     expect(loadHistory(bad)).toEqual([])
     expect(saveHistory([entry(1)], bad)).toBe(false)
   })

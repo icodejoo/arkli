@@ -2,16 +2,20 @@
 // 中文转拼音：首次点"转换"才加载拼音词典（体积大），之后改选项自动重算
 import BottomActions from '@/shared/BottomActions.vue'
 import { ref, watch } from 'vue'
+import { createToolStorage } from '@/shared/toolStorage'
 import { showFailToast, showSuccessToast } from 'vant'
 import CellPicker from '@/shared/CellPicker.vue'
 import type { CellOption } from '@/shared/cellPicker'
 import { copyText } from '@/shared/clipboard'
-import { convertPinyin, DEFAULT_OPTIONS, loadPinyin, type PinyinLib, type PinyinOptions, type PinyinResult } from './logic'
+import { convertPinyin, loadPinyin, sanitizeOptions, STORE_NS, type PinyinLib, type PinyinOptions, type PinyinResult } from './logic'
 
 /** 输入 */
 const input = ref('')
-/** 转换选项 */
-const opts = ref<PinyinOptions>({ ...DEFAULT_OPTIONS })
+/** 持久缓存 */
+const store = createToolStorage(STORE_NS)
+/** 转换选项（读缓存并自动回写） */
+const opts = ref<PinyinOptions>(sanitizeOptions(store.get('opts', null)))
+watch(opts, (v) => void store.set('opts', v), { deep: true })
 /** 转换结果，null 表示还没转换 */
 const result = ref<PinyinResult | null>(null)
 /** 词典加载中 */

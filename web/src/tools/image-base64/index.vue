@@ -4,6 +4,8 @@ import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { showFailToast, showSuccessToast, showToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { formatBytes, mimeToExt } from '@/shared/image-calc'
 import { EDIT_BASIC, pickImages, saveBlob, type PickedImage } from '@/shared/image-io'
 import { shootPhoto } from '@/shared/shootPhoto'
@@ -23,15 +25,18 @@ const SHOW_CHARS = 2000
 /** 还原图的文件名前缀 */
 const NAME_PREFIX = 'base64'
 
+/** 持久缓存 */
+const store = createToolStorage('image-base64')
+
 /** 当前模式：encode 图转文本，decode 文本转图 */
-const mode = ref<'encode' | 'decode'>('encode')
+const mode = usePersistedRef<'encode' | 'decode'>(store, 'mode', 'encode', (v) => v === 'encode' || v === 'decode')
 
 /** 已选图片 */
 const image = ref<PickedImage | null>(null)
 /** 完整 data URL */
 const dataUrl = ref('')
 /** 是否带 data: 前缀输出 */
-const withPrefix = ref(true)
+const withPrefix = usePersistedRef(store, 'withPrefix', true, (v) => typeof v === 'boolean')
 /** 编码中 */
 const encoding = ref(false)
 

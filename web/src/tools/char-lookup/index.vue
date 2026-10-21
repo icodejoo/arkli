@@ -3,11 +3,15 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { showFailToast, showSuccessToast } from 'vant'
 import CellPicker from '@/shared/CellPicker.vue'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { copyText } from '@/shared/clipboard'
 import { infoToText, loadPinyin, lookupChar, MAX_CHARS, splitChars, type CharInfo, type PinyinLib, type Readings } from './logic'
 
 /** 输入防抖（毫秒），避免每敲一个字就查一遍 */
 const DEBOUNCE_MS = 250
+/** 本工具的持久缓存 */
+const store = createToolStorage('char-lookup')
 /** 读音写法选项 */
 const TONE_OPTIONS: ReadonlyArray<{ key: keyof Readings; label: string }> = [
   { key: 'mark', label: '带声调' },
@@ -20,7 +24,7 @@ const TONE_PICKER_OPTIONS = TONE_OPTIONS.map((o) => ({ value: o.key, label: o.la
 /** 输入文本 */
 const input = ref('')
 /** 读音写法 */
-const tone = ref<keyof Readings>('mark')
+const tone = usePersistedRef<keyof Readings>(store, 'tone', 'mark', (v) => TONE_OPTIONS.some((o) => o.key === v))
 /** 查询结果 */
 const list = ref<CharInfo[]>([])
 /** 输入是否超出上限被截断 */

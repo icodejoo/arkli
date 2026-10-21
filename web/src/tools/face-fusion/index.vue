@@ -6,6 +6,8 @@ import { computed, onBeforeUnmount, ref, shallowRef } from 'vue'
 import { showToast } from 'vant'
 import ImageResultList from '@/shared/ImageResultList.vue'
 import { useImageResults } from '@/shared/useImageResults'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { outputName } from '@/shared/image-calc'
 import { EDIT_BASIC, pickImages, type PickedImage } from '@/shared/image-io'
 import { aiFuse, AiNotReadyError, fetchAiResult } from '@/native/ai'
@@ -32,7 +34,7 @@ const imageA = shallowRef<PickedImage | null>(null)
 /** 图 B */
 const imageB = shallowRef<PickedImage | null>(null)
 /** 融合比例（图 B 的占比） */
-const ratio = ref(DEFAULT_RATIO)
+const ratio = usePersistedRef(createToolStorage(TOOL_ID), 'ratio', DEFAULT_RATIO, (v) => typeof v === 'number' && isFinite(v) && v >= 0 && v <= 1)
 
 /** 滑杆值（0~100），与比例互转 */
 const sliderValue = computed({

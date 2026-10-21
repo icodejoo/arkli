@@ -4,6 +4,8 @@ import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { showConfirmDialog, showFailToast, showSuccessToast, showToast } from 'vant'
 import { isNativeAvailable } from '@/native/bridge'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { deleteDirItems, forgetDir, listDirs, pickDir, scanDir, type DirFolder, type DirItem, type DirScanMode } from '@/native/dir'
 import {
   allSelected, applyDeleteResult, chunkIds, DEFAULT_THRESHOLD_MB, deleteSummary, formatBytes, MODE_OPTIONS, mergeDeleteResults, scanSummary,
@@ -19,6 +21,9 @@ const PAGE_SIZE = 200
 /** 时间格式补零用 */
 const PAD = 2
 
+/** 持久缓存 */
+const store = createToolStorage('folder-clean')
+
 /** 是否在容器内 */
 const hosted = isNativeAvailable()
 /** 已授权的文件夹 */
@@ -26,9 +31,9 @@ const folders = ref<DirFolder[]>([])
 /** 当前选中的文件夹令牌 */
 const token = ref<string | null>(null)
 /** 扫描模式 */
-const mode = ref<Exclude<DirScanMode, 'all'>>('large')
+const mode = usePersistedRef<Exclude<DirScanMode, 'all'>>(store, 'mode', 'large', (v) => MODE_OPTIONS.some((o) => o.key === v))
 /** 大文件阈值（MB） */
-const thresholdMb = ref<number>(DEFAULT_THRESHOLD_MB)
+const thresholdMb = usePersistedRef<number>(store, 'thresholdMb', DEFAULT_THRESHOLD_MB, (v) => (THRESHOLD_OPTIONS_MB as readonly number[]).includes(v))
 /** 是否正在扫描 */
 const scanning = ref(false)
 /** 扫描进度：已遍历节点数 */
@@ -44,7 +49,7 @@ const summary = ref('')
 /** 勾选的项 */
 const selected = ref<Set<string>>(new Set())
 /** 排序方式 */
-const sortKey = ref<SortKey>('size')
+const sortKey = usePersistedRef<SortKey>(store, 'sortKey', 'size', (v) => SORT_OPTIONS.some((o) => o.key === v))
 /** 已显示的条数上限 */
 const shownCount = ref(PAGE_SIZE)
 /** 当前扫描或删除的取消控制 */

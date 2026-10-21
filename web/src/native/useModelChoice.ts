@@ -32,7 +32,7 @@ function loadMigrated(toolId: string): string | null {
 }
 
 /**
- * 每个工具独立记忆选中的 AI 选项（存提供者 id；还没有提供者的过渡清单模型存 `model:<id>`），存 localStorage（仅偏好，读写失败忽略）。
+ * 每个工具独立记忆选中的 AI 选项（存提供者 id；还没有提供者的过渡清单模型存 `model:<id>`），存持久缓存 model-choice（仅偏好，读写失败忽略）。
  * 首次读取时把旧版存的清单模型 id 迁移成新值并写回。工具页一般不直接用它，而是用 `useAiCatalog(toolId).choice`（已按运行时解析、失效会回落）。
  *
  * @param toolId 工具 id

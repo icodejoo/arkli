@@ -2,6 +2,8 @@
 // 日期计算器：日期间隔、日期推算两个标签页
 import { computed, ref } from 'vue'
 import CellPicker from '@/shared/CellPicker.vue'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { WEEK_NAMES, dateDiff, dayOfYear, formatDate, parseDate, shiftDate, toDayNumber, weekday, type ShiftUnit } from './logic'
 
 /** 推算单位可选项 */
@@ -19,22 +21,25 @@ const SIGN_OPTIONS = [
 /** 起始日期字段标签 */
 const LABEL_START = '起始日期'
 
+/** 持久缓存 */
+const store = createToolStorage('date-calc')
+
 /** 标签页：diff 间隔 / shift 推算 */
-const tab = ref<'diff' | 'shift'>('diff')
+const tab = usePersistedRef<'diff' | 'shift'>(store, 'tab', 'diff', (v) => v === 'diff' || v === 'shift')
 /** 间隔页：起始日期 */
 const aText = ref('')
 /** 间隔页：结束日期 */
 const bText = ref('')
 /** 间隔页：是否含首尾 */
-const inclusive = ref(false)
+const inclusive = usePersistedRef(store, 'inclusive', false, (v) => typeof v === 'boolean')
 /** 推算页：起始日期 */
 const baseText = ref('')
 /** 推算页：数量文本 */
 const amountText = ref('')
 /** 推算页：单位 */
-const unit = ref<ShiftUnit>('day')
+const unit = usePersistedRef<ShiftUnit>(store, 'unit', 'day', (v) => UNITS.some((u) => u.value === v))
 /** 推算页：加或减 */
-const sign = ref<1 | -1>(1)
+const sign = usePersistedRef<1 | -1>(store, 'sign', 1, (v) => SIGN_OPTIONS.some((o) => o.value === v))
 
 /**
  * 描述某天的星期与年内序号。

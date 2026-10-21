@@ -41,11 +41,8 @@ export const DEFAULT_REFINE: MattingRefine = 'strong'
 /** 边缘细化说明小字 */
 export const REFINE_HINT = '默认“强”；太强可能削掉极细的发丝，可以往回调。'
 
-/** 记住细化档位的 localStorage 键 */
+/** 旧版记住细化档位的 localStorage 键（仅用于迁移到 toolStorage） */
 export const REFINE_STORAGE_KEY = 'arkli.matting.refine'
-
-/** 精简存储接口，便于测试注入 */
-export type RefineStorage = Pick<Storage, 'getItem' | 'setItem'>
 
 /** 缓存文件的页面地址前缀（`/files/<cache 相对路径>`） */
 export const FILES_PREFIX = '/files/'
@@ -148,34 +145,6 @@ export function summaryOf(r: Pick<MattingResult, 'width' | 'height' | 'elapsedMs
  */
 export function normalizeRefine(v: unknown): MattingRefine {
   return REFINE_OPTIONS.find((o) => o.value === v)?.value ?? DEFAULT_REFINE
-}
-
-/**
- * 读记住的细化档位；没有记录或读取失败都用缺省档。
- *
- * @param storage 存储，默认 localStorage（测试注入）
- * @returns 细化档位
- */
-export function loadRefine(storage?: RefineStorage): MattingRefine {
-  try {
-    return normalizeRefine((storage ?? localStorage).getItem(REFINE_STORAGE_KEY))
-  } catch {
-    return DEFAULT_REFINE
-  }
-}
-
-/**
- * 记住细化档位；写失败忽略（仅偏好）。
- *
- * @param refine 档位
- * @param storage 存储，默认 localStorage（测试注入）
- */
-export function saveRefine(refine: MattingRefine, storage?: RefineStorage): void {
-  try {
-    ;(storage ?? localStorage).setItem(REFINE_STORAGE_KEY, refine)
-  } catch {
-    // 无存储环境，忽略
-  }
 }
 
 /**

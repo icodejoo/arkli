@@ -4,10 +4,14 @@ import { computed, ref } from 'vue'
 import CellPicker from '@/shared/CellPicker.vue'
 import type { CellOption } from '@/shared/cellPicker'
 import { formatCents, yuanToCents } from '../mortgage/logic'
-import { calcAa, calcDiscount, calcTip, type AaItem } from './logic'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
+import { calcAa, calcDiscount, calcTip, isBillTab, isDiscountOrder, TOOL_NS, type AaItem, type BillTab, type DiscountOrder } from './logic'
 
-/** 标签页 */
-const tab = ref<'tip' | 'aa' | 'discount'>('tip')
+/** 持久缓存 */
+const store = createToolStorage(TOOL_NS)
+/** 标签页（持久化） */
+const tab = usePersistedRef<BillTab>(store, 'tab', 'tip', isBillTab)
 /** 默认成员名前缀 */
 const MEMBER_PREFIX = '成员'
 
@@ -74,8 +78,8 @@ const original = ref('500')
 const zhe = ref('8.5')
 /** 立减 */
 const reduce = ref('50')
-/** 叠加顺序 */
-const order = ref<'rate-first' | 'reduce-first'>('rate-first')
+/** 叠加顺序（持久化） */
+const order = usePersistedRef<DiscountOrder>(store, 'order', 'rate-first', isDiscountOrder)
 /** 折扣与立减的先后顺序选项 */
 const ORDER_OPTIONS: CellOption[] = [
   { value: 'rate-first', label: '先打折再立减' },
@@ -152,7 +156,7 @@ const disc = computed(() =>
           <template #button>折</template>
         </van-field>
         <van-field v-model="reduce" type="number" label="立减" input-align="right"><template #button>元</template></van-field>
-        <cell-picker :model-value="order" title="优惠顺序" :options="ORDER_OPTIONS" @update:model-value="order = $event as 'rate-first' | 'reduce-first'" />
+        <cell-picker :model-value="order" title="优惠顺序" :options="ORDER_OPTIONS" @update:model-value="order = $event as DiscountOrder" />
       </tool-group>
       <tool-group title="结果">
         <van-cell title="实付" :value="`${formatCents(disc.finalCents)} 元`" />

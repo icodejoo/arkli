@@ -49,6 +49,15 @@ const STATIC_DELAY_CS = 10
 /** 动效预设 */
 export type MemePreset = 'none' | 'shake' | 'blink'
 
+/** 持久缓存命名空间 */
+export const STORE_NS = 'meme-maker'
+/** 可选动效预设值 */
+export const PRESET_VALUES: readonly MemePreset[] = ['none', 'shake', 'blink']
+/** 可选静态输出格式值 */
+export const FORMAT_VALUES: readonly ('png' | 'jpeg')[] = ['png', 'jpeg']
+/** GIF 长边选项（像素） */
+export const GIF_EDGES: readonly number[] = [240, 360, 480]
+
 /** 字幕位置 */
 export type CaptionPosition = 'top' | 'bottom'
 

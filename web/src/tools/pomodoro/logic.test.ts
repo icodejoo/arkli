@@ -1,14 +1,31 @@
 import { describe, expect, it } from 'vitest'
+import { createToolStorage, type ToolStorage } from '@/shared/toolStorage'
 import {
   advance, alarmCopy, doneRounds, bumpToday, clampInt, dayKey, DEFAULT_SETTINGS, formatClock, initialState, isFinished, loadSettings, loadToday,
   MS_PER_MIN, nextPhaseOf, normalizeSettings, pause, phaseDurationMs, progressOf, remainingAt, resetAll, resetPhase, saveSettings, skip,
-  loadState, saveState as saveTimerState, start, STATE_KEY, TODAY_KEY, wantsAwake, type KV, type TimerState,
+  createPomodoroStore, KEEP_ON_KEY, loadState, saveState as saveTimerState, start, STATE_KEY, TODAY_KEY, wantsAwake, type TimerState,
 } from './logic'
 
-/** 内存版存储 */
-function memKV(init: Record<string, string> = {}): KV & { data: Record<string, string> } {
+/** 内存版后端 */
+function memBackend(init: Record<string, string> = {}) {
   const data = { ...init }
-  return { data, getItem: (k) => data[k] ?? null, setItem: (k, v) => void (data[k] = v) }
+  return {
+    data,
+    get length() {
+      return Object.keys(data).length
+    },
+    key: (i: number) => Object.keys(data)[i] ?? null,
+    getItem: (k: string) => data[k] ?? null,
+    setItem: (k: string, v: string) => void (data[k] = v),
+    removeItem: (k: string) => void delete data[k],
+  }
+}
+
+/** 内存版持久缓存；init 的键为命名空间内的键，值为原始字符串 */
+function memKV(init: Record<string, string> = {}): ToolStorage {
+  const raw: Record<string, string> = {}
+  for (const [k, v] of Object.entries(init)) raw['pomodoro_' + k] = v
+  return createToolStorage('pomodoro', memBackend(raw))
 }
 
 const S = DEFAULT_SETTINGS
@@ -139,12 +156,7 @@ describe('今日完成数与设置存储', () => {
     expect(loadToday(memKV({ [TODAY_KEY]: '{bad' }), T0)).toBe(0)
     expect(loadToday(memKV({ [TODAY_KEY]: JSON.stringify({ day: dayKey(T0), count: -3 }) }), T0)).toBe(0)
     expect(loadToday(null, T0)).toBe(0)
-    const broken: KV = {
-      getItem: () => null,
-      setItem: () => {
-        throw new Error('quota')
-      },
-    }
+    const broken = createToolStorage('pomodoro', null)
     expect(bumpToday(broken, T0)).toBe(1)
     expect(bumpToday(null, T0)).toBe(1)
   })
@@ -152,8 +164,25 @@ describe('今日完成数与设置存储', () => {
     const kv = memKV()
     saveSettings(kv, { focusMin: 30, shortMin: 6, longMin: 20, longEvery: 3 })
     expect(loadSettings(kv)).toEqual({ focusMin: 30, shortMin: 6, longMin: 20, longEvery: 3 })
-    expect(loadSettings(memKV({ 'arkli.pomodoro.settings': 'xx' }))).toEqual(S)
+    expect(loadSettings(memKV({ settings: 'xx' }))).toEqual(S)
     expect(loadSettings(null)).toEqual(S)
+  })
+})
+
+describe('旧键迁移与保持常亮缓存', () => {
+  it('旧键数据迁到新键，且只迁一次', () => {
+    const b = memBackend({
+      'arkli.pomodoro.settings': JSON.stringify({ focusMin: 40, shortMin: 6, longMin: 20, longEvery: 3 }),
+      'arkli.pomodoro.today': JSON.stringify({ day: dayKey(T0), count: 2 }),
+    })
+    const store = createPomodoroStore(b)
+    expect(loadSettings(store).focusMin).toBe(40)
+    expect(loadToday(store, T0)).toBe(2)
+    expect(b.getItem('arkli.pomodoro.settings')).toBeNull()
+  })
+  it('保持常亮：读缓存回填', () => {
+    const store = memKV({ [KEEP_ON_KEY]: 'true' })
+    expect(store.get(KEEP_ON_KEY, false)).toBe(true)
   })
 })
 
@@ -176,12 +205,7 @@ describe('计时状态存取', () => {
     expect(loadState(memKV({ [STATE_KEY]: JSON.stringify({ phase: 'focus', status: 'idle', round: 0, remainingMs: 1 }) }))).toBeNull()
   })
   it('写失败不抛', () => {
-    const broken: KV = {
-      getItem: () => null,
-      setItem: () => {
-        throw new Error('quota')
-      },
-    }
+    const broken = createToolStorage('pomodoro', null)
     expect(() => saveTimerState(broken, initialState(S))).not.toThrow()
     expect(() => saveTimerState(null, initialState(S))).not.toThrow()
   })

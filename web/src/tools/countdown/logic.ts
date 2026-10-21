@@ -1,4 +1,10 @@
 // 倒数日：按日历日计算，不涉及时区与时分秒；农历重复暂不支持
+import type { ToolStorage } from '@/shared/toolStorage'
+
+/** 持久缓存里事件列表的键 */
+export const EVENTS_KEY = 'events'
+/** 旧版 localStorage 里事件列表的整键名 */
+export const LEGACY_EVENTS_KEY = 'arkli.countdown.events'
 
 /** 一天的毫秒数 */
 const MS_PER_DAY = 86400000
@@ -158,4 +164,29 @@ export function parseStored(raw: string | null): CountdownEvent[] {
   } catch {
     return []
   }
+}
+
+/**
+ * 读事件列表：先一次性迁移旧键，再按格式过滤坏条目。
+ *
+ * @param store 倒数日的持久缓存
+ * @returns 事件列表
+ * @example
+ * const events = loadEvents(createToolStorage('countdown'))
+ */
+export function loadEvents(store: ToolStorage): CountdownEvent[] {
+  store.adoptLegacy(LEGACY_EVENTS_KEY, EVENTS_KEY)
+  return parseStored(JSON.stringify(store.get<unknown>(EVENTS_KEY, [])))
+}
+
+/**
+ * 保存事件列表。
+ *
+ * @param store 倒数日的持久缓存
+ * @param events 事件列表
+ * @example
+ * saveEvents(store, events.value)
+ */
+export function saveEvents(store: ToolStorage, events: CountdownEvent[]): void {
+  store.set(EVENTS_KEY, events)
 }

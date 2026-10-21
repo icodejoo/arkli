@@ -1,12 +1,17 @@
 // 汇率换算的纯逻辑：币种表、两种接口响应解析、取汇率（主备）、缓存、金额换算与格式化
 import { httpGetJson, type NetCallFn } from '@/native/net'
+import { createToolStorage, type ToolStorage } from '@/shared/toolStorage'
 
 /** 主数据源：frankfurter（欧洲央行数据，约 30 种货币） */
 export const FRANKFURTER_URL = 'https://api.frankfurter.dev/v1/latest?base='
 /** 备用数据源：open.er-api.com（覆盖更广） */
 export const ER_API_URL = 'https://open.er-api.com/v6/latest/'
-/** 缓存键前缀，后接币种代码 */
+/** 旧版缓存键前缀（localStorage 原始键，后接币种代码），仅用于迁移 */
 export const CACHE_KEY_PREFIX = 'arkli.exchange-rate.v1.'
+/** 持久缓存命名空间 */
+export const STORE_NS = 'exchange-rate'
+/** 汇率表缓存键前缀（命名空间内），后接币种代码 */
+const RATES_KEY_PREFIX = 'rates_'
 /** 默认小数位数 */
 export const DEFAULT_DECIMALS = 2
 
@@ -154,12 +159,6 @@ export async function fetchRates(base: string, target: string, call?: NetCallFn,
   return t2
 }
 
-/** 最小存储接口，便于测试 */
-export interface StorageLike {
-  getItem(key: string): string | null
-  setItem(key: string, value: string): void
-}
-
 /** 缓存条目 */
 export interface CacheEntry {
   /** 汇率表 */
@@ -172,11 +171,23 @@ export interface CacheEntry {
  * 某币种的缓存键。
  *
  * @param base 基准币种
- * @returns 键
- * @example cacheKey('CNY') // 'arkli.exchange-rate.v1.CNY'
+ * @returns 命名空间内的键
+ * @example cacheKey('CNY') // 'rates_CNY'
  */
 export function cacheKey(base: string): string {
-  return CACHE_KEY_PREFIX + base
+  return RATES_KEY_PREFIX + base
+}
+
+/** 默认持久缓存（惰性创建） */
+let defaultStore: ToolStorage | null = null
+
+/**
+ * 取默认持久缓存。
+ *
+ * @returns 汇率工具的缓存实例
+ */
+function getStore(): ToolStorage {
+  return (defaultStore ??= createToolStorage(STORE_NS))
 }
 
 /**
@@ -184,34 +195,28 @@ export function cacheKey(base: string): string {
  *
  * @param table 汇率表
  * @param now 当前时间戳（毫秒）
- * @param storage 存储，默认 localStorage
+ * @param store 持久缓存，默认汇率工具的实例
  * @returns 是否写入成功
  * @example writeCache(table, Date.now())
  */
-export function writeCache(table: RateTable, now: number, storage?: StorageLike): boolean {
-  try {
-    const entry: CacheEntry = { table, savedAt: now }
-    ;(storage ?? localStorage).setItem(cacheKey(table.base), JSON.stringify(entry))
-    return true
-  } catch {
-    return false
-  }
+export function writeCache(table: RateTable, now: number, store: ToolStorage = getStore()): boolean {
+  const entry: CacheEntry = { table, savedAt: now }
+  return store.set(cacheKey(table.base), entry)
 }
 
 /**
  * 读缓存；没有、损坏或存储不可用返回 null。
  *
  * @param base 基准币种
- * @param storage 存储，默认 localStorage
+ * @param store 持久缓存，默认汇率工具的实例；读之前会一次性迁移旧键
  * @returns 缓存条目
  * @example const c = readCache('CNY')
  */
-export function readCache(base: string, storage?: StorageLike): CacheEntry | null {
+export function readCache(base: string, store: ToolStorage = getStore()): CacheEntry | null {
   try {
-    const raw = (storage ?? localStorage).getItem(cacheKey(base))
-    if (!raw) return null
-    const j = JSON.parse(raw) as Partial<CacheEntry>
-    if (!j || typeof j.savedAt !== 'number' || !j.table || j.table.base !== base) return null
+    store.adoptLegacy(CACHE_KEY_PREFIX + base, cacheKey(base))
+    const j = store.get<Partial<CacheEntry> | null>(cacheKey(base), null)
+    if (!j || typeof j !== 'object' || typeof j.savedAt !== 'number' || !j.table || j.table.base !== base) return null
     const rates = cleanRates(base, j.table.rates)
     if (!rates) return null
     const source: RateSource = j.table.source === 'er-api' ? 'er-api' : 'frankfurter'

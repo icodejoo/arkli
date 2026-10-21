@@ -5,6 +5,8 @@
 import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { showToast } from 'vant'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { copyText } from '@/shared/clipboard'
 import { isNativeAvailable } from '@/native/bridge'
 import { share } from '@/native/system'
@@ -27,6 +29,8 @@ import {
   type CaseMode,
 } from './logic'
 
+/** 本工具的持久缓存 */
+const store = createToolStorage('text-process')
 /** 保存时的默认文件名 */
 const DEFAULT_FILE_NAME = 'text.txt'
 /** 提取结果最多展示的条数，避免渲染卡顿 */
@@ -41,9 +45,9 @@ const readonly = ref(false)
 /** 正则提取：表达式 */
 const extractPattern = ref('')
 /** 正则提取：区分大小写 */
-const extractCase = ref(false)
+const extractCase = usePersistedRef(store, 'extractCase', false, (v) => typeof v === 'boolean')
 /** 正则提取：去重 */
-const extractUnique = ref(false)
+const extractUnique = usePersistedRef(store, 'extractUnique', false, (v) => typeof v === 'boolean')
 /** 提取结果 */
 const extracted = ref<string[]>([])
 /** 查找内容 */
@@ -51,9 +55,9 @@ const findText = ref('')
 /** 替换内容 */
 const replaceText = ref('')
 /** 查找替换：按正则 */
-const useRegex = ref(false)
+const useRegex = usePersistedRef(store, 'useRegex', false, (v) => typeof v === 'boolean')
 /** 查找替换：区分大小写 */
-const replaceCase = ref(false)
+const replaceCase = usePersistedRef(store, 'replaceCase', false, (v) => typeof v === 'boolean')
 /** App 内系统文档选择器只列这些类型：文本类（txt/md/csv/log 等）和 JSON */
 const OPEN_MIME = 'text/*,application/json'
 /** 无宿主时文件选择框接受的类型 */

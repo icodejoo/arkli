@@ -5,6 +5,8 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { showToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
 import { useFloatPause } from '@/shared/useFloatPause'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { isNativeAvailable } from '@/native/bridge'
 import { deviceDisplay, deviceInfo, deviceStatus, type DeviceInfo } from '@/native/system'
 import { buildStaticGroups, createPausableInterval, buildStatusGroups, collectDeviceInfo, groupsToText, probeFeatures, type DeviceEnv, type InfoGroup } from './logic'
@@ -54,7 +56,7 @@ const hasHost = isNativeAvailable()
 /** 原生静态信息，动态分组要用到总内存 */
 let nativeInfo: DeviceInfo | null = null
 /** 3 秒自动刷新开关 */
-const auto = ref(false)
+const auto = usePersistedRef(createToolStorage('device-info'), 'auto', false, (v) => typeof v === 'boolean')
 /** 正在拉取动态状态（防止重叠请求） */
 const loading = ref(false)
 /** 自动刷新定时器（可暂停） */
@@ -113,6 +115,8 @@ async function copyAll(): Promise<void> {
 
 onMounted(() => {
   refresh()
+  // 缓存里开着自动刷新时，进页面就启动定时器（watch 不会对初值触发）
+  if (auto.value) timer.start()
   void loadNative()
   window.addEventListener('resize', refresh)
   window.addEventListener('online', refresh)

@@ -8,6 +8,9 @@ import { showConfirmDialog, showFailToast, showSuccessToast, showToast } from 'v
 import CellPicker from '@/shared/CellPicker.vue'
 import ColorPicker from '@/shared/ColorPicker.vue'
 import type { CellOption } from '@/shared/cellPicker'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
+import { inRange, isBool, isHexColor, oneOf } from '@/shared/persistValidators'
 import ImageThumbList from '@/shared/ImageThumbList.vue'
 import ImageResultList from '@/shared/ImageResultList.vue'
 import NativeResultList, { type NativeRow } from '@/shared/NativeResultList.vue'
@@ -77,20 +80,28 @@ const FORMAT_OPTIONS: readonly CellOption[] = [
   { value: 'jpeg', label: 'JPEG' },
 ]
 
+/** 对齐选项值（文案随方向变化，值固定） */
+const ALIGN_VALUES: readonly string[] = ['start', 'center', 'end']
+/** 间距范围 */
+const GAP_RANGE = { min: 0, max: GAP_MAX }
+/** 压缩质量范围 */
+const QUALITY_RANGE = { min: QUALITY_MIN, max: QUALITY_MAX }
+/** 本工具的持久缓存 */
+const store = createToolStorage('image-stitch')
 /** 已选图片（顺序即拼接顺序） */
 const images = ref<PickedImage[]>([])
 /** 方向 */
-const direction = ref<StitchDirection>('v')
+const direction = usePersistedRef<StitchDirection>(store, 'direction', 'v', oneOf(DIRECTION_OPTIONS))
 /** 间距 */
-const gap = ref(0)
+const gap = usePersistedRef(store, 'gap', 0, (v) => inRange(v, GAP_RANGE))
 /** 背景色 */
-const bg = ref(BG_DEFAULT)
+const bg = usePersistedRef(store, 'bg', BG_DEFAULT, isHexColor)
 /** 对齐 */
-const align = ref<StitchAlign>('center')
+const align = usePersistedRef<StitchAlign>(store, 'align', 'center', oneOf(ALIGN_VALUES))
 /** 是否统一宽/高 */
-const unify = ref(true)
+const unify = usePersistedRef(store, 'unify', true, isBool)
 /** 输出格式：PNG 或 JPEG */
-const format = ref<StitchFormat>(DEFAULT_FORMAT)
+const format = usePersistedRef<StitchFormat>(store, 'format', DEFAULT_FORMAT, oneOf(FORMAT_OPTIONS))
 /** 结果与批处理状态（Canvas 兜底路径） */
 const { results, busy, progress, saving, process, saveAll, clear: clearCanvas } = useImageResults()
 
@@ -113,7 +124,7 @@ const nativeSaving = ref(false)
 /** 是否覆盖中 */
 const overwriting = ref(false)
 /** 压缩质量百分比，默认沿用图片压缩工具 */
-const compressQuality = ref(QUALITY_DEFAULT)
+const compressQuality = usePersistedRef(store, 'compressQuality', QUALITY_DEFAULT, (v) => inRange(v, QUALITY_RANGE))
 
 /** 当前设置下的拼接布局（用已知宽高估算，不解码） */
 const layout = computed(() =>
@@ -397,7 +408,7 @@ onBeforeUnmount(() => {
         <cell-picker v-if="!unify" v-model="align" title="对齐" :options="alignOptions" />
         <van-cell title="间距" :value="`${gap} px`" />
       </van-cell-group>
-      <div class="is-slider"><van-slider v-model="gap" :min="0" :max="GAP_MAX" /></div>
+      <div class="is-slider"><van-slider v-model="gap" :min="GAP_RANGE.min" :max="GAP_RANGE.max" /></div>
       <van-cell-group :border="false">
         <van-cell title="背景色" center>
           <template #value><color-picker v-model="bg" label="背景色" /></template>

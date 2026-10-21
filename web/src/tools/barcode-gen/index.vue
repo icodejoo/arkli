@@ -4,6 +4,8 @@ import BottomActions from '@/shared/BottomActions.vue'
 import { computed, nextTick, ref, watch } from 'vue'
 import { showFailToast, showSuccessToast } from 'vant'
 import { canvasToBlob, saveBlob } from '@/shared/image-io'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import {
   BAR_HEIGHT_MAX,
   BAR_HEIGHT_MIN,
@@ -24,16 +26,21 @@ const FILE_NAME = 'barcode.png'
 /** 默认内容（按类型给示例） */
 const SAMPLES: Record<BarcodeKind, string> = { ean13: '590123412345', code128: 'Arkli-2026', code39: 'ARKLI-39' }
 
+/** 本工具的持久缓存 */
+const store = createToolStorage('barcode-gen')
+/** 判断是否为有限数字且在区间内 */
+const inRange = (v: unknown, min: number, max: number): boolean => typeof v === 'number' && v >= min && v <= max
+
 /** 当前类型 */
-const kind = ref<BarcodeKind>('ean13')
-/** 输入内容 */
-const text = ref(SAMPLES.ean13)
+const kind = usePersistedRef<BarcodeKind>(store, 'kind', 'ean13', (v) => BARCODE_KINDS.some((k) => k.id === v))
+/** 输入内容（不缓存，初始为当前类型的示例） */
+const text = ref(SAMPLES[kind.value])
 /** 每模块像素 */
-const scale = ref(3)
+const scale = usePersistedRef(store, 'scale', 3, (v) => inRange(v, SCALE_MIN, SCALE_MAX))
 /** 条高 */
-const barHeight = ref(120)
+const barHeight = usePersistedRef(store, 'barHeight', 120, (v) => inRange(v, BAR_HEIGHT_MIN, BAR_HEIGHT_MAX))
 /** 显示下方文字 */
-const showText = ref(true)
+const showText = usePersistedRef(store, 'showText', true, (v) => typeof v === 'boolean')
 /** 画布元素 */
 const canvas = ref<HTMLCanvasElement | null>(null)
 /** 保存中 */

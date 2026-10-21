@@ -3,8 +3,12 @@
 import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { showToast } from 'vant'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { applyIntensity, canVibrate, chunkPattern, createPlayer, formatPattern, MAX_TOTAL_MS, MIN_INTENSITY, parsePattern, PRESETS, stopVibrate, totalDuration, vibratePattern } from './logic'
 
+/** 本工具的持久缓存 */
+const store = createToolStorage('vibrator')
 /** 强度滑杆刻度：百分比，最小对应 MIN_INTENSITY */
 const SLIDER_MIN = Math.round(MIN_INTENSITY * 100)
 /** 强度滑杆上限（百分比） */
@@ -17,13 +21,13 @@ const TIP_UNSUPPORTED = '当前环境不支持网页震动：可能是设备没�
 const DEFAULT_CUSTOM = '200,100,200'
 
 /** 当前选中的预设 id；'custom' 表示用输入框 */
-const selected = ref<string>(PRESETS[0].id)
+const selected = usePersistedRef<string>(store, 'selected', PRESETS[0].id, (v) => PRESETS.some((p) => p.id === v))
 /** 自定义序列文本 */
-const customText = ref(DEFAULT_CUSTOM)
+const customText = ref(PRESETS.find((p) => p.id === selected.value) ? formatPattern(PRESETS.find((p) => p.id === selected.value)!.pattern) : DEFAULT_CUSTOM)
 /** 强度百分比 */
-const intensity = ref(SLIDER_MAX)
+const intensity = usePersistedRef(store, 'intensity', SLIDER_MAX, (v) => typeof v === 'number' && v >= SLIDER_MIN && v <= SLIDER_MAX)
 /** 是否循环 */
-const loop = ref(false)
+const loop = usePersistedRef(store, 'loop', false, (v) => typeof v === 'boolean')
 /** 是否正在播放 */
 const playing = ref(false)
 /** 是否支持震动 */

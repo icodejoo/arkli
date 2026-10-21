@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 垃圾分类：默认是本地词典检索（上海四分类）；路由 mode=camera 时切到拍照识别
 import { computed, defineAsyncComponent, ref } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import BottomActions from "@/shared/BottomActions.vue";
 import ModelPicker from "@/shared/ModelPicker.vue";
 import { MODE_CAMERA, MODE_QUERY, findTool, hasAiChoices } from "@/tools/registry";
@@ -18,6 +18,8 @@ const TOOL_ID = "waste-sort";
 const hasPicker = hasAiChoices(findTool(TOOL_ID));
 /** 当前路由 */
 const route = useRoute();
+/** 路由器 */
+const router = useRouter();
 /** 识别子页实例，底部动作栏用它触发拍照/相册 */
 const classify = ref<{
     takePhoto: () => void;
@@ -29,6 +31,13 @@ const classify = ref<{
 const camera = computed(() => route.query[MODE_QUERY] === MODE_CAMERA);
 /** 识别不可用（模型未就绪或正在识别）时禁用拍照/相册 */
 const blocked = computed(() => !classify.value?.ready || !!classify.value?.busy);
+/** 在查询与拍照识别模式间切换（replace，不堆历史） */
+function toggleMode(): void {
+    const q = { ...route.query };
+    if (camera.value) delete q[MODE_QUERY];
+    else q[MODE_QUERY] = MODE_CAMERA;
+    router.replace({ query: q });
+}
 /** 搜索框内容 */
 const query = ref("");
 /** 免责声明 */
@@ -45,7 +54,7 @@ const counts = computed(() => countByCat());
 
 <template>
     <div class="tool-page">
-        <!-- 上半：拍照识别 / 词典查询，随右上角摄像头按钮切换 -->
+        <!-- 上半：拍照识别 / 词典查询，随底部动作栏的切换项切换 -->
         <Classify v-if="camera" ref="classify" />
         <template v-else>
             <tool-group>
@@ -108,12 +117,13 @@ const counts = computed(() => countByCat());
 
         <p class="tool-hint">{{ DISCLAIMER }}</p>
 
-        <!-- 识别模式：底部动作栏，左边模型选择器，右边相册、拍照 -->
-        <bottom-actions :main-loading="!!classify?.busy" v-if="camera" :ai="hasPicker" album main main-text="拍照" main-type="danger" :disabled="{ album: blocked, main: blocked }" @album="classify?.fromAlbum()" @main="classify?.takePhoto()">
+        <!-- 底部动作栏：查询模式只有主按钮「识别」进识别；识别模式左边模型选择器，右边查询（切回）、相册、拍照 -->
+        <bottom-actions v-if="camera" :main-loading="!!classify?.busy" :ai="hasPicker" :actions="['search']" album main main-text="拍照" main-type="danger" :disabled="{ search: !!classify?.busy, album: blocked, main: blocked }" @search="toggleMode" @album="classify?.fromAlbum()" @main="classify?.takePhoto()">
             <template #ai>
                 <model-picker :tool-id="TOOL_ID" variant="bar" />
             </template>
         </bottom-actions>
+        <bottom-actions v-else main main-text="图像识别" @main="toggleMode" />
     </div>
 </template>
 

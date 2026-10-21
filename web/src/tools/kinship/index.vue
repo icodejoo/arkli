@@ -3,6 +3,9 @@
 import { computed, ref } from 'vue'
 import CellPicker from '@/shared/CellPicker.vue'
 import type { CellOption } from '@/shared/cellPicker'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
+import { oneOf } from '@/shared/persistValidators'
 import { MAX_CHAIN, STEP_LABEL, STEP_ORDER, calcKinship, type Gender, type Step } from './logic'
 
 /** 「我是」性别选项 */
@@ -11,8 +14,10 @@ const GENDER_OPTIONS: readonly CellOption[] = [
   { value: 'f', label: '女' },
 ]
 
+/** 本工具的持久缓存 */
+const store = createToolStorage('kinship')
 /** 我的性别 */
-const me = ref<Gender>('m')
+const me = usePersistedRef<Gender>(store, 'me', 'm', oneOf(GENDER_OPTIONS))
 /** 当前关系链 */
 const chain = ref<Step[]>([])
 

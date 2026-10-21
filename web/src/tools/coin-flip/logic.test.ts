@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { countSides, createSettleTimer, envelopePoints, flipCoin, flipCoins, loadFlag, MAX_FLIPS, MIN_GAIN, saveFlag, toneSpecs, VIBRATE_LAND, VIBRATE_START } from './logic'
+import { countSides, createSettleTimer, envelopePoints, flipCoin, flipCoins, MAX_FLIPS, MIN_GAIN, parseLegacyFlag, toneSpecs, VIBRATE_LAND, VIBRATE_START } from './logic'
 
 describe('flipCoin', () => {
   it('随机源偶数为正面、奇数为反面', () => {
@@ -64,34 +64,11 @@ describe('反馈：合成参数', () => {
   })
 })
 
-describe('开关存取', () => {
-  /** 内存存储 */
-  const mem = () => {
-    const m = new Map<string, string>()
-    return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v) }
-  }
-  it('没存过用默认值，存过读回', () => {
-    const s = mem()
-    expect(loadFlag(s, 'k', true)).toBe(true)
-    expect(loadFlag(s, 'k', false)).toBe(false)
-    saveFlag(s, 'k', false)
-    expect(loadFlag(s, 'k', true)).toBe(false)
-    saveFlag(s, 'k', true)
-    expect(loadFlag(s, 'k', false)).toBe(true)
-  })
-  it('存储缺失或抛错时静默回退', () => {
-    const bad = {
-      getItem: () => {
-        throw new Error('x')
-      },
-      setItem: () => {
-        throw new Error('x')
-      },
-    }
-    expect(loadFlag(undefined, 'k', true)).toBe(true)
-    expect(loadFlag(bad, 'k', false)).toBe(false)
-    expect(() => saveFlag(bad, 'k', true)).not.toThrow()
-    expect(() => saveFlag(undefined, 'k', true)).not.toThrow()
+describe('parseLegacyFlag', () => {
+  it('识别 1 / 0，其余丢弃', () => {
+    expect(parseLegacyFlag('1')).toBe(true)
+    expect(parseLegacyFlag('0')).toBe(false)
+    expect(parseLegacyFlag('x')).toBeUndefined()
   })
 })
 

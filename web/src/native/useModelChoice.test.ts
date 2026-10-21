@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { CHOICE_KEY_PREFIX } from '@/shared/modelPicker'
+import { CHOICE_KEY_PREFIX, CHOICE_NS } from '@/shared/modelPicker'
 import { resetModelChoiceCache, useModelChoice } from './useModelChoice'
 
 /** 测试用内存 localStorage，返回底层 Map 便于断言写回 */
@@ -8,6 +8,7 @@ function installStorage(init: Record<string, string> = {}): Map<string, string> 
   ;(globalThis as { localStorage?: unknown }).localStorage = {
     getItem: (k: string) => m.get(k) ?? null,
     setItem: (k: string, v: string) => void m.set(k, v),
+    removeItem: (k: string) => void m.delete(k),
   }
   return m
 }
@@ -30,7 +31,7 @@ describe('useModelChoice', () => {
     const a = useModelChoice('translate')
     a.set('local-qwen')
     expect(useModelChoice('translate').choice.value).toBe('local-qwen')
-    expect(localStorage.getItem(CHOICE_KEY_PREFIX + 'translate')).toBe('local-qwen')
+    expect(localStorage.getItem(CHOICE_NS + '_translate')).toBe('"local-qwen"')
   })
   it('旧值（清单模型 id）读到时迁移成新值并写回', () => {
     const m = installStorage({
@@ -41,18 +42,18 @@ describe('useModelChoice', () => {
     expect(useModelChoice('translate').choice.value).toBe('local-qwen')
     expect(useModelChoice('waste-sort').choice.value).toBe('local-clip')
     expect(useModelChoice('ocr').choice.value).toBe('local-ocr')
-    expect(m.get(CHOICE_KEY_PREFIX + 'ocr')).toBe('local-ocr')
-    expect(m.get(CHOICE_KEY_PREFIX + 'translate')).toBe('local-qwen')
-    expect(m.get(CHOICE_KEY_PREFIX + 'waste-sort')).toBe('local-clip')
+    expect(m.get(CHOICE_NS + '_ocr')).toBe('"local-ocr"')
+    expect(m.get(CHOICE_NS + '_translate')).toBe('"local-qwen"')
+    expect(m.get(CHOICE_NS + '_waste-sort')).toBe('"local-clip"')
   })
   it('认不出的值原样保留（有效性由目录在运行时判断并回落），不在这里改写', () => {
     const m = installStorage({ [CHOICE_KEY_PREFIX + 'ocr']: 'removed' })
     expect(useModelChoice('ocr').choice.value).toBe('removed')
-    expect(m.get(CHOICE_KEY_PREFIX + 'ocr')).toBe('removed')
+    expect(m.get(CHOICE_NS + '_ocr')).toBe('"removed"')
   })
   it('迁移表标记丢弃的值：回到静态默认，不写回', () => {
     const m = installStorage({ [CHOICE_KEY_PREFIX + 'waste-sort']: 'l2-none' })
     expect(useModelChoice('waste-sort').choice.value).toBe('local-clip')
-    expect(m.get(CHOICE_KEY_PREFIX + 'waste-sort')).toBe('l2-none')
+    expect(m.get(CHOICE_NS + '_waste-sort')).toBe('"l2-none"')
   })
 })

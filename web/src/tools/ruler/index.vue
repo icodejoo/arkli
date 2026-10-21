@@ -6,6 +6,8 @@ import CellPicker from '@/shared/CellPicker.vue'
 import type { CellOption } from '@/shared/cellPicker'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useFloatPause } from '@/shared/useFloatPause'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { showToast } from 'vant'
 import { deviceDisplay } from '@/native/system'
 import {
@@ -19,6 +21,7 @@ import {
   gapMm,
   isValidScale,
   loadScale,
+  SCALE_KEY,
   MARK_COLORS,
   mmToPx,
   nextColorIndex,
@@ -29,8 +32,8 @@ import {
   scaleFromDpi,
   sortMarksByPosition,
   STEP_MM,
-  STORAGE_PREFIX,
-  SCALE_KEY,
+  isHexColor,
+  TOOL_NS,
   togglePick,
   type RulerMark,
   type RulerUnit,
@@ -103,22 +106,16 @@ type RefKind = 'card' | 'coin' | 'custom'
 /** 尺子靠屏幕哪一侧 */
 type EdgeSide = 'right' | 'left'
 
-/** 取本地存储，不可用时为 undefined */
-function getStorage(): Storage | undefined {
-  try {
-    return window.localStorage
-  } catch {
-    return undefined
-  }
-}
+/** 持久缓存 */
+const store = createToolStorage(TOOL_NS)
 
-/** 当前单位 */
-const unit = ref<RulerUnit>('cm')
 /** 单位选项 */
 const UNIT_OPTIONS: CellOption[] = [
   { value: 'cm', label: '厘米' },
   { value: 'inch', label: '英寸' },
 ]
+/** 当前单位（持久化） */
+const unit = usePersistedRef<RulerUnit>(store, 'unit', 'cm', (v) => UNIT_OPTIONS.some((o) => o.value === v))
 /** 尺子靠边选项 */
 const SIDE_OPTIONS: CellOption[] = [
   { value: 'right', label: '靠右' },
@@ -130,22 +127,22 @@ const REF_OPTIONS: CellOption[] = [
   { value: 'coin', label: '一元硬币 25mm' },
   { value: 'custom', label: '自定义' },
 ]
-/** 尺子靠右还是靠左 */
-const side = ref<EdgeSide>('right')
+/** 尺子靠右还是靠左（持久化） */
+const side = usePersistedRef<EdgeSide>(store, 'side', 'right', (v) => SIDE_OPTIONS.some((o) => o.value === v))
 /** 尺子顶端离视口顶部的距离（像素），即顶栏下沿 */
 const topOffset = ref(HEADER_FALLBACK)
 /** 尺子沿长边的像素长度：视口高度减去顶栏 */
 const along = ref(640)
 /** 已保存的校准比例（像素/毫米），null 表示未校准 */
-const savedScale = ref<number | null>(loadScale(getStorage()))
+const savedScale = ref<number | null>(loadScale(store))
 /** 原生 dpi 算出的比例（像素/毫米），无宿主或取不到为 null */
 const autoScale = ref<number | null>(null)
 /** 生效的比例：手动校准优先，其次原生 dpi，最后 96dpi 估算 */
 const scale = computed(() => resolveScale(savedScale.value, autoScale.value))
 /** 是否处于校准模式 */
 const calibrating = ref(false)
-/** 参照物类型 */
-const refKind = ref<RefKind>('card')
+/** 参照物类型（持久化） */
+const refKind = usePersistedRef<RefKind>(store, 'refKind', 'card', (v) => REF_OPTIONS.some((o) => o.value === v))
 /** 自定义参照长度文本（毫米） */
 const customMm = ref('50')
 /** 校准线像素长度（用户调整） */
@@ -155,12 +152,12 @@ const canvasRef = ref<HTMLCanvasElement>()
 
 /** 游标位置：离尺子零点的像素距离 */
 const cursorPx = ref(CURSOR_INIT_PX)
-/** 当前选中的标记颜色 */
-const markColor = ref<string>(MARK_COLORS[0].value)
+/** 用户在取色器里选的自定义颜色（持久化），没选过为 null */
+const customColor = usePersistedRef<string | null>(store, 'customColor', null, (v) => v === null || isHexColor(v))
+/** 当前选中的标记颜色：有缓存的自选色就接着用 */
+const markColor = ref<string>(customColor.value ?? MARK_COLORS[0].value)
 /** 最近一次选中的预设色下标：打完标记后从这里接着往下走，用户自选色不打断这个顺序 */
 const colorIdx = ref(0)
-/** 用户在取色器里选的自定义颜色，没选过为 null */
-const customColor = ref<string | null>(null)
 /** 取色器绑定的颜色：没自选过就显示当前标记色，选了就同时改标记色 */
 const pickerColor = computed({
   get: () => customColor.value ?? markColor.value,
@@ -420,18 +417,14 @@ function saveCalibrate(): void {
     return
   }
   savedScale.value = s
-  showToast(saveScale(getStorage(), s) ? '校准已保存' : '已生效，但存储不可用，下次要重新校准')
+  showToast(saveScale(s, store) ? '校准已保存' : '已生效，但存储不可用，下次要重新校准')
   calibrating.value = false
 }
 
 /** 清除校准，回到估算值 */
 function resetCalibrate(): void {
   savedScale.value = null
-  try {
-    getStorage()?.removeItem(STORAGE_PREFIX + SCALE_KEY)
-  } catch {
-    // 存储不可用时忽略，内存里已重置
-  }
+  store.remove(SCALE_KEY)
   calibrating.value = false
   showToast('已清除校准')
 }

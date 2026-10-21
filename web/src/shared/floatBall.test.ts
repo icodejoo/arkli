@@ -11,6 +11,7 @@ import {
   exceedsDrag,
   floatBallLabel,
   inDropZone,
+  normalizePos,
   parsePos,
   sideX,
   snapSide,
@@ -60,6 +61,12 @@ describe('其它', () => {
     expect(parsePos('{"side":"top","y":1}')).toBeNull()
     expect(parsePos('坏的')).toBeNull()
     expect(parsePos(null)).toBeNull()
+  })
+  it('规范化缓存值：合法、非法回落 null', () => {
+    expect(normalizePos({ side: 'right', y: 3 })).toEqual({ side: 'right', y: 3 })
+    expect(normalizePos({ side: 'top', y: 3 })).toBeNull()
+    expect(normalizePos({ side: 'left', y: NaN })).toBeNull()
+    expect(normalizePos(null)).toBeNull()
   })
   it('无障碍标签', () => {
     expect(floatBallLabel('番茄钟')).toBe('浮窗：番茄钟，点击返回')

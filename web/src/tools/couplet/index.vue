@@ -19,6 +19,8 @@ import { AI_METHODS } from '@/native/aiMethods'
 import { corpusGet, corpusInfo, COUPLET_CORPUS_ID, type CorpusInfo, type CorpusPool } from '@/native/corpus'
 import { useAiCatalog } from '@/native/useAiCatalog'
 import { useModelsStore } from '@/stores/models'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { loadCursor, nextDraw, saveCursor } from './cursor'
 import { drawByLength } from './quiz'
 import {
@@ -47,8 +49,8 @@ const PROVIDER_COUPLET = 'local-couplet'
 const PROVIDER_QWEN = 'local-qwen'
 /** 导出文件名 */
 const FILE_NAME = 'couplet.png'
-/** 记住上次选的池（偏好，存取都 try/catch） */
-const POOL_KEY = 'arkli.couplet.pool'
+/** 旧版 localStorage 里记住池编号的整键名，读取时一次性迁移 */
+const LEGACY_POOL_KEY = 'arkli.couplet.pool'
 /** 模式名 */
 type Mode = 'random' | 'lower' | 'llm' | 'quiz'
 /** 出上联的来源 */
@@ -77,6 +79,11 @@ const MSG_REVIEW = '提示：0.8B 小模型会写出不工整甚至不通的句�
 const MSG_QUIZ_MISS = '没抽到这个字数的上联，换个字数或类型试试'
 const MSG_RANDOM_NOTE = '横批与分类是系统推导的，仅供参考，不是原联自带'
 
+/** 本工具的持久缓存（模式、类型、字数等偏好） */
+const prefs = createToolStorage(TOOL_ID)
+prefs.adoptLegacy(LEGACY_POOL_KEY, 'poolId', (raw) => (Number.isInteger(Number(raw)) ? Number(raw) : undefined))
+/** 模式可选值 */
+const MODES: readonly Mode[] = ['random', 'quiz', 'lower', 'llm']
 /** 路由器：点提示条去 AI 中心 */
 const router = useRouter()
 /** 模型 store（只读） */
@@ -85,7 +92,7 @@ const store = useModelsStore()
 const catalog = useAiCatalog(TOOL_ID)
 
 /** 当前模式 */
-const mode = ref<Mode>('random')
+const mode = usePersistedRef<Mode>(prefs, 'mode', 'random', (v) => MODES.includes(v))
 /** 当前这副（可手改） */
 const result = ref<Couplet>({ up: '', down: '', banner: '' })
 /** 当前结果是不是挽联（白底黑字、不贴福字）；对下联和手改沿用上次的判断 */
@@ -100,25 +107,25 @@ let abort: AbortController | null = null
 /** 语料库概况 */
 const corpus = ref<CorpusInfo>({ ready: false })
 /** 选中的池编号 */
-const poolId = ref(0)
+const poolId = usePersistedRef(prefs, 'poolId', 0, (v) => Number.isInteger(v))
 /** 对下联：上联输入 */
 const upper = ref('')
 /** 大模型：要求 */
 const demand = ref('')
 /** 大模型：横批选择，BANNER_NONE 为不要，否则是字数 */
-const bannerChoice = ref(BANNER_DEFAULT)
+const bannerChoice = usePersistedRef(prefs, 'bannerChoice', BANNER_DEFAULT, (v) => BANNER_OPTIONS.some((o) => o.value === v))
 /** 大模型：要不要横批 */
 const wantBanner = computed(() => bannerChoice.value !== BANNER_NONE)
 /** 大模型：横批字数（不要横批时随便给个默认值，生成逻辑不会用） */
 const bannerLen = computed(() => bannerChoice.value || BANNER_DEFAULT)
 /** 大模型：类型 */
-const category = ref(DEFAULT_CATEGORY)
+const category = usePersistedRef(prefs, 'category', DEFAULT_CATEGORY, (v) => CATEGORY_OPTIONS.some((o) => o.value === v))
 /** 出上联：来源 */
-const quizSource = ref<QuizSource>('corpus')
+const quizSource = usePersistedRef<QuizSource>(prefs, 'quizSource', 'corpus', (v) => v === 'corpus' || v === 'llm')
 /** AI 弹窗里的「语料库」行：出上联时与模型行并列，选它就用语料出题 */
 const CORPUS_ROW_ID = 'couplet-corpus-source'
 /** 出上联：字数，UPPER_LEN_ANY 为不限 */
-const quizLen = ref(UPPER_LEN_ANY)
+const quizLen = usePersistedRef(prefs, 'quizLen', UPPER_LEN_ANY, (v) => QUIZ_LEN_OPTIONS.some((o) => o.value === v))
 /** 出上联：语料里的原下联（大模型来源没有） */
 const answer = ref('')
 /** 出上联：是否已亮出参考下联 */
@@ -177,24 +184,6 @@ const canPreview = computed(() => !!result.value.up.trim() && !!result.value.dow
 /** 对下联输入的即时提示 */
 const upperIssue = computed(() => (upper.value ? validateUpper(upper.value) : null))
 
-/** 读记住的池编号 */
-function readPool(): number | null {
-  try {
-    const v = Number(localStorage.getItem(POOL_KEY))
-    return Number.isInteger(v) ? v : null
-  } catch {
-    return null
-  }
-}
-/** 记住选择的池编号 */
-function writePool(v: number): void {
-  try {
-    localStorage.setItem(POOL_KEY, String(v))
-  } catch {
-    /* 存不了就算了 */
-  }
-}
-
 /** 拉语料库概况，并恢复上次选的池 */
 async function refreshCorpus(): Promise<void> {
   try {
@@ -202,12 +191,11 @@ async function refreshCorpus(): Promise<void> {
   } catch {
     corpus.value = { ready: false }
   }
-  const saved = readPool()
   const list = corpus.value.pools ?? []
-  poolId.value = list.some((p) => p.pool === saved) ? (saved as number) : 0
+  // 池列表拿不到时保留已记住的编号，免得覆盖偏好；拿到了而编号已不存在则回落 0
+  if (list.length && !list.some((p) => p.pool === poolId.value)) poolId.value = 0
 }
 watch(corpusInstalled, (v) => (v ? void refreshCorpus() : (corpus.value = { ready: false })), { immediate: true })
-watch(poolId, writePool)
 watch([mode, quizSource], () => {
   if (mode.value === 'lower') filterOpen.value = false
   meta.value = ''

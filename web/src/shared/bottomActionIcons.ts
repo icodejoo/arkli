@@ -17,6 +17,7 @@ import IconHistory from '~icons/arkli/history'
 import IconImages from '~icons/arkli/images'
 import IconLightbulb from '~icons/arkli/lightbulb'
 import IconMaximize from '~icons/arkli/maximize'
+import IconMic from '~icons/arkli/mic'
 import IconPause from '~icons/arkli/pause'
 import IconPencil from '~icons/arkli/pencil'
 import IconPlay from '~icons/arkli/play'
@@ -56,6 +57,7 @@ export const BOTTOM_ACTION_ICON_MAP: Readonly<Record<string, Component>> = {
   'arkli:images': IconImages,
   'arkli:lightbulb': IconLightbulb,
   'arkli:maximize': IconMaximize,
+  'arkli:mic': IconMic,
   'arkli:pause': IconPause,
   'arkli:pencil': IconPencil,
   'arkli:play': IconPlay,

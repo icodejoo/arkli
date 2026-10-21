@@ -2,8 +2,12 @@
 // BMI 与基础代谢：中国成人分级 + Mifflin-St Jeor，仅供参考
 import { computed, ref } from 'vue'
 import CellPicker from '@/shared/CellPicker.vue'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { ACTIVITY_LEVELS, bmiLevel, calcBmi, calcBmr, calcTdee, normalWeightRange, type Sex } from './logic'
 
+/** 本工具的持久缓存 */
+const store = createToolStorage('bmi')
 /** 性别选项 */
 const SEX_OPTIONS = [
   { value: 'male', label: '男' },
@@ -11,7 +15,7 @@ const SEX_OPTIONS = [
 ]
 
 /** 性别 */
-const sex = ref<Sex>('male')
+const sex = usePersistedRef<Sex>(store, 'sex', 'male', (v) => SEX_OPTIONS.some((o) => o.value === v))
 /** 年龄 */
 const age = ref('30')
 /** 身高 cm */
@@ -19,7 +23,7 @@ const height = ref('170')
 /** 体重 kg */
 const weight = ref('65')
 /** 活动系数 */
-const factor = ref<number>(ACTIVITY_LEVELS[0].factor)
+const factor = usePersistedRef<number>(store, 'factor', ACTIVITY_LEVELS[0].factor, (v) => ACTIVITY_LEVELS.some((l) => l.factor === v))
 
 /** 计算结果，输入不全返回 null */
 const result = computed(() => {

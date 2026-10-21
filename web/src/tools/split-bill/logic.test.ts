@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { calcAa, calcDiscount, calcTip, splitCents } from './logic'
+import { calcAa, calcDiscount, calcTip, isBillTab, isDiscountOrder, splitCents } from './logic'
 
 describe('splitCents', () => {
   it('余数分给靠前的人且合计不变', () => {
@@ -60,5 +60,14 @@ describe('calcDiscount', () => {
   it('立减超过价格时不为负，折扣为 0 视为不打折', () => {
     expect(calcDiscount({ originalCents: 500, zhe: 0, reduceCents: 900, order: 'rate-first' }).finalCents).toBe(0)
     expect(calcDiscount({ originalCents: 500, zhe: 0, reduceCents: 0, order: 'rate-first' }).finalCents).toBe(500)
+  })
+})
+
+describe('缓存校验', () => {
+  it('标签页与叠加顺序：非法值被拒', () => {
+    expect(isBillTab('aa')).toBe(true)
+    expect(isBillTab('x')).toBe(false)
+    expect(isDiscountOrder('reduce-first')).toBe(true)
+    expect(isDiscountOrder(1)).toBe(false)
   })
 })

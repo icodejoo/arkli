@@ -5,8 +5,11 @@ import CellPicker from '@/shared/CellPicker.vue'
 import { useFloatPause } from '@/shared/useFloatPause'
 import type { CellOption } from '@/shared/cellPicker'
 import { computed, onBeforeUnmount, ref } from 'vue'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
+import { isBool, oneOf } from '@/shared/persistValidators'
 import { createPausableListener, isSteady, startGravity, type MotionSourceLike, type MotionStatus, type Vec3 } from '../level/logic'
-import { clampAngle, clientToView, edgeInclination, FULL_CIRCLE, HALF_CIRCLE, includedAngle, nearestRay, pointAngle, polar, SNAP_STEP, snapAngle, surfaceInclination, sweepAngle, type DialMode, type Point } from './logic'
+import { clampAngle, clientToView, DIAL_VALUES, edgeInclination, FULL_CIRCLE, HALF_CIRCLE, includedAngle, nearestRay, pointAngle, polar, SNAP_STEP, snapAngle, STORE_NS, surfaceInclination, sweepAngle, TILT_KIND_VALUES, type DialMode, type Point } from './logic'
 
 /** 主模式：屏上量角 / 倾角 */
 type Mode = 'screen' | 'tilt'
@@ -40,10 +43,12 @@ const DEG_DIGITS = 1
 /** 无传感器提示 */
 const TIP_UNSUPPORTED = '没读到重力传感器的数据：设备可能没有加速度计，或系统限制了网页读取。'
 
-/** 主模式 */
+/** 持久缓存 */
+const store = createToolStorage(STORE_NS)
+/** 主模式（倾角模式要启动传感器，不持久化） */
 const mode = ref<Mode>('screen')
 /** 盘面：半圆/全圆 */
-const dial = ref<DialMode>('half')
+const dial = usePersistedRef<DialMode>(store, 'dial', 'half', oneOf(DIAL_VALUES))
 /** 盘面选项 */
 const DIAL_OPTIONS: CellOption[] = [
   { value: 'half', label: '半圆' },
@@ -52,14 +57,14 @@ const DIAL_OPTIONS: CellOption[] = [
 /** 两条射线方向角 */
 const rays = ref<[number, number]>([0, 60])
 /** 是否吸附到 5 度 */
-const snap = ref(false)
+const snap = usePersistedRef(store, 'snap', false, isBool)
 /** 正在拖的射线下标，-1 表示没在拖 */
 const dragging = ref(-1)
 /** SVG 元素引用 */
 const svgEl = ref<SVGSVGElement | null>(null)
 
 /** 倾角子模式 */
-const tiltKind = ref<TiltKind>('edge')
+const tiltKind = usePersistedRef<TiltKind>(store, 'tiltKind', 'edge', oneOf(TILT_KIND_VALUES))
 /** 传感器状态 */
 const status = ref<MotionStatus>('waiting')
 /** 滤波后的重力读数 */

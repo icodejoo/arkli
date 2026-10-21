@@ -2,6 +2,8 @@
 // 进制转换：选输入进制，一次显示 2/8/10/16 和自定义进制，并给补码
 import { computed, ref } from 'vue'
 import CellPicker from '@/shared/CellPicker.vue'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import {
   BIT_WIDTHS,
   COMMON_BASES,
@@ -23,16 +25,23 @@ const DEFAULT_FROM_BASE = 10
 /** 选择器里表示“自定义”的标记值 */
 const CUSTOM_FLAG = 0
 
+/** 本工具的持久缓存 */
+const store = createToolStorage('base-convert')
 /** 当前环境是否支持 BigInt */
 const bigintOk = supportsBigInt()
 /** 输入文本 */
 const text = ref('')
 /** 输入进制 */
-const fromBase = ref<number>(DEFAULT_FROM_BASE)
-/** 自定义进制文本（2 到 36） */
-const customText = ref(String(DEFAULT_CUSTOM_BASE))
+const fromBase = usePersistedRef<number>(
+  store,
+  'fromBase',
+  DEFAULT_FROM_BASE,
+  (v) => Number.isInteger(v) && v >= MIN_BASE && v <= MAX_BASE,
+)
+/** 自定义进制文本（2 到 36）；缓存的输入进制不是常用进制时回填它 */
+const customText = ref(String(COMMON_BASES.includes(fromBase.value as 2) ? DEFAULT_CUSTOM_BASE : fromBase.value))
 /** 补码位宽 */
-const bits = ref<BitWidth>(DEFAULT_BITS)
+const bits = usePersistedRef<BitWidth>(store, 'bits', DEFAULT_BITS, (v) => BIT_WIDTHS.includes(v))
 
 /** 输入进制选项：常用进制 + 自定义 */
 const BASE_OPTIONS = [...COMMON_BASES.map((b) => ({ value: b, label: String(b) })), { value: CUSTOM_FLAG, label: '自定义' }]

@@ -6,6 +6,9 @@ import type { CellOption } from '@/shared/cellPicker'
 import { computed, onMounted, ref } from 'vue'
 import { showConfirmDialog, showFailToast, showSuccessToast, showToast } from 'vant'
 import { saveBlob } from '@/shared/image-io'
+import { oneOf } from '@/shared/persistValidators'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { createMemoryStore, openStore, type RecordStore } from './idb'
 import {
   addCategory, categoryShares, DEFAULT_CATEGORIES, dateStrToTs, filterMonth, formatCents, KIND_LABEL, MAX_CATEGORY_LEN,
@@ -19,15 +22,25 @@ const DB_NAME = 'arkli'
 const DB_VERSION = 1
 /** 账目仓库名 */
 const STORE_NAME = 'ledger'
-/** 分类在 localStorage 里的键 */
-const CAT_KEY = 'arkli:ledger:categories'
-/** 上次导出时间在 localStorage 里的键 */
-const EXPORT_KEY = 'arkli:ledger:lastExport'
+/** 旧版分类在 localStorage 里的键（仅用于迁移） */
+const LEGACY_CAT_KEY = 'arkli:ledger:categories'
+/** 旧版上次导出时间在 localStorage 里的键（仅用于迁移） */
+const LEGACY_EXPORT_KEY = 'arkli:ledger:lastExport'
+/** 分类的缓存键 */
+const CAT_KEY = 'categories'
+/** 上次导出时间的缓存键 */
+const EXPORT_KEY = 'lastExport'
+/** 占比图方向的缓存键 */
+const SHARE_KIND_KEY = 'shareKind'
 /** 方向列表，用于渲染切换按钮 */
 const KINDS: Kind[] = ['out', 'in']
 /** 方向选择器选项（分类占比与记账表单共用） */
 const KIND_OPTIONS: readonly CellOption[] = KINDS.map((k) => ({ value: k, label: KIND_LABEL[k] }))
 
+/** 本工具的持久缓存（分类、导出时间、占比图方向） */
+const cache = createToolStorage('ledger')
+cache.adoptLegacy(LEGACY_CAT_KEY, CAT_KEY)
+cache.adoptLegacy(LEGACY_EXPORT_KEY, EXPORT_KEY, (raw) => Number(raw) || undefined)
 /** 账目仓库，加载完成前为 undefined */
 let store: RecordStore<Entry> | undefined
 /** 全部账目 */
@@ -44,7 +57,7 @@ const memoryOnly = ref(false)
 /** 是否显示备份提醒 */
 const remind = ref(false)
 /** 占比图显示哪个方向 */
-const shareKind = ref<Kind>('out')
+const shareKind = usePersistedRef<Kind>(cache, SHARE_KIND_KEY, 'out', oneOf(KIND_OPTIONS))
 
 /** 新增弹窗是否打开 */
 const showForm = ref(false)
@@ -74,30 +87,11 @@ const shares = computed(() => categoryShares(monthEntries.value, shareKind.value
 /** 当前表单方向下的分类 */
 const formCats = computed(() => categories.value[fKind.value])
 
-/** 读 localStorage，失败（隐私模式等）返回 null */
-function lsGet(key: string): string | null {
-  try {
-    return localStorage.getItem(key)
-  } catch {
-    return null
-  }
-}
-
-/** 写 localStorage，失败忽略 */
-function lsSet(key: string, value: string): void {
-  try {
-    localStorage.setItem(key, value)
-  } catch {
-    /* 存储不可用就算了，下次打开用默认分类 */
-  }
-}
-
 /** 从本地读分类，格式不对就保留默认 */
 function loadCategories(): void {
-  const raw = lsGet(CAT_KEY)
-  if (!raw) return
   try {
-    const c = JSON.parse(raw) as Partial<Record<Kind, unknown>>
+    const c = cache.get<Partial<Record<Kind, unknown>> | null>(CAT_KEY, null)
+    if (!c || typeof c !== 'object') return
     for (const k of KINDS) {
       const list = Array.isArray(c[k]) ? (c[k] as unknown[]).filter((x): x is string => typeof x === 'string') : []
       if (list.length) categories.value[k] = list
@@ -109,12 +103,12 @@ function loadCategories(): void {
 
 /** 保存分类 */
 function saveCategories(): void {
-  lsSet(CAT_KEY, JSON.stringify(categories.value))
+  cache.set(CAT_KEY, categories.value)
 }
 
 /** 重新计算备份提醒 */
 function updateRemind(): void {
-  const last = Number(lsGet(EXPORT_KEY))
+  const last = Number(cache.get(EXPORT_KEY, 0))
   remind.value = shouldRemindBackup(entries.value.length, last > 0 ? last : undefined, Date.now())
 }
 
@@ -216,7 +210,7 @@ function moveMonth(d: number): void {
 async function exportFile(text: string, name: string, mime: string): Promise<void> {
   try {
     const res = await saveBlob(new Blob([text], { type: mime }), name)
-    lsSet(EXPORT_KEY, String(Date.now()))
+    cache.set(EXPORT_KEY, Date.now())
     updateRemind()
     showSuccessToast(res.mode === 'native' ? '已保存到 Download/Arkli' : '已开始下载')
   } catch {

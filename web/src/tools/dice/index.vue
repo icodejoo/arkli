@@ -2,10 +2,12 @@
 // 掷骰子：选个数与面数，六面骰画点阵，其余面数直接显示数字
 import BottomActions from '@/shared/BottomActions.vue'
 import { useFloatPause } from '@/shared/useFloatPause'
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import CellPicker from '@/shared/CellPicker.vue'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { prefersReducedMotion } from '@/shared/motion'
-import { createSettleTimer, loadFlag, saveFlag, SOUND_KEY, VIBRATE_KEY, VIBRATE_LAND, VIBRATE_START } from '../coin-flip/logic'
+import { createSettleTimer, parseLegacyFlag, SOUND_KEY, VIBRATE_KEY, VIBRATE_LAND, VIBRATE_START } from '../coin-flip/logic'
 import { createSoundPlayer, tryVibrate } from '../coin-flip/feedback'
 import { MAX_DICE, MIN_DICE, PIPS, rollDice, SIDES_OPTIONS, type RollResult } from './logic'
 
@@ -14,10 +16,13 @@ const ANIM_MS = 600
 /** 滚动时占位点数的刷新间隔（毫秒） */
 const TUMBLE_MS = 90
 
+/** 持久缓存 */
+const store = createToolStorage('dice')
+
 /** 骰子个数 */
-const count = ref(2)
+const count = usePersistedRef(store, 'count', 2, (v) => Number.isInteger(v) && v >= MIN_DICE && v <= MAX_DICE)
 /** 面数 */
-const sides = ref<number>(6)
+const sides = usePersistedRef<number>(store, 'sides', 6, (v) => (SIDES_OPTIONS as readonly number[]).includes(v))
 /** 面数选项 */
 const SIDES_PICKER_OPTIONS = SIDES_OPTIONS.map((s) => ({ value: s, label: `${s} 面` }))
 /** 最近一次结果 */
@@ -28,24 +33,15 @@ const rolling = ref(false)
 const tumble = ref<number[]>([])
 /** 动画定时器：到点结算，也可在浮起时提前结算 */
 const anim = createSettleTimer()
-/** 取 localStorage，不可用时为 undefined */
-function getStorage(): Storage | undefined {
-  try {
-    return window.localStorage
-  } catch {
-    return undefined
-  }
-}
-/** 震动反馈开关，默认开（与抛硬币共用设置） */
-const vibrateOn = ref(loadFlag(getStorage(), VIBRATE_KEY, true))
+// 旧版与抛硬币共用的开关键：谁先打开谁迁一次，之后两个工具各存各的
+store.adoptLegacy(VIBRATE_KEY, 'vibrate', parseLegacyFlag)
+store.adoptLegacy(SOUND_KEY, 'sound', parseLegacyFlag)
+/** 震动反馈开关，默认开 */
+const vibrateOn = usePersistedRef(store, 'vibrate', true, (v) => typeof v === 'boolean')
 /** 音效开关，默认关 */
-const soundOn = ref(loadFlag(getStorage(), SOUND_KEY, false))
+const soundOn = usePersistedRef(store, 'sound', false, (v) => typeof v === 'boolean')
 /** 合成音播放器 */
 const sound = createSoundPlayer()
-
-/** 开关变化时落盘 */
-watch(vibrateOn, (v) => saveFlag(getStorage(), VIBRATE_KEY, v))
-watch(soundOn, (v) => saveFlag(getStorage(), SOUND_KEY, v))
 
 /** 触发某个时刻的反馈（震动与音效各自看开关） */
 function feedback(kind: 'start' | 'land'): void {

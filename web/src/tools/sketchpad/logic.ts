@@ -44,6 +44,8 @@ export const MAX_POINTS = 5000
 export const DEFAULT_COLOR = '#222222'
 /** 默认背景色 */
 export const DEFAULT_BG = '#ffffff'
+/** 工具持久缓存的命名空间 */
+export const TOOL_NS = 'sketchpad'
 /** 颜色匹配：#rgb 或 #rrggbb */
 const HEX_RE = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i
 
@@ -202,4 +204,14 @@ export function pixelSize(cssW: number, cssH: number, scale: number): { width: n
 export function exportName(d: Date): string {
   const p = (n: number) => String(n).padStart(2, '0')
   return `sketch-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.png`
+}
+
+/**
+ * 校验缓存的线宽：MIN_WIDTH 到 MAX_WIDTH 之间的有限数。
+ *
+ * @param v 缓存值
+ * @returns 合法返回 true
+ */
+export function isValidWidth(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v) && v >= MIN_WIDTH && v <= MAX_WIDTH
 }

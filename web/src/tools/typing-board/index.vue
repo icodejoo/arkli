@@ -7,6 +7,8 @@ import type { CellOption } from '@/shared/cellPicker'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { showToast } from 'vant'
 import ExitIcon from '~icons/cil/fullscreen-exit?width=1em&height=1em'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { createLandscape } from '@/shared/landscape'
 import { prefersReducedMotion } from '@/shared/motion'
 import { createAppAwake } from '../clock-screen/awake'
@@ -20,7 +22,9 @@ import {
   FONT_DEFAULT,
   FONT_MAX,
   FONT_MIN,
+  inRange,
   invertColor,
+  isHexColor,
   loadRecent,
   overflows,
   PRESETS,
@@ -47,41 +51,35 @@ const ALIGN_OPTIONS: CellOption[] = [
   { value: 'right', label: '居右' },
 ]
 
-/** 取本地存储，不可用时为 undefined */
-function getStorage(): Storage | undefined {
-  try {
-    return window.localStorage
-  } catch {
-    return undefined
-  }
-}
+/** 本工具的持久缓存 */
+const store = createToolStorage('typing-board')
 
 /** 输入的文字 */
 const text = ref(PRESETS[0].text)
 /** 字色 */
-const fg = ref(PRESETS[0].fg)
+const fg = usePersistedRef(store, 'fg', PRESETS[0].fg, isHexColor)
 /** 背景色 */
-const bg = ref(PRESETS[0].bg)
+const bg = usePersistedRef(store, 'bg', PRESETS[0].bg, isHexColor)
 /** 字号（像素） */
-const fontSize = ref(FONT_DEFAULT)
+const fontSize = usePersistedRef(store, 'fontSize', FONT_DEFAULT, (v) => inRange(v, FONT_MIN, FONT_MAX))
 /** 滚动速度（像素/秒），只在文字超出屏幕时生效 */
-const speed = ref(SPEED_DEFAULT)
+const speed = usePersistedRef(store, 'speed', SPEED_DEFAULT, (v) => inRange(v, SPEED_MIN, SPEED_MAX))
 /** 字重 */
-const weight = ref<number>(700)
+const weight = usePersistedRef<number>(store, 'weight', 700, (v) => (WEIGHTS as readonly number[]).includes(v))
 /** 静止时的对齐 */
-const align = ref<Align>('center')
+const align = usePersistedRef<Align>(store, 'align', 'center', (v) => ALIGN_OPTIONS.some((o) => o.value === v))
 /** 是否闪烁 */
-const blink = ref(false)
+const blink = usePersistedRef(store, 'blink', false, (v) => typeof v === 'boolean')
 /** 闪烁频率 */
-const hz = ref(1)
+const hz = usePersistedRef(store, 'hz', 1, (v) => inRange(v, BLINK_HZ_MIN, BLINK_HZ_MAX))
 /** 闪烁时是否反色 */
-const invert = ref(false)
+const invert = usePersistedRef(store, 'invert', false, (v) => typeof v === 'boolean')
 /** 是否处于展示模式 */
 const showing = ref(false)
 /** 实际展示的文字（整理后的单行） */
 const shown = ref(DEFAULT_TEXT)
 /** 最近用过的文案 */
-const recent = ref<string[]>(loadRecent(getStorage()))
+const recent = ref<string[]>(loadRecent(store))
 /** 单行文字宽度（像素） */
 const textW = ref(0)
 /** 屏幕宽度（像素） */
@@ -134,7 +132,7 @@ async function show(): Promise<void> {
   shown.value = cleanText(text.value)
   text.value = shown.value
   recent.value = pushRecent(recent.value, shown.value)
-  saveRecent(getStorage(), recent.value)
+  saveRecent(store, recent.value)
   still.value = prefersReducedMotion()
   showing.value = true
   void measure()

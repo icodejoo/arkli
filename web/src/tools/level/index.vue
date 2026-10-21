@@ -3,6 +3,9 @@
 import BottomActions from '@/shared/BottomActions.vue'
 import { useFloatPause } from '@/shared/useFloatPause'
 import { computed, onBeforeUnmount, ref } from 'vue'
+import { oneOf } from '@/shared/persistValidators'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { applyZero, bubbleOffset, createPausableListener, foldToQuarter, formatDeg, inPlaneAngle, isSteady, startGravity, tiltFromGravity, totalTilt, type MotionSourceLike, type MotionStatus, type Tilt, type Vec3 } from './logic'
 
 /** 立放判定：总倾斜超过这个角度走条形的平面内算法 */
@@ -20,8 +23,12 @@ type Mode = 'bubble' | 'bar'
 /** iOS 式权限请求的类型 */
 type PermissionApi = { requestPermission?: () => Promise<'granted' | 'denied'> }
 
+/** 可选模式 */
+const MODES: readonly Mode[] = ['bubble', 'bar']
+/** 本工具的持久缓存 */
+const store = createToolStorage('level')
 /** 当前模式 */
-const mode = ref<Mode>('bubble')
+const mode = usePersistedRef<Mode>(store, 'mode', 'bubble', oneOf(MODES))
 /** 传感器状态 */
 const status = ref<MotionStatus>('waiting')
 /** 滤波后的重力读数 */

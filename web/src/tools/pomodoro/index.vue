@@ -8,8 +8,9 @@ import { isNativeAvailable } from '@/native/bridge'
 import { cancelAlarm, setAlarm } from '@/native/reminder'
 import { keepAwake, requestPermission } from '@/native/system'
 import { createWakeLock } from '@/shared/wakelock'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import {
-  advance, alarmCopy, ALARM_ID, bumpToday, doneRounds, EVERY_RANGE, FOCUS_RANGE, formatClock, initialState, loadSettings, loadState, loadToday,
+  advance, alarmCopy, ALARM_ID, bumpToday, createPomodoroStore, doneRounds, KEEP_ON_KEY, EVERY_RANGE, FOCUS_RANGE, formatClock, initialState, loadSettings, loadState, loadToday,
   LONG_RANGE, normalizeSettings, pause, PHASE_LABEL, phaseDurationMs, progressOf, remainingAt, resetAll, resetPhase, saveSettings,
   saveState, SHORT_RANGE, skip, start, wantsAwake, type Phase, type Settings, type TimerState,
 } from './logic'
@@ -25,15 +26,8 @@ const TIP_NO_HOST = '当前是浏览器环境，只有页面内倒计时，退�
 /** 阶段对应的主题色变量 */
 const PHASE_COLOR: Record<Phase, string> = { focus: 'var(--c-primary)', short: 'var(--c-ok)', long: 'var(--c-warn-text)' }
 
-/** 取本地存储，不可用时为 null */
-function storage(): Storage | null {
-  try {
-    return window.localStorage
-  } catch {
-    return null
-  }
-}
-const kv = storage()
+/** 番茄钟持久缓存（含旧键迁移） */
+const kv = createPomodoroStore()
 
 /** 是否在 Arkli 容器内 */
 const hosted = isNativeAvailable()
@@ -46,7 +40,7 @@ const now = ref(Date.now())
 /** 今日完成的专注数 */
 const today = ref(loadToday(kv, Date.now()))
 /** 是否保持屏幕常亮 */
-const keepOn = ref(false)
+const keepOn = usePersistedRef(kv, KEEP_ON_KEY, false, (x) => typeof x === 'boolean')
 /** 本次页面是否已问过通知权限 */
 let asked = false
 /** 定时器 */

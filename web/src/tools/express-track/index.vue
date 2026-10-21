@@ -4,11 +4,16 @@ import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onMounted, ref } from 'vue'
 import { showFailToast, showSuccessToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
+import { createToolStorage } from '@/shared/toolStorage'
 import type { Carrier } from './data'
 import { CONFIDENCE_LABEL, identify, pushHistory } from './logic'
 
-/** 最近查询在 localStorage 里的键 */
-const HISTORY_KEY = 'arkli:express-track:history'
+/** 旧 localStorage 键（迁移用） */
+const LEGACY_HISTORY_KEY = 'arkli:express-track:history'
+/** 最近查询的缓存键 */
+const HISTORY_KEY = 'history'
+/** 持久缓存 */
+const store = createToolStorage('express-track')
 
 /** 输入的单号 */
 const input = ref('')
@@ -20,24 +25,17 @@ const history = ref<string[]>([])
 /** 识别结果 */
 const result = computed(() => identify(input.value))
 
-/** 读最近查询，坏数据忽略 */
+/** 读最近查询，坏数据忽略（并迁移旧键） */
 function loadHistory(): void {
-  try {
-    const v = JSON.parse(localStorage.getItem(HISTORY_KEY) ?? '[]') as unknown
-    history.value = Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
-  } catch {
-    history.value = []
-  }
+  store.adoptLegacy(LEGACY_HISTORY_KEY, HISTORY_KEY)
+  const v = store.get<unknown>(HISTORY_KEY, [])
+  history.value = Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
 }
 
 /** 记下这个单号 */
 function remember(no: string): void {
   history.value = pushHistory(history.value, no)
-  try {
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(history.value))
-  } catch {
-    /* 存储不可用就不记了 */
-  }
+  store.set(HISTORY_KEY, history.value)
 }
 
 /** 点"识别"：有合法单号就记下来 */

@@ -4,6 +4,8 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { showFailToast, showLoadingToast, showToast, closeToast } from 'vant'
 import { appFileUrl, appIcon, exportApk, listApps, openApp, openAppSettings, type AppInfo } from '@/native/apps'
 import { isNativeAvailable } from '@/native/bridge'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { share } from '@/native/system'
 import { createIconLoader, filterApps, formatBytes, formatDateTime, SORT_OPTIONS, sortApps, summarize, type SortKey } from './logic'
 
@@ -18,6 +20,8 @@ const TIP_NO_HOST = '应用管理只能在 Arkli 应用里使用。'
 /** 只列出可启动应用的说明 */
 const TIP_SCOPE = '只显示桌面上有图标的应用，没有桌面入口的后台应用看不到。'
 
+/** 本工具的持久缓存 */
+const store = createToolStorage('app-manager')
 /** 是否在容器内 */
 const hosted = isNativeAvailable()
 /** 全部应用（含系统，筛选在前端做） */
@@ -27,9 +31,9 @@ const loading = ref(false)
 /** 搜索词 */
 const query = ref('')
 /** 排序方式 */
-const sortKey = ref<SortKey>('name')
+const sortKey = usePersistedRef<SortKey>(store, 'sortKey', 'name', (v) => SORT_OPTIONS.some((o) => o.key === v))
 /** 是否显示系统应用 */
-const showSystem = ref(false)
+const showSystem = usePersistedRef(store, 'showSystem', false, (v) => typeof v === 'boolean')
 /** 详情弹窗里的应用 */
 const current = ref<AppInfo | null>(null)
 /** 详情弹窗是否打开 */

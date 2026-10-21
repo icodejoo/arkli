@@ -35,11 +35,10 @@ function open(id: string): void {
 </script>
 
 <template>
-  <van-grid class="tool-grid" :column-num="GRID_COLUMNS" :border="false">
-    <van-grid-item
+  <div class="tool-grid" :style="{ '--cols': GRID_COLUMNS }">
+    <div
       v-for="t in tools"
       :key="t.id"
-      clickable
       class="tool-grid__item"
       @click="open(t.id)"
       @touchstart.passive="longPress.start($event, t.id)"
@@ -50,31 +49,55 @@ function open(id: string): void {
     >
       <span class="tool-grid__icon">{{ toolIcon(t.id) }}</span>
       <span class="tool-grid__name">{{ t.name }}</span>
-    </van-grid-item>
-  </van-grid>
+    </div>
+  </div>
   <pin-tool-sheet v-model:show="sheetShow" :tool="pressed" />
 </template>
 
 <style lang="scss" scoped>
 // 宫格整体做成一张圆角卡片，格子之间靠留白区分
 .tool-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
   overflow: hidden;
   border-radius: var(--van-radius-lg);
   background: var(--c-surface);
 
-  // 长按不选中文字、不弹系统菜单
+  // 每格 1:1，内容居中；长按不选中文字、不弹系统菜单
   &__item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    aspect-ratio: 1 / 1;
+    padding: $space-2;
+    box-sizing: border-box;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+
+    &:active {
+      background: var(--c-surface-active);
+    }
+
     user-select: none;
     -webkit-user-select: none;
     -webkit-touch-callout: none;
   }
 
+  // 图标固定占位，不随名称行数变化
   &__icon {
+    flex: none;
+    width: 32px;
+    height: 32px;
     font-size: 28px;
-    line-height: 1.2;
+    line-height: 32px;
+    text-align: center;
   }
 
+  // 名称固定两行高度（12px × 1.3 × 2），单行也占满，图标位置才不会漂
   &__name {
+    flex: none;
+    height: 31.2px;
     margin-top: $space-2;
     font-size: 12px;
     line-height: 1.3;

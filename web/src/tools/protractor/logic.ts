@@ -184,3 +184,10 @@ export function edgeInclination(v: Vec3): number {
 export function surfaceInclination(v: Vec3): number {
   return totalTilt(v)
 }
+
+/** 持久缓存命名空间 */
+export const STORE_NS = 'protractor'
+/** 可选盘面值 */
+export const DIAL_VALUES: readonly DialMode[] = ['half', 'full']
+/** 可选倾角测量方式值 */
+export const TILT_KIND_VALUES = ['edge', 'surface'] as const

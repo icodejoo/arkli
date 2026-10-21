@@ -6,12 +6,18 @@ import { showFailToast, showSuccessToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
 import CellPicker from '@/shared/CellPicker.vue'
 import type { CellOption } from '@/shared/cellPicker'
-import { decryptText, encryptText, type Encoding } from './logic'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
+import { oneOf } from '@/shared/persistValidators'
+import { decryptText, ENC_VALUES, encryptText, MODE_VALUES, STORE_NS, type Encoding } from './logic'
+
+/** 持久缓存 */
+const store = createToolStorage(STORE_NS)
 
 /** 方向：加密或解密 */
-const mode = ref<'encrypt' | 'decrypt'>('encrypt')
+const mode = usePersistedRef<'encrypt' | 'decrypt'>(store, 'mode', 'encrypt', oneOf(MODE_VALUES))
 /** 编码：Base64 或十六进制 */
-const enc = ref<Encoding>('base64')
+const enc = usePersistedRef<Encoding>(store, 'enc', 'base64', oneOf(ENC_VALUES))
 /** 方向选项 */
 const MODE_OPTIONS: CellOption[] = [
   { value: 'encrypt', label: '加密' },

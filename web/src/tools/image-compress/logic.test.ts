@@ -9,6 +9,7 @@ import {
   progressText,
   resultNote,
   roomLeft,
+  sanitizeOptions,
   type CompressOptions,
 } from './logic'
 
@@ -118,5 +119,21 @@ describe('其它', () => {
     expect(roomLeft(10, 20)).toBe(10)
     expect(roomLeft(60, 100)).toBe(0)
     expect(roomLeft(0, 100)).toBe(50)
+  })
+})
+
+describe('sanitizeOptions', () => {
+  it('合法缓存原样回填，目标体积不恢复', () => {
+    const o = sanitizeOptions({ format: 'png', quality: 60, maxEdge: 1080, useTarget: true, targetKb: 1, pngMode: 'palette', colors: 64, dither: true, keepExif: true })
+    expect(o).toEqual({ ...defaultOptions(), format: 'png', quality: 60, maxEdge: 1080, useTarget: true, pngMode: 'palette', colors: 64, dither: true, keepExif: true })
+  })
+  it('非法值回落默认', () => {
+    expect(sanitizeOptions({ format: 'gif', quality: 999, maxEdge: 7, colors: 1, dither: 'x' })).toEqual(defaultOptions())
+    expect(sanitizeOptions(null)).toEqual(defaultOptions())
+    expect(sanitizeOptions('abc')).toEqual(defaultOptions())
+  })
+  it('不能编码 WebP 时回落默认格式', () => {
+    expect(sanitizeOptions({ format: 'webp' }, false).format).toBe(defaultOptions().format)
+    expect(sanitizeOptions({ format: 'webp' }, true).format).toBe('webp')
   })
 })

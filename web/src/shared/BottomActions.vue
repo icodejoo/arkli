@@ -161,14 +161,17 @@ function onSelect(a: { key: BottomActionKey }): void {
 </template>
 
 <style lang="scss" scoped>
-/* 心电图折线动画参数：时长、周期宽度、不透明度 */
-$ba-ecg-duration: 1.4s; // 循环周期约 1.4s 一拍
-$ba-ecg-width: 120px; // 单个周期宽度，位移与 background-size 保持一致以首尾无缝循环
-$ba-ecg-opacity: 0.65; // 正常态心跳折线不透明度（白色半透明，适配各底色与亮暗主题且不抢文字）
-$ba-ecg-disabled-opacity: 0.35; // 禁用态下进一步压暗，避免与 0.5 opacity 叠加后刺眼
+/* 心电图加载态参数：折线静态铺满按钮，高光沿折线从右往左扫过并循环 */
+$ba-ecg-duration: 1.8s; // 高光扫一遍的时长
+$ba-ecg-width: 360px; // 折线图案一个周期的宽度（密集、接近满高的不规则波，横向平铺）
+$ba-ecg-base: rgba(255, 255, 255, 0.45); // 折线底色（白色半透明，适配各底色与亮暗主题且不抢文字）
+$ba-ecg-glow: #fff; // 高光色
+$ba-ecg-disabled-opacity: 0.6; // 禁用态整体再压暗，避免与按钮自身 0.5 透明度叠加后刺眼
 
-/* 内联心电图 SVG：基线居中 (y=16)，P-Q-R-S-T 典型波形，首尾水平高度一致保证 repeat-x 完美衔接 */
-$ba-ecg-svg: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 32' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M0 16 h32 l4 -3 l4 3 h6 l3 2 l6 -14 l6 24 l6 -12 h6 l6 -5 l8 5 h33'/%3E%3C/svg%3E";
+/* 内联心电图 SVG（参考常见心电图图标：多处尖峰、幅度高低不一、间有平线）。
+   拉伸到按钮高度，用 non-scaling-stroke 保证线宽不被拉变形；细线做底，粗线做高光蒙版 */
+$ba-ecg-svg-thin: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 360 32' preserveAspectRatio='none' fill='none' stroke='white' stroke-width='2' stroke-linejoin='round'%3E%3Cpath vector-effect='non-scaling-stroke' d='M0 16 L12 16 L16 9 L22 23 L30 3 L39 29 L45 11 L50 20 L54 12 L59 24 L63 16 L78 16 L82 12 L87 18 L93 4 L102 28 L108 14 L113 22 L118 8 L124 26 L131 16 L150 16 L154 10 L160 20 L166 2 L176 30 L183 9 L188 19 L192 13 L197 22 L202 15 L207 25 L214 6 L222 29 L228 16 L248 16 L252 11 L257 21 L263 5 L271 27 L276 13 L282 20 L287 10 L293 24 L299 16 L318 16 L322 9 L328 22 L335 3 L343 29 L349 12 L354 19 L360 16'/%3E%3C/svg%3E";
+$ba-ecg-svg-thick: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 360 32' preserveAspectRatio='none' fill='none' stroke='white' stroke-width='4.6' stroke-linejoin='round'%3E%3Cpath vector-effect='non-scaling-stroke' d='M0 16 L12 16 L16 9 L22 23 L30 3 L39 29 L45 11 L50 20 L54 12 L59 24 L63 16 L78 16 L82 12 L87 18 L93 4 L102 28 L108 14 L113 22 L118 8 L124 26 L131 16 L150 16 L154 10 L160 20 L166 2 L176 30 L183 9 L188 19 L192 13 L197 22 L202 15 L207 25 L214 6 L222 29 L228 16 L248 16 L252 11 L257 21 L263 5 L271 27 L276 13 L282 20 L287 10 L293 24 L299 16 L318 16 L322 9 L328 22 L335 3 L343 29 L349 12 L354 19 L360 16'/%3E%3C/svg%3E";
 
 /* 避开手势条 */
 .ba {
@@ -185,47 +188,78 @@ $ba-ecg-svg: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewB
   position: relative;
   overflow: hidden;
 
-  /* 文字层提升至伪元素之上，确保文字清晰可读 */
+  /* 文字单独提层，不随折线层重绘而抖 */
   :deep(.van-button__content) {
     position: relative;
     z-index: 1;
+    will-change: transform;
   }
 
-  /* 心跳折线背景层：从右往左无缝扫过，pointer-events: none 防止阻挡点击事件 */
+  /* 两层折线共用的铺法：SVG 当蒙版，横向平铺 */
+  &::before,
   &::after {
     content: '';
     position: absolute;
     inset: 0;
     pointer-events: none;
-    background-image: url($ba-ecg-svg);
-    background-repeat: repeat-x;
-    background-size: $ba-ecg-width 100%;
-    background-position: 0 50%;
-    opacity: $ba-ecg-opacity;
-    animation: ba-ecg-sweep $ba-ecg-duration linear infinite;
+    -webkit-mask-repeat: repeat-x;
+    mask-repeat: repeat-x;
+    -webkit-mask-size: $ba-ecg-width 100%;
+    mask-size: $ba-ecg-width 100%;
+    -webkit-mask-position: center;
+    mask-position: center;
   }
 
-  /* 禁用态下动画继续但适当降亮 */
+  /* 底层：细折线，静态 */
+  &::before,
+  &:active::before {
+    /* vant 的 .van-button::before 是按下遮罩（opacity:0、居中定位、带边框），这里全部重置 */
+    display: block; /* 禁用态下 vant 还会 display:none */
+    width: auto;
+    height: auto;
+    border: 0;
+    border-radius: 0;
+    transform: none;
+    opacity: 1;
+    background-color: $ba-ecg-base;
+    -webkit-mask-image: url($ba-ecg-svg-thin);
+    mask-image: url($ba-ecg-svg-thin);
+  }
+
+  /* 高光层：同一条折线的加粗版，只在一条横向渐变带经过处可见，
+     所以高光贴着线条起伏流动，流过的地方线条像变粗了 */
+  &::after {
+    background-image: linear-gradient(90deg, transparent 42%, $ba-ecg-glow 50%, transparent 58%);
+    background-repeat: no-repeat;
+    background-size: 300% 100%;
+    -webkit-mask-image: url($ba-ecg-svg-thick);
+    mask-image: url($ba-ecg-svg-thick);
+    animation: ba-ecg-glow $ba-ecg-duration linear infinite;
+  }
+
+  &.van-button--disabled::before,
   &.van-button--disabled::after,
+  &:disabled::before,
   &:disabled::after {
     opacity: $ba-ecg-disabled-opacity;
   }
 }
 
-/* 心电图自右向左平移关键帧（位移一个完整周期宽度以实现无缝循环） */
-@keyframes ba-ecg-sweep {
+/* 高光自右向左扫过折线（背景 300% 宽，位置 0%→100% 带子从右移到左） */
+@keyframes ba-ecg-glow {
   from {
-    background-position: 0 50%;
+    background-position: 0% 0;
   }
   to {
-    background-position: -$ba-ecg-width 50%;
+    background-position: 100% 0;
   }
 }
 
-/* 用户偏好减少动画时：静止展示心跳折线，避免视觉眩晕 */
+/* 用户偏好减少动画时：只显示静态折线 */
 @media (prefers-reduced-motion: reduce) {
   .ba-main--loading::after {
     animation: none;
+    background-image: none;
   }
 }
 </style>

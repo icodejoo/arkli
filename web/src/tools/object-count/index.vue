@@ -9,6 +9,9 @@ import { showToast } from 'vant'
 import { fitMaxEdge } from '@/shared/image-calc'
 import { createCanvas, drawScaled, loadBitmap, EDIT_BASIC, pickImages, releaseCanvas, type PickedImage } from '@/shared/image-io'
 import { shootPhoto } from '@/shared/shootPhoto'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
+import { isBool } from '@/shared/persistValidators'
 import {
   binarize,
   defaultMinArea,
@@ -19,6 +22,7 @@ import {
   MAX_EDGE,
   otsu,
   sortMarkers,
+  STORE_NS,
   toGray,
   toggleAt,
   visibleMarkers,
@@ -70,7 +74,7 @@ const mode = ref<ObjectMode>('dark')
 /** 最小面积 */
 const minArea = ref(4)
 /** 是否显示二值图 */
-const showMask = ref(false)
+const showMask = usePersistedRef(createToolStorage(STORE_NS), 'showMask', false, isBool)
 /** 自动检测结果 */
 const auto = shallowRef<Marker[]>([])
 /** 手动修正 */

@@ -1,7 +1,10 @@
 <script setup lang="ts">
 // 密码生成器：选长度与字符集，一次生成 1~20 个，可逐个复制
 import BottomActions from '@/shared/BottomActions.vue'
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
+import { inRange } from '@/shared/persistValidators'
 import { showFailToast, showSuccessToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
 import { clipboardWrite } from '@/native/system'
@@ -15,6 +18,8 @@ import {
   MAX_LENGTH,
   MIN_COUNT,
   MIN_LENGTH,
+  sanitizeOptions,
+  STORE_NS,
   strengthOf,
   validateOptions,
   type CharsetKey,
@@ -37,10 +42,13 @@ const STRENGTH_VIEW: Record<Strength, { text: string; color: string }> = {
 /** 字符集键列表，用于渲染 */
 const SET_KEYS = Object.keys(CHARSETS) as CharsetKey[]
 
-/** 选项（可编辑副本） */
-const opts = reactive<PasswordOptions>({ ...DEFAULT_OPTIONS, sets: { ...DEFAULT_OPTIONS.sets } })
+/** 持久缓存 */
+const store = createToolStorage(STORE_NS)
+/** 选项（可编辑副本，读缓存并自动回写） */
+const opts = reactive<PasswordOptions>(sanitizeOptions(store.get('opts', null)))
+watch(opts, (v) => void store.set('opts', v), { deep: true })
 /** 批量个数 */
-const count = ref(1)
+const count = usePersistedRef(store, 'count', 1, (x) => inRange(x, { min: MIN_COUNT, max: MAX_COUNT }))
 /** 生成结果 */
 const list = ref<string[]>([])
 

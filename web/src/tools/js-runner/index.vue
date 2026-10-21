@@ -3,11 +3,14 @@
 import BottomActions from '@/shared/BottomActions.vue'
 import CellPicker from '@/shared/CellPicker.vue'
 import type { CellOption } from '@/shared/cellPicker'
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { showToast } from 'vant'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
+import { oneOf } from '@/shared/persistValidators'
 import { DEFAULT_TIMEOUT_MS, runCode, type LogEntry, type RunHandle, type RunStatus } from './logic'
 
-/** 本地保存代码用的 key */
+/** 旧版本地保存代码用的 key（仅用于迁移） */
 const STORAGE_KEY = 'arkli.js-runner.code'
 /** 可选超时（秒） */
 const TIMEOUT_OPTIONS = [3, 5, 10, 30]
@@ -24,19 +27,14 @@ console.log([1, 2, 3].map((n) => n * 2))
 console.log({ name: 'arkli', ok: true })
 `
 
-/** 读取上次保存的代码，不可用时给示例 */
-function loadCode(): string {
-  try {
-    return localStorage.getItem(STORAGE_KEY) ?? SAMPLE
-  } catch {
-    return SAMPLE
-  }
-}
-
-/** 代码内容 */
-const code = ref(loadCode())
+/** 本工具的持久缓存 */
+const store = createToolStorage('js-runner')
+// 旧版把代码直接存在 localStorage 的单独键里，一次性迁入（原文即代码，不做 JSON 解析）
+store.adoptLegacy(STORAGE_KEY, 'code', (raw) => raw)
+/** 代码内容，改动后自动记住 */
+const code = usePersistedRef(store, 'code', SAMPLE, (v) => typeof v === 'string')
 /** 超时秒数 */
-const timeoutSec = ref(DEFAULT_TIMEOUT_MS / MS_PER_SEC)
+const timeoutSec = usePersistedRef(store, 'timeoutSec', DEFAULT_TIMEOUT_MS / MS_PER_SEC, oneOf(TIMEOUT_OPTIONS))
 /** 输出（按产生顺序，显示时倒序） */
 const logs = ref<LogEntry[]>([])
 /** 是否正在运行 */
@@ -54,15 +52,6 @@ const statusText = computed(() => {
   if (!s) return ''
   const map: Record<RunStatus, string> = { ok: '执行完成', error: '执行出错', timeout: '执行超时', cancelled: '已终止' }
   return `${map[s.status]} · ${s.ms} ms${s.error ? ' · ' + s.error : ''}`
-})
-
-// 代码变化后存起来，下次打开还在
-watch(code, (v) => {
-  try {
-    localStorage.setItem(STORAGE_KEY, v)
-  } catch {
-    // 存储不可用就算了
-  }
 })
 
 onBeforeUnmount(() => handle?.cancel())

@@ -147,3 +147,18 @@ export function summarize(text: string, n: number): SummaryResult {
     .sort((p, q) => p - q)
   return { sentences: top.map((k) => sentences[pool[k]]), total: all.length }
 }
+
+/** 工具持久缓存的命名空间 */
+export const TOOL_NS = 'summarize'
+/** 最多可选摘要句数 */
+export const MAX_N = 10
+
+/**
+ * 校验缓存的摘要句数：1 到 MAX_N 的整数。
+ *
+ * @param v 缓存值
+ * @returns 合法返回 true
+ */
+export function isValidN(v: unknown): v is number {
+  return typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= MAX_N
+}

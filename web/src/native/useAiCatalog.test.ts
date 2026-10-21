@@ -6,7 +6,7 @@ import type { AiProviders } from './ai'
 vi.mock('@/native/bridge', () => ({ on: () => () => undefined, call: vi.fn(), isNativeAvailable: () => false }))
 
 import { useModelsStore } from '@/stores/models'
-import { CHOICE_KEY_PREFIX } from '@/shared/modelPicker'
+import { CHOICE_KEY_PREFIX, CHOICE_NS } from '@/shared/modelPicker'
 import { useAiCatalog } from './useAiCatalog'
 import { useAiProviders } from './useAiProviders'
 import { resetModelChoiceCache } from './useModelChoice'
@@ -51,6 +51,7 @@ function installStorage(init: Record<string, string> = {}): Map<string, string> 
   ;(globalThis as { localStorage?: unknown }).localStorage = {
     getItem: (k: string) => m.get(k) ?? null,
     setItem: (k: string, v: string) => void m.set(k, v),
+    removeItem: (k: string) => void m.delete(k),
   }
   return m
 }
@@ -107,6 +108,6 @@ describe('useAiCatalog', () => {
     await ai.ensure()
     a.set('local-qwen')
     expect(b.choice.value).toBe('local-qwen')
-    expect(m.get(CHOICE_KEY_PREFIX + 'translate')).toBe('local-qwen')
+    expect(m.get(CHOICE_NS + '_translate')).toBe('"local-qwen"')
   })
 })

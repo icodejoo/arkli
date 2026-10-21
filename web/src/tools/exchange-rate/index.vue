@@ -3,8 +3,10 @@
 import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { isNativeAvailable } from '@/native/bridge'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import {
-  CURRENCIES, currencyLabel, decimalsFor, fetchRates, formatCachedAt, formatConverted, formatRate, parseAmount, parseRate, readCache,
+  CURRENCIES, STORE_NS, currencyLabel, decimalsFor, fetchRates, formatCachedAt, formatConverted, formatRate, parseAmount, parseRate, readCache,
   writeCache, type RateTable,
 } from './logic'
 
@@ -15,10 +17,14 @@ type Side = 'from' | 'to'
 const inApp = isNativeAvailable()
 /** 金额输入 */
 const amount = ref('100')
+/** 持久缓存（币种选择也存这里） */
+const store = createToolStorage(STORE_NS)
+/** 币种代码是否在币种表里 */
+const isCurrency = (v: string): boolean => CURRENCIES.some((c) => c.code === v)
 /** 源币种 */
-const from = ref('CNY')
+const from = usePersistedRef<string>(store, 'from', 'CNY', isCurrency)
 /** 目标币种 */
-const to = ref('USD')
+const to = usePersistedRef<string>(store, 'to', 'USD', isCurrency)
 /** 当前汇率表（联网或缓存） */
 const table = ref<RateTable | null>(null)
 /** 汇率表来自缓存时的缓存时间戳，联网取到的为 null */

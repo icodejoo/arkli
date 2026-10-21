@@ -1,14 +1,32 @@
 <script setup lang="ts">
 // 单位换算：选类别、输入数值，下方一次列出该类全部单位的结果，点哪行就以哪个单位为输入
-import { computed, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
+import CellPicker from '@/shared/CellPicker.vue'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { CATEGORIES, convert, formatNumber, parseNumber } from './logic'
 
-/** 当前类别 id */
-const catId = ref(CATEGORIES[0].id)
-/** 当前输入单位 id */
-const fromId = ref(CATEGORIES[0].units[0].id)
+/** 本工具的持久缓存 */
+const store = createToolStorage('unit-convert')
+/** 当前类别 id（记住上次选的类别） */
+const catId = usePersistedRef(store, 'catId', CATEGORIES[0].id, (v) => CATEGORIES.some((c) => c.id === v))
+/** 当前输入单位 id（默认取当前类别第一个单位） */
+const fromId = ref((CATEGORIES.find((c) => c.id === catId.value) ?? CATEGORIES[0]).units[0].id)
 /** 输入文本 */
 const text = ref('1')
+
+/** 结果分组标题里的操作说明 */
+const RESULT_HINT = '点任意一行，改以该单位作为输入'
+
+/** 类别选项 */
+const catOptions = CATEGORIES.map((c) => ({ value: c.id, label: c.name }))
+
+/** 数值输入框实例，进页面后自动聚焦 */
+const field = ref<{ focus: () => void } | null>(null)
+
+onMounted(() => {
+  void nextTick(() => field.value?.focus())
+})
 
 /** 当前类别 */
 const cat = computed(() => CATEGORIES.find((c) => c.id === catId.value) ?? CATEGORIES[0])
@@ -39,15 +57,14 @@ function pickCat(id: string | number): void {
 
 <template>
   <div class="tool-page">
-    <van-tabs :active="catId" type="card" shrink @click-tab="({ name }) => pickCat(name)">
-      <van-tab v-for="c in CATEGORIES" :key="c.id" :name="c.id" :title="c.name" />
-    </van-tabs>
-
-    <tool-group>
+    <tool-group title="换算参数">
+      <cell-picker :model-value="catId" title="类别" :options="catOptions" @update:model-value="pickCat" />
       <van-field
+        ref="field"
         v-model="text"
         label="数值"
         type="text"
+        input-align="right"
         inputmode="decimal"
         placeholder="输入数值"
         autocomplete="off"
@@ -58,6 +75,9 @@ function pickCat(id: string | number): void {
     </tool-group>
 
     <tool-group>
+      <template #title>
+        换算结果<span class="result-hint">（{{ RESULT_HINT }}）</span>
+      </template>
       <van-cell
         v-for="r in rows"
         :key="r.id"
@@ -68,11 +88,16 @@ function pickCat(id: string | number): void {
         @click="fromId = r.id"
       />
     </tool-group>
-    <p class="tool-hint">点任意一行，改以该单位作为输入。</p>
   </div>
 </template>
 
 <style lang="scss" scoped>
+/* 结果标题里的说明：小号字 + 主题色 */
+.result-hint {
+  font-size: 12px;
+  color: var(--c-primary);
+}
+
 // 提示与输入框之间留点距离
 .note {
   margin-top: 8px;

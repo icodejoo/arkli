@@ -8,6 +8,8 @@ import { showFailToast, showToast } from 'vant'
 import ImageThumbList from '@/shared/ImageThumbList.vue'
 import ImageResultList from '@/shared/ImageResultList.vue'
 import { useImageResults } from '@/shared/useImageResults'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { shootPhoto } from '@/shared/shootPhoto'
 import { baseName, formatBytes } from '@/shared/image-calc'
 import { canvasToBlob, createCanvas, loadBitmap, pickImages, releaseCanvas, saveBlob, type PickedImage } from '@/shared/image-io'
@@ -61,8 +63,15 @@ interface ImageDecoderLike {
 /** ImageDecoder 构造函数 */
 type ImageDecoderCtor = new (init: { data: Uint8Array; type: string }) => ImageDecoderLike
 
+/** 持久缓存 */
+const store = createToolStorage('gif-tool')
+/** 是否合法的十六进制色 */
+const isHexColor = (v: unknown): boolean => typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v)
+/** 是否布尔 */
+const isBool = (v: unknown): boolean => typeof v === 'boolean'
+
 /** 当前页签：合成 / 分解 */
-const tab = ref<'compose' | 'split'>('compose')
+const tab = usePersistedRef<'compose' | 'split'>(store, 'tab', 'compose', (v) => v === 'compose' || v === 'split')
 
 // ---------- 合成 ----------
 
@@ -84,21 +93,21 @@ const images = ref<PickedImage[]>([])
 /** 每张图的单独延迟（毫秒），与 images 同下标 */
 const delays = ref<number[]>([])
 /** 统一延迟（毫秒） */
-const uniformMs = ref(DEFAULT_DELAY_MS)
+const uniformMs = usePersistedRef(store, 'uniformMs', DEFAULT_DELAY_MS, (v) => Number.isFinite(v) && v >= DELAY_MIN_MS && v <= DELAY_MAX_MS)
 /** 是否逐帧设置延迟 */
-const perFrame = ref(false)
+const perFrame = usePersistedRef(store, 'perFrame', false, isBool)
 /** 播放顺序 */
-const order = ref<PlayOrder>('normal')
+const order = usePersistedRef<PlayOrder>(store, 'order', 'normal', (v) => ORDER_OPTIONS.some((o) => o.value === v))
 /** 统一尺寸方式 */
-const fit = ref<FitMode>('contain')
+const fit = usePersistedRef<FitMode>(store, 'fit', 'contain', (v) => FIT_OPTIONS.some((o) => o.value === v))
 /** 画面长边上限（像素） */
-const maxEdge = ref(DEFAULT_MAX_EDGE)
+const maxEdge = usePersistedRef(store, 'maxEdge', DEFAULT_MAX_EDGE, (v) => Number.isFinite(v) && v >= MIN_MAX_EDGE && v <= DEFAULT_MAX_EDGE)
 /** 背景色 */
-const bg = ref(BG_DEFAULT)
+const bg = usePersistedRef(store, 'bg', BG_DEFAULT, isHexColor)
 /** 循环：true 无限循环，false 只播一次 */
-const loopForever = ref(true)
+const loopForever = usePersistedRef(store, 'loopForever', true, isBool)
 /** 是否抖动 */
-const dither = ref(false)
+const dither = usePersistedRef(store, 'dither', false, isBool)
 /** 合成结果与批处理状态 */
 const compose = useImageResults()
 /** 合成进度文案 */

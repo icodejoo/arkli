@@ -5,6 +5,9 @@ import ModelPicker from '@/shared/ModelPicker.vue'
 import CellPicker from '@/shared/CellPicker.vue'
 import ColorPicker from '@/shared/ColorPicker.vue'
 import type { CellOption } from '@/shared/cellPicker'
+import { isHexColor, oneOf } from '@/shared/persistValidators'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import ModelMissingNotice from '@/shared/ModelMissingNotice.vue'
 import { computed, onBeforeUnmount, onDeactivated, ref, shallowRef } from 'vue'
 import { showToast } from 'vant'
@@ -29,11 +32,12 @@ import {
   REFINE_HINT,
   REFINE_OPTIONS,
   bgColorOf,
-  loadRefine,
+  DEFAULT_REFINE,
+  normalizeRefine,
+  REFINE_STORAGE_KEY,
   modeOfProvider,
   outputName,
   resultUrl,
-  saveRefine,
   shouldRerunOnRefine,
   summaryOf,
   type BgKind,
@@ -60,12 +64,16 @@ const busy = ref(false)
 const result = shallowRef<MattingResult | null>(null)
 /** 背景选择器选项 */
 const BG_CHOICES: readonly CellOption[] = BG_OPTIONS.map((o) => ({ value: o.kind, label: o.label }))
+/** 本工具的持久缓存 */
+const store = createToolStorage(TOOL_ID)
 /** 背景选项 */
-const bgKind = ref<BgKind>('transparent')
+const bgKind = usePersistedRef<BgKind>(store, 'bgKind', 'transparent', oneOf(BG_CHOICES))
 /** 自定义背景色 */
-const customHex = ref(DEFAULT_CUSTOM_HEX)
-/** 边缘细化档位（记在 localStorage，没有记录用默认“强”） */
-const refine = ref<MattingRefine>(loadRefine())
+const customHex = usePersistedRef(store, 'customHex', DEFAULT_CUSTOM_HEX, isHexColor)
+// 旧版把细化档位直接存在单独键里，一次性迁入
+store.adoptLegacy(REFINE_STORAGE_KEY, 'refine', normalizeRefine)
+/** 边缘细化档位（自动记住，没有记录用默认“强”） */
+const refine = usePersistedRef<MattingRefine>(store, 'refine', DEFAULT_REFINE, oneOf(REFINE_OPTIONS))
 /** 细化档位在分段控件里的下标 */
 const refineIndex = computed(() => REFINE_OPTIONS.findIndex((o) => o.value === refine.value))
 /** 当前抠图的取消控制器 */
@@ -101,7 +109,6 @@ function onRefine(index: number): void {
   if (!next) return
   const prev = refine.value
   refine.value = next
-  saveRefine(next)
   if (!shouldRerunOnRefine(prev, next, result.value !== null) || !image.value) return
   if (busy.value) cancel()
   void run()

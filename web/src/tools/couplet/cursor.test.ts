@@ -1,16 +1,23 @@
 import { describe, expect, it } from 'vitest'
-import { CURSOR_KEY_PREFIX, gcd, type Draw, indexAt, loadCursor, nextDraw, saveCursor, strideFor, type CursorStorage, type PoolCursor } from './cursor'
+import { createToolStorage, type StorageLike } from '@/shared/toolStorage'
+import { CURSOR_KEY_PREFIX, gcd, type Draw, indexAt, LEGACY_CURSOR_KEY_PREFIX, loadCursor, nextDraw, saveCursor, strideFor, type PoolCursor } from './cursor'
 
 /** 内存存储 */
-function memStore(init: Record<string, string> = {}): CursorStorage & { data: Record<string, string> } {
+function memBackend(init: Record<string, string> = {}): StorageLike & { data: Record<string, string> } {
   const data = { ...init }
   return {
     data,
+    get length() {
+      return Object.keys(data).length
+    },
+    key: (i) => Object.keys(data)[i] ?? null,
     getItem: (k) => data[k] ?? null,
     setItem: (k, v) => void (data[k] = v),
     removeItem: (k) => void delete data[k],
   }
 }
+/** 命名空间前缀，与 cursor.ts 的 NS 一致 */
+const NS_PREFIX = 'couplet_'
 
 /** 循环随机源（测试可复现） */
 function seq(...vals: number[]): () => number {
@@ -98,20 +105,31 @@ describe('nextDraw', () => {
 describe('存取游标', () => {
   const c: PoolCursor = { seed: 1, k: 2, n: 3, v: 4, last: 5 }
   it('存了能读回', () => {
-    const st = memStore()
+    const m = memBackend()
+    const st = createToolStorage('couplet', m)
     saveCursor('全部', c, st)
-    expect(st.data[CURSOR_KEY_PREFIX + '全部']).toBeTruthy()
+    expect(m.data[NS_PREFIX + CURSOR_KEY_PREFIX + '全部']).toBeTruthy()
     expect(loadCursor('全部', st)).toEqual(c)
   })
+  it('旧键一次性迁移', () => {
+    const m = memBackend({ [LEGACY_CURSOR_KEY_PREFIX + 'x']: JSON.stringify(c) })
+    expect(loadCursor('x', createToolStorage('couplet', m))).toEqual(c)
+    expect(m.data[LEGACY_CURSOR_KEY_PREFIX + 'x']).toBeUndefined()
+    expect(m.data[NS_PREFIX + CURSOR_KEY_PREFIX + 'x']).toBeTruthy()
+  })
   it('损坏或字段不对当作没有', () => {
-    expect(loadCursor('x', memStore({ [CURSOR_KEY_PREFIX + 'x']: '{oops' }))).toBeNull()
-    expect(loadCursor('x', memStore({ [CURSOR_KEY_PREFIX + 'x']: JSON.stringify({ seed: 'a' }) }))).toBeNull()
-    expect(loadCursor('x', memStore())).toBeNull()
+    const mk = (raw?: string): ReturnType<typeof createToolStorage> =>
+      createToolStorage('couplet', memBackend(raw === undefined ? {} : { [NS_PREFIX + CURSOR_KEY_PREFIX + 'x']: raw }))
+    expect(loadCursor('x', mk('{oops'))).toBeNull()
+    expect(loadCursor('x', mk(JSON.stringify({ seed: 'a' })))).toBeNull()
+    expect(loadCursor('x', mk())).toBeNull()
   })
   it('存储不可用或抛错时不崩', () => {
-    expect(loadCursor('x', undefined)).toBeNull()
-    saveCursor('x', c, undefined)
-    const boom: CursorStorage = {
+    expect(loadCursor('x', createToolStorage('couplet', null))).toBeNull()
+    saveCursor('x', c, createToolStorage('couplet', null))
+    const boom = createToolStorage('couplet', {
+      length: 0,
+      key: () => null,
       getItem: () => {
         throw new Error('no')
       },
@@ -119,7 +137,7 @@ describe('存取游标', () => {
         throw new Error('no')
       },
       removeItem: () => undefined,
-    }
+    })
     expect(loadCursor('x', boom)).toBeNull()
     expect(() => saveCursor('x', c, boom)).not.toThrow()
   })

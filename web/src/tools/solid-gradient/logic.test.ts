@@ -4,6 +4,9 @@ import {
   checkSize,
   colorAt,
   gradientCss,
+  isValidAngle,
+  isValidColor,
+  isValidStops,
   linearLine,
   normalizeStops,
   parseHex,
@@ -156,5 +159,29 @@ describe('addStop / removeStop', () => {
     const three = addStop(BW)
     expect(removeStop(three, 1).map((s) => s.pos)).toEqual([0, 100])
     expect(removeStop(three, 9)).toHaveLength(3)
+  })
+})
+
+describe('缓存校验', () => {
+  it('色值：能解析才合法', () => {
+    expect(isValidColor('#4f8cff')).toBe(true)
+    expect(isValidColor('xyz')).toBe(false)
+    expect(isValidColor(1)).toBe(false)
+  })
+  it('色标：数量、颜色、位置都要合法', () => {
+    const ok = [
+      { color: '#fff', pos: 0 },
+      { color: '#000', pos: 100 },
+    ]
+    expect(isValidStops(ok)).toBe(true)
+    expect(isValidStops([ok[0]])).toBe(false)
+    expect(isValidStops([ok[0], { color: 'xyz', pos: 5 }])).toBe(false)
+    expect(isValidStops([ok[0], { color: '#000', pos: 120 }])).toBe(false)
+    expect(isValidStops('x')).toBe(false)
+  })
+  it('角度：0~360 有限数', () => {
+    expect(isValidAngle(135)).toBe(true)
+    expect(isValidAngle(361)).toBe(false)
+    expect(isValidAngle(NaN)).toBe(false)
   })
 })

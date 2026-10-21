@@ -1,12 +1,13 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { FAVORITES_KEY, loadFavorites, useFavoritesStore } from './favorites'
+import { FAVORITES_KEY, LEGACY_FAVORITES_KEY, loadFavorites, useFavoritesStore } from './favorites'
 
 /** 内存版 Storage 桩（测试环境是 node，没有 localStorage），方法可被 spy 替换 */
 const store = new Map<string, string>()
 const fakeStorage = {
   getItem: vi.fn((k: string) => store.get(k) ?? null),
   setItem: vi.fn((k: string, v: string) => void store.set(k, v)),
+  removeItem: vi.fn((k: string) => void store.delete(k)),
   clear: () => store.clear(),
 }
 
@@ -81,6 +82,11 @@ describe('loadFavorites 兜底', () => {
   it('混入非字符串与重复项：过滤并去重', () => {
     localStorage.setItem(FAVORITES_KEY, JSON.stringify([A, 3, null, A, B]))
     expect(loadFavorites()).toEqual([A, B])
+  })
+  it('旧键数据一次性迁移到新键', () => {
+    localStorage.setItem(LEGACY_FAVORITES_KEY, JSON.stringify([A, B]))
+    expect(loadFavorites()).toEqual([A, B])
+    expect(JSON.parse(localStorage.getItem(FAVORITES_KEY)!)).toEqual([A, B])
   })
   it('读取抛错：空数组', () => {
     const spy = vi.spyOn(fakeStorage, 'getItem').mockImplementation(() => {

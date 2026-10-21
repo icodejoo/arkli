@@ -138,3 +138,8 @@ export function coverRect(srcW: number, srcH: number, dstW: number, dstH: number
   const h = dstH / k
   return { x: (srcW - w) / 2, y: (srcH - h) / 2, w, h }
 }
+
+/** 持久缓存命名空间 */
+export const STORE_NS = 'phantom-tank'
+/** 可选预览背景值 */
+export const PREVIEW_BG_VALUES = ['white', 'black'] as const

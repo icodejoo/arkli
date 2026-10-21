@@ -1,16 +1,20 @@
-import { beforeEach, describe, expect, it } from 'vitest'
-import { LANGS_STORAGE_KEY } from './data'
+import { describe, expect, it } from 'vitest'
+import { createToolStorage, type StorageLike } from '@/shared/toolStorage'
+import { LANGS_KEY, LEGACY_LANGS_KEY } from './data'
 import { defaultPair, isLatestRun, MSG_BAD_PARAMS, MSG_FAILED, MSG_NOT_READY, parsePair, readPair, swapPair, swapTexts, translateErrorMessage, writePair } from './logic'
 
-/** 内存版 localStorage（node 环境没有） */
-function stubStorage(): void {
-  const m = new Map<string, string>()
-  globalThis.localStorage = {
-    getItem: (k: string) => m.get(k) ?? null,
-    setItem: (k: string, v: string) => void m.set(k, v),
-    removeItem: (k: string) => void m.delete(k),
-    clear: () => m.clear(),
-  } as unknown as Storage
+/** 内存版存储后端 */
+function memBackend(init: Record<string, string> = {}): StorageLike {
+  const m = new Map<string, string>(Object.entries(init))
+  return {
+    getItem: (k) => m.get(k) ?? null,
+    setItem: (k, v) => void m.set(k, v),
+    removeItem: (k) => void m.delete(k),
+    key: (i) => [...m.keys()][i] ?? null,
+    get length() {
+      return m.size
+    },
+  }
 }
 
 describe('语言选择（页面部分）', () => {
@@ -23,7 +27,6 @@ describe('语言选择（页面部分）', () => {
 })
 
 describe('存取', () => {
-  beforeEach(stubStorage)
   it('parsePair：合法值通过，脏数据回落默认', () => {
     expect(parsePair('{"src":"fr","tgt":"es"}')).toEqual({ src: 'fr', tgt: 'es' })
     expect(parsePair(null)).toEqual(defaultPair())
@@ -33,21 +36,23 @@ describe('存取', () => {
     expect(parsePair('{"src":"de","tgt":"ja"}')).toEqual({ src: 'de', tgt: 'ja' })
   })
   it('write 后 read 一致，键名固定', () => {
-    writePair({ src: 'ru', tgt: 'ar' })
-    expect(localStorage.getItem(LANGS_STORAGE_KEY)).toBe('{"src":"ru","tgt":"ar"}')
-    expect(readPair()).toEqual({ src: 'ru', tgt: 'ar' })
+    const b = memBackend()
+    const store = createToolStorage('translate', b)
+    writePair(store, { src: 'ru', tgt: 'ar' })
+    expect(b.getItem('translate_' + LANGS_KEY)).toBe('{"src":"ru","tgt":"ar"}')
+    expect(readPair(store)).toEqual({ src: 'ru', tgt: 'ar' })
   })
-  it('storage 抛错时不崩，读回默认', () => {
-    globalThis.localStorage = {
-      getItem: () => {
-        throw new Error('x')
-      },
-      setItem: () => {
-        throw new Error('x')
-      },
-    } as unknown as Storage
-    expect(() => writePair(defaultPair())).not.toThrow()
-    expect(readPair()).toEqual(defaultPair())
+  it('旧键一次性迁移', () => {
+    const b = memBackend({ [LEGACY_LANGS_KEY]: '{"src":"fr","tgt":"es"}' })
+    const store = createToolStorage('translate', b)
+    expect(readPair(store)).toEqual({ src: 'fr', tgt: 'es' })
+    expect(b.getItem(LEGACY_LANGS_KEY)).toBeNull()
+  })
+  it('缓存值非法时回落默认；后端不可用时不崩', () => {
+    expect(readPair(createToolStorage('translate', memBackend({ ['translate_' + LANGS_KEY]: '{"src":"xx","tgt":"fr"}' })))).toEqual(defaultPair())
+    const store = createToolStorage('translate', null)
+    expect(() => writePair(store, defaultPair())).not.toThrow()
+    expect(readPair(store)).toEqual(defaultPair())
   })
 })
 

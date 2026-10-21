@@ -8,9 +8,14 @@ import { computed, ref } from 'vue'
 import { showToast } from 'vant'
 import ImageResultList from '@/shared/ImageResultList.vue'
 import { useImageResults } from '@/shared/useImageResults'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
+import { inRange, isHexColor } from '../typing-board/logic'
 import { canvasToBlob, createCanvas, releaseCanvas } from '@/shared/image-io'
 import { alignX, BG_PRESETS, footerFontSize, footerHeight, gradientLine, layoutPages, type LayoutOptions, type Page, type TextAlign } from './logic'
 
+/** 本工具的持久缓存 */
+const store = createToolStorage('text-image')
 /** 系统字体栈，不打包字体 */
 const FONT_FAMILY = '-apple-system, "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif'
 /** 宽度预设 */
@@ -39,24 +44,24 @@ const NAME_PREFIX = 'text'
 /** 输入文字 */
 const text = ref('')
 /** 宽度 */
-const width = ref(1080)
+const width = usePersistedRef(store, 'width', 1080, (v) => WIDTH_OPTIONS.includes(v))
 /** 字号 */
-const fontSize = ref(44)
+const fontSize = usePersistedRef(store, 'fontSize', 44, (v) => inRange(v, 20, 96))
 /** 行距倍数 */
-const lineHeight = ref(1.7)
+const lineHeight = usePersistedRef(store, 'lineHeight', 1.7, (v) => inRange(v, 1, 2.4))
 /** 内边距 */
-const padding = ref(72)
+const padding = usePersistedRef(store, 'padding', 72, (v) => inRange(v, 0, 200))
 /** 对齐 */
-const align = ref<TextAlign>('left')
+const align = usePersistedRef<TextAlign>(store, 'align', 'left', (v) => ALIGN_OPTIONS.some((o) => o.value === v))
 /** 文字色 */
-const color = ref(BG_PRESETS[0].text)
+const color = usePersistedRef(store, 'color', BG_PRESETS[0].text, isHexColor)
 /** 背景起止色 */
-const c1 = ref(BG_PRESETS[0].c1)
-const c2 = ref(BG_PRESETS[0].c2)
+const c1 = usePersistedRef(store, 'c1', BG_PRESETS[0].c1, isHexColor)
+const c2 = usePersistedRef(store, 'c2', BG_PRESETS[0].c2, isHexColor)
 /** 页脚水印文字 */
 const footer = ref('')
 /** 单张高度上限 */
-const heightCap = ref(0)
+const heightCap = usePersistedRef(store, 'heightCap', 0, (v) => CAP_OPTIONS.some((o) => o.value === v))
 /** 结果与批处理状态 */
 const { results, busy, saving, process, saveAll, clear } = useImageResults()
 

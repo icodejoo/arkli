@@ -4,6 +4,8 @@
  */
 import { ref } from 'vue'
 import { setNativeTheme } from '@/native/theme'
+import { APP_NS, appStorage } from './appStorage'
+import type { ToolStorage } from './toolStorage'
 
 /** 主题模式取值（原生侧 ThemeMode 同名同值，各自一处定义） */
 export const THEME_MODES = {
@@ -15,20 +17,16 @@ export const THEME_MODES = {
 /** 主题模式 */
 export type ThemeMode = (typeof THEME_MODES)[keyof typeof THEME_MODES]
 
-/** localStorage 里存主题模式的键（public/theme-init.js 里也写了同一个字面量，theme.test.ts 会核对一致） */
-export const THEME_STORAGE_KEY = 'arkli.theme'
+/** app 命名空间下存主题模式的键（不含前缀） */
+const THEME_ITEM = 'theme'
+/** localStorage 里主题模式的完整键（public/theme-init.js 里也写了同一个字面量，theme.test.ts 会核对一致） */
+export const THEME_STORAGE_KEY = `${APP_NS}_${THEME_ITEM}`
+/** 旧版主题键（原文存模式字符串），读取时一次性迁移；theme-init.js 首帧也兼容它 */
+export const LEGACY_THEME_KEY = 'arkli.theme'
 /** Vant 暗色主题的 class 名 */
 export const DARK_CLASS = 'van-theme-dark'
 /** 深色模式媒体查询 */
 export const DARK_QUERY = '(prefers-color-scheme: dark)'
-
-/** 键值存储的最小形状，便于单测注入 */
-export interface ThemeStorage {
-  /** 读 */
-  getItem(key: string): string | null
-  /** 写 */
-  setItem(key: string, value: string): void
-}
 
 /**
  * 把任意值规范成合法模式。
@@ -55,41 +53,25 @@ export function resolveDark(mode: ThemeMode, systemDark: boolean): boolean {
   return systemDark
 }
 
-/** 取浏览器 localStorage；不可用（隐私模式等）返回 undefined */
-function defaultStorage(): ThemeStorage | undefined {
-  try {
-    return localStorage
-  } catch {
-    return undefined
-  }
-}
-
 /**
- * 读已存的模式；没存过、存储不可用或数据非法都回落到跟随系统。
+ * 读已存的模式（顺带迁移旧键）；没存过、存储不可用或数据非法都回落到跟随系统。
  *
- * @param storage 存储，默认 localStorage
+ * @param store 持久缓存，默认 app 命名空间
  * @returns 主题模式
  */
-export function loadThemeMode(storage: ThemeStorage | undefined = defaultStorage()): ThemeMode {
-  try {
-    return parseThemeMode(storage?.getItem(THEME_STORAGE_KEY))
-  } catch {
-    return THEME_MODES.SYSTEM
-  }
+export function loadThemeMode(store: ToolStorage = appStorage): ThemeMode {
+  store.adoptLegacy(LEGACY_THEME_KEY, THEME_ITEM, parseThemeMode)
+  return parseThemeMode(store.get<unknown>(THEME_ITEM, null))
 }
 
 /**
  * 写模式；存储不可用时静默忽略（本次会话内仍然生效）。
  *
  * @param mode 主题模式
- * @param storage 存储，默认 localStorage
+ * @param store 持久缓存，默认 app 命名空间
  */
-export function saveThemeMode(mode: ThemeMode, storage: ThemeStorage | undefined = defaultStorage()): void {
-  try {
-    storage?.setItem(THEME_STORAGE_KEY, mode)
-  } catch {
-    // 降级为只在内存里
-  }
+export function saveThemeMode(mode: ThemeMode, store: ToolStorage = appStorage): void {
+  store.set(THEME_ITEM, mode)
 }
 
 /**

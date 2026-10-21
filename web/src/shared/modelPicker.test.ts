@@ -15,12 +15,15 @@ import {
   decideAction,
   formatMB,
   handlePick,
+  CHOICE_KEY_PREFIX,
+  CHOICE_NS,
   readChoice,
   stateToStatus,
   writeChoice,
   type PickDeps,
   type PickerItem,
 } from './modelPicker'
+import { createToolStorage } from './toolStorage'
 
 /** 构造一个清单状态 */
 function st(state: ModelStatus['state'], downloaded = 0): ModelStatus {
@@ -128,15 +131,37 @@ describe('点击分支', () => {
 })
 
 describe('选择结果', () => {
-  /** 内存存储 */
-  function mem(): Storage {
-    const m = new Map<string, string>()
-    return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v) } as Storage
+  /** 内存后端 */
+  function mem(init: Record<string, string> = {}): Storage {
+    const m = new Map<string, string>(Object.entries(init))
+    return {
+      getItem: (k: string) => m.get(k) ?? null,
+      setItem: (k: string, v: string) => void m.set(k, v),
+      removeItem: (k: string) => void m.delete(k),
+      key: (i: number) => [...m.keys()][i] ?? null,
+      get length() {
+        return m.size
+      },
+    } as Storage
   }
-  it('读写与异常吞掉', () => {
-    const s = mem()
+  it('读写往返；没存过为 null', () => {
+    const s = createToolStorage(CHOICE_NS, mem())
+    expect(readChoice('t', s)).toBeNull()
     writeChoice('t', 'x', s)
     expect(readChoice('t', s)).toBe('x')
+  })
+  it('旧键原文一次性迁移', () => {
+    const b = mem({ [CHOICE_KEY_PREFIX + 't']: 'local-qwen' })
+    const s = createToolStorage(CHOICE_NS, b)
+    expect(readChoice('t', s)).toBe('local-qwen')
+    expect(b.getItem(CHOICE_NS + '_t')).toBe('"local-qwen"')
+    expect(b.getItem(CHOICE_KEY_PREFIX + 't')).toBeNull()
+  })
+  it('缓存值不是字符串：当作没有', () => {
+    const s = createToolStorage(CHOICE_NS, mem({ [CHOICE_NS + '_t']: '123' }))
+    expect(readChoice('t', s)).toBeNull()
+  })
+  it('存储抛错时吞掉', () => {
     const bad = {
       getItem: () => {
         throw new Error('x')
@@ -144,9 +169,15 @@ describe('选择结果', () => {
       setItem: () => {
         throw new Error('x')
       },
+      removeItem: () => {
+        throw new Error('x')
+      },
+      key: () => null,
+      length: 0,
     } as unknown as Storage
-    expect(readChoice('t', bad)).toBeNull()
-    expect(() => writeChoice('t', 'x', bad)).not.toThrow()
+    const s = createToolStorage(CHOICE_NS, bad)
+    expect(readChoice('t', s)).toBeNull()
+    expect(() => writeChoice('t', 'x', s)).not.toThrow()
   })
 })
 

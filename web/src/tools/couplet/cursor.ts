@@ -1,9 +1,14 @@
 // 随机且不重复：对池做“固定步长”的循环遍历。步长与池大小 n 互质，所以 n 步内每个下标恰好出现一次；
 // 游标只存（种子、已抽个数），不存任何列表；抽完一轮才换种子重新洗牌。
 import { cryptoSource, type RandomSource } from '@/shared/random'
+import { createToolStorage, type ToolStorage } from '@/shared/toolStorage'
 
-/** localStorage 键前缀，后接池名 */
-export const CURSOR_KEY_PREFIX = 'arkli.couplet.cursor.'
+/** 持久缓存里游标的键前缀，后接池名 */
+export const CURSOR_KEY_PREFIX = 'cursor.'
+/** 旧版 localStorage 里游标的整键前缀，后接池名；读取时一次性迁移 */
+export const LEGACY_CURSOR_KEY_PREFIX = 'arkli.couplet.cursor.'
+/** 本工具持久缓存的命名空间 */
+const NS = 'couplet'
 
 /** 步长取在池大小的这个比例区间内（黄金分割附近，相邻两次抽到的位置离得远） */
 const STRIDE_MIN_RATIO = 0.382
@@ -124,30 +129,21 @@ export function nextDraw(cursor: PoolCursor | null, n: number, v: number, rand: 
   return { index, cursor: { ...cur, k: cur.k + 1, last: index }, remaining: n - cur.k - 1 }
 }
 
-/** 存取游标用的最小 Storage 形状 */
-export type CursorStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
-
-/** 取默认 localStorage；不可用（隐私模式、被禁用）返回 undefined */
-function defaultStorage(): CursorStorage | undefined {
-  try {
-    return globalThis.localStorage
-  } catch {
-    return undefined
-  }
-}
+/** 默认的持久缓存（localStorage 不可用时读写自动静默失败） */
+const defaultStore = createToolStorage(NS)
 
 /**
  * 读某个池的游标；损坏或字段不合法当作没有。
  *
  * @param pool 池名
- * @param storage 存储，默认 localStorage（仅测试注入）
+ * @param storage 持久缓存，默认 couplet 命名空间（仅测试注入）
  * @returns 游标，没有为 null
  */
-export function loadCursor(pool: string, storage: CursorStorage | undefined = defaultStorage()): PoolCursor | null {
+export function loadCursor(pool: string, storage: ToolStorage = defaultStore): PoolCursor | null {
   try {
-    const raw = storage?.getItem(CURSOR_KEY_PREFIX + pool)
-    if (!raw) return null
-    const o = JSON.parse(raw) as Partial<PoolCursor>
+    storage.adoptLegacy(LEGACY_CURSOR_KEY_PREFIX + pool, CURSOR_KEY_PREFIX + pool)
+    const o = storage.get<Partial<PoolCursor> | null>(CURSOR_KEY_PREFIX + pool, null)
+    if (!o || typeof o !== 'object') return null
     const ok = [o.seed, o.k, o.n, o.v, o.last].every((x) => typeof x === 'number' && Number.isInteger(x))
     return ok ? (o as PoolCursor) : null
   } catch {
@@ -160,12 +156,8 @@ export function loadCursor(pool: string, storage: CursorStorage | undefined = de
  *
  * @param pool 池名
  * @param cursor 游标
- * @param storage 存储，默认 localStorage（仅测试注入）
+ * @param storage 持久缓存，默认 couplet 命名空间（仅测试注入）
  */
-export function saveCursor(pool: string, cursor: PoolCursor, storage: CursorStorage | undefined = defaultStorage()): void {
-  try {
-    storage?.setItem(CURSOR_KEY_PREFIX + pool, JSON.stringify(cursor))
-  } catch {
-    /* 存不了就算了 */
-  }
+export function saveCursor(pool: string, cursor: PoolCursor, storage: ToolStorage = defaultStore): void {
+  storage.set(CURSOR_KEY_PREFIX + pool, cursor)
 }
