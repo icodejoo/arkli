@@ -66,10 +66,27 @@ class AiSessionDerivationTest {
     }
 
     @Test
+    fun releaseExcept_unloadsOthersButKeepsTheNamedOne() {
+        val a = SessionOnly()
+        val keep = object : AiProvider by SessionOnly(), AiSessionControl {
+            var loaded = true
+            override val id = "keep-session"
+            override val sessionModelId: String? = null
+            override suspend fun warmup() = WarmupResult(id, 0)
+            override suspend fun unloadSession(): Boolean = loaded.also { loaded = false }
+        }
+        AiRecycle.attach(listOf(a, keep))
+        runBlocking { a.warmup() }
+        assertEquals(listOf(a.id), runBlocking { AiRecycle.releaseExcept(keep.id) })
+        assertEquals(false, a.loaded)
+        assertEquals(true, keep.loaded)
+    }
+
+    @Test
     fun releaseHooks_coverEveryModelBackedSession() {
         val stub = SessionOnly()
         val hooks = AiLifecyclePolicy.releaseHooks(AiFixtures.registered(tmp) + stub)
-        assertEquals(setOf(ClipService.MODEL_ID, OcrService.MODEL_ID, TranslateService.MODEL_ID, QwenService.MODEL_ID, CoupletService.MODEL_ID, MattingMode.PORTRAIT.modelId, MattingMode.GENERAL.modelId, MattingMode.PPMATTING.modelId, MattingMode.BIREFNET.modelId, stubModel), hooks.keys)
+        assertEquals(setOf(ClipService.MODEL_ID, OcrService.MODEL_ID, TranslateService.MODEL_ID, QwenService.MODEL_ID, CoupletService.MODEL_ID, MattingMode.PORTRAIT.modelId, MattingMode.GENERAL.modelId, MattingMode.PPMATTING.modelId, MattingMode.BIREFNET.modelId, LogoService.MODEL_ID, stubModel), hooks.keys)
         assertEquals(listOf(stub.id), hooks.getValue(stubModel).map { it.first })
         assertEquals(listOf(LocalQwenProvider.ID), hooks.getValue(QwenService.MODEL_ID).map { it.first })
     }
@@ -106,6 +123,7 @@ class AiSessionDerivationTest {
                 MattingMode.GENERAL.providerId to true,
                 MattingMode.PPMATTING.providerId to true,
                 MattingMode.BIREFNET.providerId to true,
+                LocalLogoProvider.ID to true,
                 stub.id to true,
             ),
             session,

@@ -4,9 +4,10 @@ import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { showToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
+import { useFloatPause } from '@/shared/useFloatPause'
 import { isNativeAvailable } from '@/native/bridge'
 import { deviceDisplay, deviceInfo, deviceStatus, type DeviceInfo } from '@/native/system'
-import { buildStaticGroups, buildStatusGroups, collectDeviceInfo, groupsToText, probeFeatures, type DeviceEnv, type InfoGroup } from './logic'
+import { buildStaticGroups, createPausableInterval, buildStatusGroups, collectDeviceInfo, groupsToText, probeFeatures, type DeviceEnv, type InfoGroup } from './logic'
 
 /** 自动刷新间隔（毫秒） */
 const AUTO_REFRESH_MS = 3000
@@ -56,8 +57,8 @@ let nativeInfo: DeviceInfo | null = null
 const auto = ref(false)
 /** 正在拉取动态状态（防止重叠请求） */
 const loading = ref(false)
-/** 自动刷新定时器 */
-let timer: ReturnType<typeof setInterval> | undefined
+/** 自动刷新定时器（可暂停） */
+const timer = createPausableInterval(() => void refreshLive(), AUTO_REFRESH_MS)
 /** 全部分组：原生在前，浏览器在后 */
 const groups = computed(() => [...nativeStatic.value, ...nativeLive.value, ...webGroups.value])
 /** 全部信息的纯文本 */
@@ -98,12 +99,11 @@ async function loadNative(): Promise<void> {
 
 /** 自动刷新开关：开启起定时器，关闭或卸载时清掉 */
 function stopAuto(): void {
-  clearInterval(timer)
-  timer = undefined
+  timer.stop()
 }
 watch(auto, (on) => {
   stopAuto()
-  if (on) timer = setInterval(() => void refreshLive(), AUTO_REFRESH_MS)
+  if (on) timer.start()
 })
 
 /** 复制全部信息 */
@@ -117,6 +117,13 @@ onMounted(() => {
   window.addEventListener('resize', refresh)
   window.addEventListener('online', refresh)
   window.addEventListener('offline', refresh)
+})
+// 浮起时停自动刷新，取回时若原先开着就重开并立刻刷新一次（数据已过期）
+useFloatPause({
+  pause: () => timer.pause(),
+  resume: () => {
+    if (timer.resume()) void refreshLive()
+  },
 })
 onUnmounted(() => {
   stopAuto()

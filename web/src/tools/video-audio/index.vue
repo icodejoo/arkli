@@ -172,7 +172,7 @@ onBeforeUnmount(() => abort?.abort())
     </template>
 
     <!-- 底部动作栏：相册选视频，保存 / 分享提取结果，主按钮提取音频（提取中变成取消） -->
-    <bottom-actions :actions="{ save: { disabled: !result || saving, text: '保存到手机' }, share: { disabled: !result || saving } }" v-if="hosted" album main :main-text="running ? '取消' : '提取音频'" :main-type="running ? 'danger' : 'primary'" :disabled="{ album: running, main: !running && !canRun }" @album="onPick" @main="running ? onCancel() : onExtract()" @save="onSave" @share="onShare" />
+    <bottom-actions :main-loading="running" :actions="{ save: { disabled: !result || saving, text: '保存到手机' }, share: { disabled: !result || saving } }" v-if="hosted" album main :main-text="running ? '取消' : '提取音频'" :main-type="running ? 'danger' : 'primary'" :disabled="{ album: running, main: !running && !canRun }" @album="onPick" @main="running ? onCancel() : onExtract()" @save="onSave" @share="onShare" />
   </div>
 </template>
 

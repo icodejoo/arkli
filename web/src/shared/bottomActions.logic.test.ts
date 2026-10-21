@@ -42,8 +42,8 @@ describe('normalizeActions', () => {
   it('对象写法：false 不启用，覆盖 text / disabled / color', () => {
     const r = normalizeActions({ save: true, copy: false, delete: { disabled: true, text: '删除所选', color: '#f00' } })
     expect(keys(r)).toEqual(['save', 'delete'])
-    expect(r[1]).toMatchObject({ text: '删除所选', disabled: true, color: '#f00', tone: 'danger' })
-    expect(r[0]).toMatchObject({ text: '保存', disabled: false, tone: 'default' })
+    expect(r[1]).toMatchObject({ text: '删除所选', disabled: true, color: '#f00', tone: 'danger', loading: false })
+    expect(r[0]).toMatchObject({ text: '保存', disabled: false, tone: 'default', loading: false })
   })
   it('旧别名并入：布尔开关、mainText / mainColor / iconColor / disabled', () => {
     const r = normalizeActions(['copy'], {
@@ -54,8 +54,32 @@ describe('normalizeActions', () => {
       disabled: { main: true, album: true },
     })
     expect(keys(r)).toEqual(['album', 'copy', 'main'])
-    expect(r.find((i) => i.key === 'main')).toMatchObject({ text: '翻译', color: '#111', disabled: true })
-    expect(r.find((i) => i.key === 'album')).toMatchObject({ color: '#222', disabled: true })
+    expect(r.find((i) => i.key === 'main')).toMatchObject({ text: '翻译', color: '#111', disabled: true, loading: false })
+    expect(r.find((i) => i.key === 'album')).toMatchObject({ color: '#222', disabled: true, loading: false })
+  })
+  it('loading 归一化：mainLoading 别名、actions.main.loading、非 main 项恒为 false', () => {
+    // 1. mainLoading 别名生效
+    const withAlias = normalizeActions(['main'], { mainLoading: true })
+    expect(withAlias.find((i) => i.key === 'main')?.loading).toBe(true)
+
+    // 2. actions.main.loading 生效，且优先于 legacy
+    const withActions = normalizeActions({ main: { loading: true } })
+    expect(withActions.find((i) => i.key === 'main')?.loading).toBe(true)
+
+    const withBoth = normalizeActions({ main: { loading: false } }, { mainLoading: true })
+    expect(withBoth.find((i) => i.key === 'main')?.loading).toBe(false)
+
+    // 3. 默认未指定时为 false
+    const withoutLoading = normalizeActions(['main'])
+    expect(withoutLoading.find((i) => i.key === 'main')?.loading).toBe(false)
+
+    // 4. 非 main 项 loading 恒为 false（即使配置中传了 loading）
+    const iconsWithLoading = normalizeActions(
+      { copy: { loading: true } as never, album: true },
+      { mainLoading: true },
+    )
+    expect(iconsWithLoading.find((i) => i.key === 'copy')?.loading).toBe(false)
+    expect(iconsWithLoading.find((i) => i.key === 'album')?.loading).toBe(false)
   })
   it('未知 key 告警并忽略', () => {
     const warn = vi.fn()

@@ -3,6 +3,7 @@
 // 模型的下载/删除/校验归 AI 中心与模型选择器，本页只读状态、只使用；页面只做装配，逻辑都在 logic.ts。
 import { computed, onBeforeUnmount, ref, shallowRef } from 'vue'
 import { showToast } from 'vant'
+import { useFloatBusy } from '@/shared/useFloatPause'
 import { isNativeAvailable } from '@/native/bridge'
 import { cameraItemToPicked, captureCamera, clearCamera, isAlbum, isCancelled } from '@/native/camera'
 import { aiClassifyImage, type ImageClassifyResult } from '@/native/ai'
@@ -53,6 +54,8 @@ const count = ref(0)
 const elapsed = ref(0)
 /** 忙碌计时器 */
 let tick: ReturnType<typeof setInterval> | null = null
+// CLIP 识物只有一次前向、无法中途打断：识别中不让浮起（动作栏只是禁用按钮，不会自动汇报）
+useFloatBusy(() => busy.value)
 
 /** 是否已就绪（模型装好，可以拍照/选图） */
 const ready = computed(() => stage.value === 'ready')

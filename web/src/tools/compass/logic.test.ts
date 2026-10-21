@@ -158,4 +158,32 @@ describe('createCompassSession', () => {
     session.begin()
     expect(start).toHaveBeenCalledTimes(1)
   })
+  it('pause 取消订阅，resume 重订；幂等', () => {
+    let live = 0
+    const start = vi.fn(() => {
+      live++
+      return () => void live--
+    })
+    const session = createCompassSession(start)
+    session.begin()
+    session.pause()
+    session.pause()
+    expect(live).toBe(0)
+    session.resume()
+    session.resume()
+    expect(live).toBe(1)
+    expect(start).toHaveBeenCalledTimes(2)
+  })
+  it('没开始时 pause/resume 无副作用；dispose 后 resume 不重订', () => {
+    const start = vi.fn(() => vi.fn())
+    const session = createCompassSession(start)
+    session.pause()
+    session.resume()
+    expect(start).not.toHaveBeenCalled()
+    session.begin()
+    session.pause()
+    session.dispose()
+    session.resume()
+    expect(start).toHaveBeenCalledTimes(1)
+  })
 })

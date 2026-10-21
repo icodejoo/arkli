@@ -9,3 +9,10 @@ numpy==2.5.4
 tokenizers==0.23.3
 pillow==12.3.0
 psutil==7.2.2
+
+# 以下仅在导出 SDXS 模型（sdxs_prepare.py）时需要。
+# torch 不在这里：它的 CPU 版要走 PyTorch 官方源，而 pip 的 --extra-index-url 会对整个文件生效（依赖混淆风险），
+# 所以请按 README「一次性准备」里的命令单独安装 torch==2.14.1+cpu。
+diffusers==0.41.0
+transformers==5.20.2
+safetensors==0.8.0

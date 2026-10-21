@@ -164,7 +164,7 @@ onBeforeUnmount(() => abort?.abort())
       <van-field v-model="output" type="textarea" rows="4" autosize />
     </tool-group>
 
-    <bottom-actions :actions="{ copy: { disabled: !hasResult } }" ai main :main-text="runText" :main-type="busy ? 'danger' : 'primary'" @main="onRun" @copy="copyAll">
+    <bottom-actions :main-loading="busy" :actions="{ copy: { disabled: !hasResult } }" ai main :main-text="runText" :main-type="busy ? 'danger' : 'primary'" @main="onRun" @copy="copyAll">
       <template #ai>
         <model-picker :tool-id="TOOL_ID" variant="bar" />
       </template>

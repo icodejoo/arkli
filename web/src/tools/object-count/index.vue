@@ -254,7 +254,7 @@ onBeforeUnmount(() => {
     </tool-group>
 
     <!-- 底部动作栏：选图后自动检测，没有单独的开始按钮；右边主按钮是拍照 -->
-    <bottom-actions ai album main main-text="拍照" main-type="danger" :disabled="{ album: loading, main: loading }" @album="choose" @main="shoot">
+    <bottom-actions :main-loading="loading" ai album main main-text="拍照" main-type="danger" :disabled="{ album: loading, main: loading }" @album="choose" @main="shoot">
       <template #ai><model-picker :tool-id="TOOL_ID" variant="bar" /></template>
     </bottom-actions>
   </div>

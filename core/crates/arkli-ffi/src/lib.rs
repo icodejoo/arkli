@@ -5,6 +5,7 @@ uniffi::setup_scaffolding!();
 
 pub mod clip;
 pub mod couplet;
+pub mod logo;
 pub mod matting;
 pub mod mem;
 pub mod mnn_options;

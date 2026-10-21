@@ -110,7 +110,7 @@ async function save(): Promise<void> {
       </van-cell>
     </tool-group>
 
-    <bottom-actions main main-text="保存 PNG" :disabled="{ main: !result.ok || saving }" @main="save" />
+    <bottom-actions :main-loading="saving" main main-text="保存 PNG" :disabled="{ main: !result.ok || saving }" @main="save" />
   </div>
 </template>
 

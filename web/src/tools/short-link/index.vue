@@ -92,7 +92,7 @@ onBeforeUnmount(() => {
     </tool-group>
 
     <!-- 底部动作栏：复制最终地址，主按钮还原（还原中变成取消） -->
-    <bottom-actions :actions="{ copy: { disabled: !result, text: '复制地址' } }" main :main-text="loading ? '取消' : '还原'" :main-type="loading ? 'danger' : 'primary'" :disabled="{ main: !inApp }" @main="run" @copy="copyFinal" />
+    <bottom-actions :main-loading="loading" :actions="{ copy: { disabled: !result, text: '复制地址' } }" main :main-text="loading ? '取消' : '还原'" :main-type="loading ? 'danger' : 'primary'" :disabled="{ main: !inApp }" @main="run" @copy="copyFinal" />
   </div>
 </template>
 

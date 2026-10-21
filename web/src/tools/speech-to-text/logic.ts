@@ -130,3 +130,20 @@ export function formatElapsed(sec: number): string {
   const s = Math.max(0, Math.floor(sec))
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
 }
+
+/** 暂停时的处置：停止录音 / 启动完成后立刻停 / 无需处理 */
+export type SttPausePlan = 'stop' | 'stop-after-start' | 'none'
+
+/**
+ * 工具离开前台时怎么处置语音识别（识别不能无损暂停，所以直接收尾并保留已识别文本）。
+ *
+ * @param listening 是否正在录音
+ * @param starting 是否正在启动（权限、加载模型）
+ * @returns 处置方式
+ * @example
+ * sttPausePlan(true, false) // 'stop'
+ */
+export function sttPausePlan(listening: boolean, starting: boolean): SttPausePlan {
+  if (listening) return 'stop'
+  return starting ? 'stop-after-start' : 'none'
+}

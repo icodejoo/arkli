@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 表情包制作：在图片或纯色底上加字（经典上下字 + 可拖动文字层），导出 PNG/JPEG，或抖动/闪烁 GIF
 import BottomActions from '@/shared/BottomActions.vue'
+import { useFloatBusy, useFloatPause } from '@/shared/useFloatPause'
 import CellPicker from '@/shared/CellPicker.vue'
 import ColorPicker from '@/shared/ColorPicker.vue'
 import type { CellOption } from '@/shared/cellPicker'
@@ -101,8 +102,8 @@ const gifText = ref('')
 const cv = ref<HTMLCanvasElement | null>(null)
 /** 文字层自增编号 */
 let layerSeq = 0
-/** 重绘是否已排队 */
-let redrawQueued = false
+/** 排队中的重绘帧句柄，0 表示没有排队 */
+let redrawRaf = 0
 /** 正在拖动的文字层与上一次指针位置 */
 let drag: { id: number; x: number; y: number } | null = null
 
@@ -129,10 +130,9 @@ function scene(): MemeScene {
 
 /** 重绘预览（合并同一帧内的多次请求） */
 function redraw(): void {
-  if (redrawQueued) return
-  redrawQueued = true
-  requestAnimationFrame(() => {
-    redrawQueued = false
+  if (redrawRaf) return
+  redrawRaf = requestAnimationFrame(() => {
+    redrawRaf = 0
     const c = cv.value
     if (!c) return
     const { width, height } = work.value
@@ -144,6 +144,22 @@ function redraw(): void {
 
 watch([layers, selectedId, topText, bottomText, classicPct, bgColor, baseMode, baseCanvas, ratioKey], redraw, { deep: true })
 onMounted(redraw)
+
+/**
+ * 浮起 / 离开前台：取消排队中的重绘帧、放掉进行中的文字层拖动；
+ * 回来时重画一帧。底图、文字层、导出结果都在 ref 里，不受影响。
+ * 生成中由底栏 main-loading 自动汇报 busy；“保存全部”不在 main-loading 里，下面单独汇报。
+ */
+useFloatPause({
+  pause: () => {
+    if (redrawRaf) cancelAnimationFrame(redrawRaf)
+    redrawRaf = 0
+    drag = null
+  },
+  resume: redraw,
+})
+/** 保存中不可浮起 */
+useFloatBusy(() => saving.value)
 
 /** 采用底图：解码后缩到工作尺寸，原位图立刻关闭 */
 async function adoptBase(img: PickedImage): Promise<void> {
@@ -366,7 +382,7 @@ onBeforeUnmount(() => {
     </tool-group>
 
     <!-- 底部动作栏：相册 / 拍照换底图，保存结果，主按钮生成 -->
-    <bottom-actions :actions="{ save: { disabled: !results.length || saving } }" album photo main :main-text="busy ? `生成中 ${gifText || progress}` : preset === 'none' ? '生成图片' : '生成 GIF'" :disabled="{ album: busy, photo: busy, main: busy }" @album="pickBase" @photo="shoot" @main="run" @save="saveAll" />
+    <bottom-actions :main-loading="busy" :actions="{ save: { disabled: !results.length || saving } }" album photo main :main-text="busy ? `生成中 ${gifText || progress}` : preset === 'none' ? '生成图片' : '生成 GIF'" :disabled="{ album: busy, photo: busy, main: busy }" @album="pickBase" @photo="shoot" @main="run" @save="saveAll" />
   </div>
 </template>
 

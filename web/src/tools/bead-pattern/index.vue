@@ -267,7 +267,7 @@ onBeforeUnmount(() => {
     <img v-if="image" class="thumb" :src="image.url" :alt="image.name" />
     <p v-else class="tool-hint">点底部「相册」或「拍照」选一张图，会居中裁成正方形再缩成方格图纸。</p>
 
-    <bottom-actions album photo main :main-text="busy ? '生成中' : '生成图纸'" :disabled="{ album: busy, photo: busy, main: busy || !image }" @album="fromAlbum" @photo="fromCamera" @main="run" />
+    <bottom-actions :main-loading="busy" album photo main :main-text="busy ? '生成中' : '生成图纸'" :disabled="{ album: busy, photo: busy, main: busy || !image }" @album="fromAlbum" @photo="fromCamera" @main="run" />
 
     <!-- 生成报告：满屏弹窗，顶部标题栏，底部「保存 + 预览」 -->
     <van-popup v-model:show="reportOpen" position="right" teleport="body" class="report" :style="{ width: '100%', height: '100%' }">

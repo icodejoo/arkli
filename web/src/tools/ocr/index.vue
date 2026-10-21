@@ -156,7 +156,7 @@ onBeforeUnmount(cleanup)
     </tool-group>
 
     <!-- 底部动作栏：相册 / 拍照选图，复制全文，主按钮开始识别 -->
-    <bottom-actions ai :actions="{ copy: { disabled: !lines.length, text: '复制全文' } }" album photo main :main-text="busy ? '识别中' : '开始识别'" :disabled="{ album: busy, photo: busy, main: busy || !image || !modelReady }" @album="choose" @photo="shoot" @main="run" @copy="copy(fullText, '已复制全文')">
+    <bottom-actions :main-loading="busy" ai :actions="{ copy: { disabled: !lines.length, text: '复制全文' } }" album photo main :main-text="busy ? '识别中' : '开始识别'" :disabled="{ album: busy, photo: busy, main: busy || !image || !modelReady }" @album="choose" @photo="shoot" @main="run" @copy="copy(fullText, '已复制全文')">
       <template #ai><model-picker :tool-id="TOOL_ID" variant="bar" /></template>
     </bottom-actions>
   </div>

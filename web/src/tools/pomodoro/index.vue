@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 番茄时钟：专注 / 短休 / 长休，倒计时按绝对时间算；容器内用原生闹钟，退到后台也会提醒
 import BottomActions from '@/shared/BottomActions.vue'
+import { useFloatPause } from '@/shared/useFloatPause'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { showFailToast, showToast } from 'vant'
 import { isNativeAvailable } from '@/native/bridge'
@@ -10,7 +11,7 @@ import { createWakeLock } from '@/shared/wakelock'
 import {
   advance, alarmCopy, ALARM_ID, bumpToday, doneRounds, EVERY_RANGE, FOCUS_RANGE, formatClock, initialState, loadSettings, loadState, loadToday,
   LONG_RANGE, normalizeSettings, pause, PHASE_LABEL, phaseDurationMs, progressOf, remainingAt, resetAll, resetPhase, saveSettings,
-  saveState, SHORT_RANGE, skip, start, type Phase, type Settings, type TimerState,
+  saveState, SHORT_RANGE, skip, start, wantsAwake, type Phase, type Settings, type TimerState,
 } from './logic'
 
 /** 页面刷新倒计时的间隔（毫秒）；只用来重绘，剩余时间始终由时间戳算出 */
@@ -181,21 +182,47 @@ async function applyAwake(want: boolean): Promise<void> {
 }
 
 /** 只在进行中且开关打开时常亮 */
-watch([keepOn, () => st.value.status], ([on, status]) => void applyAwake(on && status === 'running'))
+watch([keepOn, () => st.value.status], ([on, status]) => void applyAwake(wantsAwake(on, status)))
 
 /** 页面回到前台立刻刷新，别等下一次定时 */
 function onVisible(): void {
   if (document.visibilityState === 'visible') tick()
 }
 
-onMounted(() => {
+/** 开启刷新：先立即对一次时间（处理期间到点），再起定时与回前台监听；重复调用不会叠加定时器 */
+function startLoop(): void {
+  stopLoop()
   tick()
   timer = setInterval(tick, TICK_MS)
   document.addEventListener('visibilitychange', onVisible)
-})
-onBeforeUnmount(() => {
+}
+
+/** 停掉刷新与回前台监听 */
+function stopLoop(): void {
   clearInterval(timer)
+  timer = undefined
   document.removeEventListener('visibilitychange', onVisible)
+}
+
+/**
+ * 浮起 / 离开前台：停刷新、放掉常亮。
+ * 计时本身按结束时间戳算，浮起期间不会多算少算；原生闹钟不取消（与“退出页面后到点仍会提醒”一致），
+ * 浮起期间到点仍会弹通知；回来时 resume 里的 tick 会补做换阶段与计数。
+ */
+useFloatPause({
+  pause: () => {
+    stopLoop()
+    void applyAwake(false)
+  },
+  resume: () => {
+    startLoop()
+    void applyAwake(wantsAwake(keepOn.value, st.value.status))
+  },
+})
+
+onMounted(startLoop)
+onBeforeUnmount(() => {
+  stopLoop()
   // 不取消闹钟：退出页面后到点仍会提醒；常亮要还回去
   void applyAwake(false)
 })
@@ -262,7 +289,7 @@ onBeforeUnmount(() => {
     <p class="tool-hint">每个阶段结束时用系统闹钟提醒，退到后台或锁屏也会响。设备重启后提醒会失效。</p>
 
     <!-- 底部动作栏：主按钮开始 / 继续 / 暂停 -->
-    <bottom-actions main :main-text="st.status === 'running' ? '暂停' : st.status === 'paused' ? '继续' : '开始'" :main-type="st.status === 'running' ? 'warning' : 'primary'" @main="st.status === 'running' ? onPause() : onStart()" />
+    <bottom-actions :main-loading="st.status === 'running'" main :main-text="st.status === 'running' ? '暂停' : st.status === 'paused' ? '继续' : '开始'" :main-type="st.status === 'running' ? 'warning' : 'primary'" @main="st.status === 'running' ? onPause() : onStart()" />
   </div>
 </template>
 

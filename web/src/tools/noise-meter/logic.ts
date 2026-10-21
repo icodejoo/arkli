@@ -268,3 +268,65 @@ export function chartPoints(values: number[], capacity: number, width: number, h
   const offset = capacity - values.length
   return values.map((v, i) => [(offset + i) * step, height * (1 - gaugeFraction(v))])
 }
+
+/** 暂停闸的依赖 */
+export interface PauseGateDeps {
+  /** 当前是否正在测量 */
+  isActive: () => boolean
+  /** 暂停时执行：取消订阅、停采样、释放麦克风 */
+  suspend: () => void | Promise<void>
+  /** 恢复时执行：重新订阅并启动采样 */
+  restore: () => void | Promise<void>
+}
+
+/** 暂停闸：把“浮起时停、取回时按原状态恢复”串行化 */
+export interface PauseGate {
+  /** 浮起暂停：测量中则记下并 suspend；重复调用无副作用 */
+  pause(): void
+  /** 取回恢复：仅当暂停前在测量才 restore；重复调用无副作用 */
+  resume(): void
+  /** 是否处于暂停中（启动流程的异步回调据此放弃启动） */
+  readonly suspended: boolean
+  /** 暂停期间用户的启动流程做到一半：记下，取回时补启动 */
+  deferStart(): void
+}
+
+/**
+ * 创建暂停闸。suspend 与 restore 排成一条链依次执行，避免“还没停完就又启动”。
+ *
+ * @param deps 依赖：是否测量中、暂停动作、恢复动作
+ * @returns 暂停闸
+ * @example
+ * const gate = createPauseGate({ isActive, suspend, restore })
+ * useFloatPause({ pause: gate.pause, resume: gate.resume })
+ */
+export function createPauseGate(deps: PauseGateDeps): PauseGate {
+  let suspended = false
+  let wasActive = false
+  let chain: Promise<void> = Promise.resolve()
+  /** 把动作接到链尾，出错不阻塞后续 */
+  const enqueue = (fn: () => void | Promise<void>): void => {
+    chain = chain.then(fn).catch(() => undefined)
+  }
+  return {
+    get suspended() {
+      return suspended
+    },
+    pause() {
+      if (suspended) return
+      suspended = true
+      wasActive = deps.isActive()
+      if (wasActive) enqueue(deps.suspend)
+    },
+    resume() {
+      if (!suspended) return
+      suspended = false
+      if (!wasActive) return
+      wasActive = false
+      enqueue(deps.restore)
+    },
+    deferStart() {
+      wasActive = true
+    },
+  }
+}

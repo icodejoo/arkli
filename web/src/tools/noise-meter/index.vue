@@ -3,11 +3,12 @@
 import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { showFailToast } from 'vant'
+import { useFloatPause } from '@/shared/useFloatPause'
 import { isNativeAvailable } from '@/native/bridge'
 import { onNoiseSample, startNoise, stopNoise } from '@/native/noise'
 import { openSettings, requestPermission } from '@/native/system'
 import {
-  applyOffset, CHART_WINDOW_MS, chartPoints, clampOffset, formatDb, gaugeFraction, GAUGE_RANGE, loadOffset, noiseLevel, OFFSET_RANGE,
+  applyOffset, CHART_WINDOW_MS, chartPoints, clampOffset, createPauseGate, formatDb, gaugeFraction, GAUGE_RANGE, loadOffset, noiseLevel, OFFSET_RANGE,
   RingBuffer, ringCapacity, saveOffset, SAMPLE_INTERVAL_MS, StatsTracker, type NoiseStatsView, type Tone,
 } from './logic'
 
@@ -141,6 +142,8 @@ async function onStart(): Promise<void> {
       denied.value = true
       return
     }
+    // 授权弹窗期间被浮起：不在后台占麦克风，取回时补启动
+    if (gate.suspended) return gate.deferStart()
     off?.()
     off = onNoiseSample(onSample)
     await startNoise(SAMPLE_INTERVAL_MS)
@@ -194,6 +197,35 @@ function onOffset(v: number): void {
   scheduleDraw()
 }
 
+/** 暂停闸：浮起时停采样与重绘并释放麦克风，统计量与折线数据保留；取回时重订并继续累计 */
+const gate = createPauseGate({
+  isActive: () => running.value,
+  suspend: async () => {
+    off?.()
+    off = null
+    if (raf) cancelAnimationFrame(raf)
+    raf = 0
+    await stopNoise()
+  },
+  restore: async () => {
+    off?.()
+    off = onNoiseSample(onSample)
+    try {
+      await startNoise(SAMPLE_INTERVAL_MS)
+      running.value = true
+      scheduleDraw()
+    } catch (e) {
+      off?.()
+      off = null
+      running.value = false
+      const err = e as { code?: string; message?: string }
+      if (err.code === 'PERMISSION_DENIED') denied.value = true
+      else showFailToast(err.message || '恢复测量失败')
+    }
+  },
+})
+useFloatPause({ pause: gate.pause, resume: gate.resume })
+
 watch(canvas, scheduleDraw)
 onMounted(scheduleDraw)
 onBeforeUnmount(() => {
@@ -244,7 +276,7 @@ onBeforeUnmount(() => {
     </tool-group>
 
     <!-- 底部动作栏：主按钮开始测量（测量中变成停止） -->
-    <bottom-actions main :main-text="running ? '停止' : starting ? '启动中' : '开始测量'" :main-type="running ? 'danger' : 'primary'" :disabled="{ main: !running && (starting || !hosted) }" @main="running ? onStop() : onStart()" />
+    <bottom-actions :main-loading="running || starting" main :main-text="running ? '停止' : starting ? '启动中' : '开始测量'" :main-type="running ? 'danger' : 'primary'" :disabled="{ main: !running && (starting || !hosted) }" @main="running ? onStop() : onStart()" />
   </div>
 </template>
 

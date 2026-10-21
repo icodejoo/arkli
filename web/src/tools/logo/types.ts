@@ -34,6 +34,29 @@ export interface Palette {
   text: string
 }
 
+/** AI 符号版式 id：圆环徽章 / 实心圆 / 圆角方块（上图下字）/ 横排（左图右字） */
+export type SymbolLayoutId = 'ai-ring' | 'ai-solid' | 'ai-square' | 'ai-lockup'
+
+/** AI 符号的一条路径：d 为 512 坐标系下的路径，(tx, ty) 为 vtracer 给的平移 */
+export interface SymbolPath {
+  /** 路径数据 */
+  d: string
+  /** x 平移 */
+  tx: number
+  /** y 平移 */
+  ty: number
+}
+
+/** 一个 AI 生成的单色符号（与版式一起放进 LogoParams，可序列化） */
+export interface AiSymbol {
+  /** 版式 */
+  layout: SymbolLayoutId
+  /** 路径所在方形坐标系的边长（原生固定 512） */
+  vb: number
+  /** 路径列表 */
+  paths: SymbolPath[]
+}
+
 /** 用户可调的 logo 参数（全部可序列化） */
 export interface LogoParams {
   /** 模板 id */
@@ -56,6 +79,8 @@ export interface LogoParams {
   spacing: number
   /** 是否反色：对调背景与主色，文字跟着变（深↔浅） */
   invert: boolean
+  /** AI 符号；有值时按 symbol.layout 排版，template 与 icon 不再起作用 */
+  symbol?: AiSymbol
 }
 
 /** 字号倍率下限 */
@@ -157,8 +182,26 @@ export interface TextItem {
   italic?: boolean
 }
 
+/** AI 符号：边长 vb 的方形坐标系缩放到 (x,y) 左上角、边长 size 处，用单色 color 填充 */
+export interface SymbolItem {
+  /** 类型 */
+  k: 'symbol'
+  /** 路径列表 */
+  paths: SymbolPath[]
+  /** 原坐标系边长 */
+  vb: number
+  /** 左上角 x */
+  x: number
+  /** 左上角 y */
+  y: number
+  /** 缩放后的边长 */
+  size: number
+  /** 填充色 */
+  color: string
+}
+
 /** 场景里的一项 */
-export type SceneItem = RectItem | CircleItem | PathItem | IconItem | TextItem
+export type SceneItem = RectItem | CircleItem | PathItem | IconItem | TextItem | SymbolItem
 
 /** 一张 logo 的场景：画布尺寸、底色与按绘制顺序排列的图元 */
 export interface Scene {

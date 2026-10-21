@@ -89,7 +89,7 @@ onBeforeUnmount(() => image.value?.release())
     </tool-group>
 
     <!-- 底部动作栏：相册 / 拍照选图，主按钮分享图片 -->
-    <bottom-actions album photo main main-text="分享" :disabled="{ album: busy, photo: busy, main: busy || !image }" @album="choose" @photo="shoot" @main="doShare" />
+    <bottom-actions :main-loading="busy" album photo main main-text="分享" :disabled="{ album: busy, photo: busy, main: busy || !image }" @album="choose" @photo="shoot" @main="doShare" />
   </div>
 </template>
 

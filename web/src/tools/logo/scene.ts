@@ -197,7 +197,7 @@ export const TEMPLATES: TemplateInfo[] = [
  * const safeX = safeNum(NaN, 0)
  * ```
  */
-function safeNum(val: number, fallback = 0): number {
+export function safeNum(val: number, fallback = 0): number {
   return Number.isFinite(val) ? Math.round(val * 100) / 100 : fallback
 }
 
@@ -216,7 +216,7 @@ function safeNum(val: number, fallback = 0): number {
  * const { size, spacingPx, width } = fitFontSize('Arkli', 40, 1, 0, 700, 480)
  * ```
  */
-function fitFontSize(
+export function fitFontSize(
   text: string,
   baseSize: number,
   fontScale: number,

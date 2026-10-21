@@ -2,9 +2,10 @@
 // 量角器：屏上拖两条射线读夹角；倾角模式读手机的倾斜角（复用水平仪的算法）
 import BottomActions from '@/shared/BottomActions.vue'
 import CellPicker from '@/shared/CellPicker.vue'
+import { useFloatPause } from '@/shared/useFloatPause'
 import type { CellOption } from '@/shared/cellPicker'
 import { computed, onBeforeUnmount, ref } from 'vue'
-import { isSteady, startGravity, type MotionSourceLike, type MotionStatus, type Vec3 } from '../level/logic'
+import { createPausableListener, isSteady, startGravity, type MotionSourceLike, type MotionStatus, type Vec3 } from '../level/logic'
 import { clampAngle, clientToView, edgeInclination, FULL_CIRCLE, HALF_CIRCLE, includedAngle, nearestRay, pointAngle, polar, SNAP_STEP, snapAngle, surfaceInclination, sweepAngle, type DialMode, type Point } from './logic'
 
 /** 主模式：屏上量角 / 倾角 */
@@ -67,8 +68,6 @@ const vec = ref<Vec3 | null>(null)
 const denied = ref(false)
 /** 倾角读数已锁定的值 */
 const lockedTilt = ref<number | null>(null)
-/** 停止监听函数 */
-let stop: (() => void) | null = null
 
 /** 是否需要先点按钮授权（iOS 的做法） */
 const needPermission = computed(() => typeof (window.DeviceMotionEvent as unknown as PermissionApi | undefined)?.requestPermission === 'function')
@@ -178,20 +177,23 @@ function setDial(d: DialMode): void {
   rays.value = [clampAngle(rays.value[0], d), clampAngle(rays.value[1], d)]
 }
 
-/** 开始监听重力（仅进入倾角模式时） */
-function begin(): void {
-  stop?.()
-  stop = startGravity({
+/** 可暂停的重力监听；锁定读数在 lockedTilt 里，暂停不清 */
+const listener = createPausableListener(() =>
+  startGravity({
     target: window as unknown as MotionSourceLike,
     onVector: (v) => (vec.value = v),
     onStatus: (s) => (status.value = s),
-  })
+  }),
+)
+
+/** 开始监听重力（仅进入倾角模式时） */
+function begin(): void {
+  listener.begin()
 }
 
 /** 停止监听并清空数据 */
 function end(): void {
-  stop?.()
-  stop = null
+  listener.end()
   vec.value = null
   lockedTilt.value = null
 }
@@ -227,6 +229,8 @@ function toggleLock(): void {
   lockedTilt.value = lockedTilt.value === null ? liveTilt.value : null
 }
 
+// 浮起时取消重力订阅（不清锁定读数），取回时仅在倾角模式下重订
+useFloatPause({ pause: () => listener.pause(), resume: () => listener.resume() })
 onBeforeUnmount(end)
 </script>
 

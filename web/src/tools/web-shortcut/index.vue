@@ -65,6 +65,6 @@ async function submit(): Promise<void> {
     <p class="tool-hint">图标是名称的首字加彩色底。点击快捷方式会用浏览器打开该网址，不是独立的 App。同一网址再次添加会更新原来的。</p>
 
     <!-- 底部动作栏：主按钮添加到桌面 -->
-    <bottom-actions main main-text="添加到桌面" :disabled="{ main: busy || !hosted }" @main="submit" />
+    <bottom-actions :main-loading="busy" main main-text="添加到桌面" :disabled="{ main: busy || !hosted }" @main="submit" />
   </div>
 </template>

@@ -100,7 +100,7 @@ async function onSave(): Promise<void> {
     </tool-group>
 
     <!-- 底部动作栏：预览与保存要先读到壁纸，主按钮读取壁纸 -->
-    <bottom-actions main :main-text="loading ? '读取中' : '获取当前壁纸'" :disabled="{ main: loading || !hosted }" @main="onGet">
+    <bottom-actions :main-loading="loading" main :main-text="loading ? '读取中' : '获取当前壁纸'" :disabled="{ main: loading || !hosted }" @main="onGet">
       <van-action-bar-icon icon="eye-o" text="预览" :disabled="!ok" @click="onPreview" />
       <van-action-bar-icon text="保存" :disabled="!ok || saving" @click="onSave"><template #icon><i-arkli-save /></template></van-action-bar-icon>
     </bottom-actions>

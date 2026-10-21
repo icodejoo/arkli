@@ -32,6 +32,7 @@ use std::sync::{Arc, Mutex};
 use crate::backend::{GraphSession, GraphTensorSession, GraphValue, Session};
 use crate::clip::{ClipEncoder, INPUT_NAME, OUTPUT_NAME};
 use crate::error::{AiError, Result};
+use crate::logo_gen::{GraphLoader, LogoGenerator, Residency};
 use crate::matting::{Matter, MattingMode};
 use crate::pipeline::{OcrModelPaths, OcrOptions, OcrPipeline};
 use ffi::{Api, RawNet, RawVal, DTYPE_F32, DTYPE_I32, ERR_BUF_LEN, MAX_NDIM};
@@ -336,6 +337,16 @@ impl MnnRuntime {
         Ok(Matter::new(net, mode))
     }
 
+    /// 加载 logo 符号生成引擎（SDXS 一步文生图）：模型目录里的 `text_encoder.mnn` / `unet.mnn` / `vae_decoder.mnn` 与 `tokenizer.json`。
+    ///
+    /// - `dir`：模型目录
+    /// - `threads`：线程数，0 视为默认 4（真机实测 8 线程比 4 线程慢约 15%，别开大）
+    /// - `residency`：常驻（峰值约 1.3GB）或每段用完即卸载（峰值约 720MB）
+    /// - 返回：可直接 `generate` 的引擎；常驻模式在这里就加载三张图，缺文件或词表不合法返回 [`AiError::InvalidConfig`]
+    pub fn load_logo_gen(&self, dir: &Path, threads: u32, residency: Residency) -> Result<LogoGenerator<MnnLogoLoader>> {
+        LogoGenerator::new(MnnLogoLoader { rt: self.clone(), threads }, dir.to_path_buf(), residency)
+    }
+
     /// 同 [`Self::load_ocr_pipeline`]，但由调用方指定管线参数（对比实验、自定义阈值用）。
     ///
     /// - `dir`：模型目录
@@ -348,6 +359,27 @@ impl MnnRuntime {
             Ok(Box::new(GraphTensorSession::new(net)))
         };
         OcrPipeline::load_with(&OcrModelPaths::in_dir(dir), &mut loader, options)
+    }
+}
+
+/// logo 生成引擎用的 MNN 图加载器：按固定线程数加载，段间卸载后归还内存。
+pub struct MnnLogoLoader {
+    /// MNN 运行时
+    rt: MnnRuntime,
+    /// 算子线程数，0 视为默认
+    threads: u32,
+}
+
+impl GraphLoader for MnnLogoLoader {
+    type G = MnnNet;
+
+    fn load(&self, model: &Path, inputs: &[&str], outputs: &[&str]) -> Result<MnnNet> {
+        let cfg = MnnConfig::runtime().with_threads(self.threads);
+        self.rt.load_net(model, external_weight_path(model).as_deref(), inputs, outputs, &cfg)
+    }
+
+    fn release_memory(&self) {
+        self.rt.release_memory();
     }
 }
 

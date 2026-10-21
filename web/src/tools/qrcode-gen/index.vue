@@ -243,7 +243,7 @@ async function save(): Promise<void> {
     </tool-group>
 
     <!-- 底部动作栏：二维码是实时画出来的，主操作就是保存；中间图片是可选素材，仍在页面里选 -->
-    <bottom-actions main main-text="保存 PNG" :disabled="{ main: !canDraw || saving }" @main="save" />
+    <bottom-actions :main-loading="saving" main main-text="保存 PNG" :disabled="{ main: !canDraw || saving }" @main="save" />
   </div>
 </template>
 

@@ -1,9 +1,11 @@
 <script setup lang="ts">
 // 随机点名：粘贴名单，抽 1~N 人，可选不重复，带滚动动画
 import BottomActions from '@/shared/BottomActions.vue'
+import { useFloatPause } from '@/shared/useFloatPause'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { showToast } from 'vant'
 import { prefersReducedMotion } from '@/shared/motion'
+import { createSettleTimer } from '../coin-flip/logic'
 import { drawNames, loadNames, MAX_PICK, parseNames, saveNames } from './logic'
 
 /** 滚动动画总时长（毫秒） */
@@ -23,10 +25,8 @@ const used = ref<string[]>([])
 const shown = ref<string[]>([])
 /** 是否正在滚动 */
 const rolling = ref(false)
-/** 滚动定时器 */
-let ticker: ReturnType<typeof setInterval> | undefined
-/** 收尾定时器 */
-let stopper: ReturnType<typeof setTimeout> | undefined
+/** 滚动动画定时器：到点结算，也可在浮起时提前结算 */
+const anim = createSettleTimer()
 
 /** 解析后的名单 */
 const names = computed(() => parseNames(text.value))
@@ -44,12 +44,6 @@ watch(text, (v) => {
 watch(maxCount, (m) => {
   if (count.value > m) count.value = m
 })
-
-/** 清掉动画定时器 */
-function clearTimers(): void {
-  clearInterval(ticker)
-  clearTimeout(stopper)
-}
 
 /** 重置已抽记录 */
 function resetUsed(): void {
@@ -69,11 +63,11 @@ function roll(): void {
     showToast('名单已抽完，点“重置”再来')
     return
   }
-  const finish = (): void => {
+  const finish = (early = false): void => {
     shown.value = r.picked
     used.value = r.used
     rolling.value = false
-    if (r.exhausted && noRepeat.value) showToast('名单抽完了，点“重置”可重新开始')
+    if (!early && r.exhausted && noRepeat.value) showToast('名单抽完了，点“重置”可重新开始')
   }
   if (prefersReducedMotion()) {
     finish()
@@ -82,14 +76,20 @@ function roll(): void {
   rolling.value = true
   const fake = (): string[] => drawNames(names.value, r.picked.length, false).picked
   shown.value = fake()
-  ticker = setInterval(() => (shown.value = fake()), TICK_MS)
-  stopper = setTimeout(() => {
-    clearTimers()
-    finish()
-  }, ANIM_MS)
+  anim.start(finish, ANIM_MS, { fn: () => (shown.value = fake()), ms: TICK_MS })
 }
 
-onBeforeUnmount(clearTimers)
+/**
+ * 浮起 / 离开前台：滚动中就直接结算到已定好的结果（并记入已抽名单），回来看到的是结果；
+ * 没在滚动时什么也不做。
+ */
+useFloatPause({
+  pause: () => void anim.settleNow(),
+  /** 无需恢复：结果已经落定 */
+  resume: () => {},
+})
+
+onBeforeUnmount(anim.clear)
 </script>
 
 <template>
@@ -114,7 +114,7 @@ onBeforeUnmount(clearTimers)
       <van-button v-if="noRepeat" size="small" plain @click="resetUsed">重置已抽记录</van-button>
     </tool-group>
 
-    <bottom-actions main main-text="开抽" :disabled="{ main: rolling }" @main="roll" />
+    <bottom-actions :main-loading="rolling" main main-text="开抽" :disabled="{ main: rolling }" @main="roll" />
   </div>
 </template>
 

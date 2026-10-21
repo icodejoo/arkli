@@ -1,10 +1,10 @@
-"""一键转换：按 recipes.json 把模型（siglip2 / nllb / asr / ocr，ocr6 为 PP-OCRv6 small，couplet 为对联 GPT-2）从 fp32 ONNX 原版转成 MNN 产物。
+"""一键转换：按 recipes.json 把模型（siglip2 / nllb / asr / ocr，ocr6 为 PP-OCRv6 small，couplet 为对联 GPT-2，sdxs 为符号生成 SDXS-512）从 fp32 ONNX 原版转成 MNN 产物。
 
 流程（每个模型）：检查原版是否已下载 -> 前处理（nllb：词表裁剪拆图、交叉 KV 小图、嵌入表 int8；couplet：去 KV cache、词嵌入 int8）
 -> 逐张图调 mnnconv.convert -> 拷贝附带文件 -> 打印产物体积。产物放 out_dir()/<清单 id>/，转换日志放 work/logs/。
 
 用法：
-  python -I convert_all.py                       转四类模型的默认变体
+  python -I convert_all.py                       转各模型的默认变体（不含 sdxs，它要先 fetch.py sdxs 下约 1.8GB，需显式指定）
   python -I convert_all.py siglip2 ocr           只转指定模型
   python -I convert_all.py nllb --variant nllb=w8   指定变体（可重复；变体名见 recipes.json）
   python -I convert_all.py --list                列出模型、变体与产物 id
@@ -26,6 +26,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import (HERE, die, dl_dir, find_asr_model_dir, fmt_bytes, load_recipes, log, need_file,  # noqa: E402
                     out_dir, sha256_file, split_dir, work_dir)
 import mnnconv  # noqa: E402
+
+# 无参数时不转的模型（体积大、只服务单个工具，需显式指定，与 fetch.py 的缺省分组保持一致）
+EXPLICIT_ONLY_MODELS = ("sdxs",)
 
 # 产物目录里记录转换参数的文件名（pack.py 会跳过它）
 INFO_NAME = "convert.json"
@@ -50,6 +53,8 @@ def resolve(ref):
         return os.path.join(split_dir(), rel)
     if kind == "couplet":
         return os.path.join(couplet_prep_dir(), rel)
+    if kind == "sdxs":
+        return os.path.join(sdxs_prep_dir(), rel)
     if kind == "asr":
         return os.path.join(find_asr_model_dir(os.path.join(dl_dir(), "asr", "fp32")), rel)
     die(f"配方里的路径前缀不认识：{ref}")
@@ -58,6 +63,11 @@ def resolve(ref):
 def couplet_prep_dir():
     """对联前处理产物目录（去 past + 词嵌入 int8 的 onnx）：<split 目录的上一级>/couplet。"""
     return os.path.join(os.path.dirname(split_dir()), "couplet")
+
+
+def sdxs_prep_dir():
+    """SDXS 前处理产物目录（三个 ONNX 与 tokenizer.json）：<split 目录的上一级>/sdxs。"""
+    return os.path.join(os.path.dirname(split_dir()), "sdxs")
 
 
 def run_script(name, *args):
@@ -106,8 +116,23 @@ def prepare_couplet(rec):
     run_script("couplet_prepare.py", "--int8-embed", src, out)
 
 
+# SDXS 前处理产物，齐了就不重做
+SDXS_PREP_FILES = ["text_encoder.onnx", "unet.onnx", "vae_decoder.onnx", "tokenizer.json"]
+
+
+def prepare_sdxs(rec):
+    """SDXS 前处理：原版 PyTorch 权重导出三张 ONNX 并生成 tokenizer.json（sdxs_prepare.py），输出到 sdxs_prep_dir()。已齐就跳过。"""
+    out = sdxs_prep_dir()
+    if all(os.path.isfile(os.path.join(out, f)) for f in SDXS_PREP_FILES):
+        log(f"SDXS 前处理产物已齐，跳过：{out}")
+        return
+    src = os.path.join(dl_dir(), "sdxs")
+    need_file(os.path.join(src, "model_index.json"), "先运行 fetch.py sdxs")
+    run_script("sdxs_prepare.py", src, out)
+
+
 # 前处理钩子表：recipes.json 的 prepare 字段 -> 函数
-PREPARE = {"nllb": prepare_nllb, "couplet": prepare_couplet}
+PREPARE = {"nllb": prepare_nllb, "couplet": prepare_couplet, "sdxs": prepare_sdxs}
 
 
 def render_model_json(rec, var):
@@ -135,11 +160,10 @@ def write_model_json(rec, var, dst, overwrite=True):
 
 
 def write_package_files(rec, var, dst, overwrite_model_json=True):
-    """按配方生成 model.json（运行时清单）与 NOTICE.txt（占位符 {vocab_size}、{quant_desc} 由词表与变体填）。无 model_json 的模型跳过。
+    """按配方生成 model.json（运行时清单）与 NOTICE.txt（占位符 {vocab_size}、{quant_desc} 由词表与变体填）。没有 model_json 的模型（如 sdxs）只写 NOTICE。
     overwrite_model_json 为假时已有的 model.json 保持原样（已发布版本不被配方悄悄改写）。"""
-    if not rec.get("model_json"):
-        return
-    write_model_json(rec, var, dst, overwrite_model_json)
+    if rec.get("model_json"):
+        write_model_json(rec, var, dst, overwrite_model_json)
     if rec.get("notice"):
         tok_path = os.path.join(dst, "tokenizer.json")  # 对联用 vocab.txt，没有 tokenizer.json，不填 {vocab_size}
         text = open(resolve(rec["notice"]), encoding="utf-8").read()
@@ -248,7 +272,7 @@ def main():
     """命令行入口。"""
     rec_all = load_recipes()["models"]
     ap = argparse.ArgumentParser(description="按 recipes.json 一键转换模型")
-    ap.add_argument("models", nargs="*", help=f"模型，可选 {', '.join(rec_all)}；缺省全部")
+    ap.add_argument("models", nargs="*", help=f"模型，可选 {', '.join(rec_all)}；缺省除 {', '.join(EXPLICIT_ONLY_MODELS)} 外的全部")
     ap.add_argument("--variant", action="append", default=[], metavar="模型=变体", help="指定变体，可重复")
     ap.add_argument("--force", action="store_true", help="已有产物也重转")
     ap.add_argument("--model-json-only", metavar="目录", help="只把所选模型（单个）的 model.json 渲染到该目录，不转模型、不查输入；用来复现已登记的 sha256")
@@ -271,7 +295,7 @@ def main():
             die(f"{a.models[0]} 的配方没有 model_json")
         log(f"已写 {os.path.join(a.model_json_only, 'model.json')}")
         return
-    keys = a.models or list(rec_all)
+    keys = a.models or [k for k in rec_all if k not in EXPLICIT_ONLY_MODELS]
     for k in keys:
         if k not in rec_all:
             die(f"未知模型 {k}，可选：{', '.join(rec_all)}")

@@ -109,7 +109,7 @@ const counts = computed(() => countByCat());
         <p class="tool-hint">{{ DISCLAIMER }}</p>
 
         <!-- 识别模式：底部动作栏，左边模型选择器，右边相册、拍照 -->
-        <bottom-actions v-if="camera" :ai="hasPicker" album main main-text="拍照" main-type="danger" :disabled="{ album: blocked, main: blocked }" @album="classify?.fromAlbum()" @main="classify?.takePhoto()">
+        <bottom-actions :main-loading="!!classify?.busy" v-if="camera" :ai="hasPicker" album main main-text="拍照" main-type="danger" :disabled="{ album: blocked, main: blocked }" @album="classify?.fromAlbum()" @main="classify?.takePhoto()">
             <template #ai>
                 <model-picker :tool-id="TOOL_ID" variant="bar" />
             </template>

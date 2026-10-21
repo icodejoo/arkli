@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   advance, alarmCopy, doneRounds, bumpToday, clampInt, dayKey, DEFAULT_SETTINGS, formatClock, initialState, isFinished, loadSettings, loadToday,
   MS_PER_MIN, nextPhaseOf, normalizeSettings, pause, phaseDurationMs, progressOf, remainingAt, resetAll, resetPhase, saveSettings, skip,
-  loadState, saveState as saveTimerState, start, STATE_KEY, TODAY_KEY, type KV, type TimerState,
+  loadState, saveState as saveTimerState, start, STATE_KEY, TODAY_KEY, wantsAwake, type KV, type TimerState,
 } from './logic'
 
 /** 内存版存储 */
@@ -184,5 +184,30 @@ describe('计时状态存取', () => {
     }
     expect(() => saveTimerState(broken, initialState(S))).not.toThrow()
     expect(() => saveTimerState(null, initialState(S))).not.toThrow()
+  })
+})
+
+describe('浮窗暂停 / 恢复相关', () => {
+  it('wantsAwake：开关开且进行中才常亮', () => {
+    expect(wantsAwake(true, 'running')).toBe(true)
+    expect(wantsAwake(true, 'paused')).toBe(false)
+    expect(wantsAwake(true, 'idle')).toBe(false)
+    expect(wantsAwake(false, 'running')).toBe(false)
+  })
+  it('浮起期间停刷新不影响剩余时间：恢复时按结束时间戳重算，不多算也不少算', () => {
+    const t0 = 1_000_000
+    const st = start(initialState(S), t0)
+    const gap = 5000
+    // 浮起 5 秒后回来：剩余 = 总时长 - 5 秒
+    expect(remainingAt(st, t0 + gap)).toBe(phaseDurationMs(S, 'focus') - gap)
+    expect(advance(st, S, t0 + gap)).toBeNull()
+  })
+  it('浮起期间已到点：恢复时 advance 补做换阶段与计数（闹钟已在期间提醒过）', () => {
+    const t0 = 1_000_000
+    const st = start(initialState(S), t0)
+    const r = advance(st, S, t0 + phaseDurationMs(S, 'focus') + 3000)
+    expect(r?.focusDone).toBe(true)
+    expect(r?.state.phase).toBe('short')
+    expect(r?.state.status).toBe('idle')
   })
 })

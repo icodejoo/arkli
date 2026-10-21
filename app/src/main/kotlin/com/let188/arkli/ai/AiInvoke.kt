@@ -72,6 +72,13 @@ sealed class AiCall(val task: AiTask, val provider: String?, val port: AiPort<*>
      * @property req 已校验的请求
      */
     class Matting(val req: AiMattingRequest) : AiCall(AiTask.MATTING, req.provider, AiPort.Matting)
+
+    /**
+     * logo 符号生成。
+     *
+     * @property req 已校验的请求
+     */
+    class Logo(val req: AiLogoRequest) : AiCall(AiTask.LOGO_SYMBOL, req.provider, AiPort.Logo)
 }
 
 /**
@@ -160,6 +167,7 @@ object AiInvokePolicy {
             AiPort.Ocr -> AiCall.Ocr(AiOcrPolicy.parse(flat))
             AiPort.Couplet -> AiCall.Couplet(AiCoupletPolicy.parse(flat))
             AiPort.Matting -> AiCall.Matting(AiMattingPolicy.parse(flat))
+            AiPort.Logo -> AiCall.Logo(AiLogoPolicy.parse(flat))
             AiPort.Session -> throw bad("${port.entry} 不是任务入口")
         }
     }
@@ -306,6 +314,10 @@ class AiInvoker(
         is AiCall.Couplet -> {
             val (r, c) = route(call, AiPort.Couplet)
             AiCoupletPolicy.resultJson(withContext(Dispatchers.IO) { r.port.generate(c.req) })
+        }
+        is AiCall.Logo -> {
+            val (r, c) = route(call, AiPort.Logo)
+            AiLogoPolicy.resultJson(withContext(Dispatchers.IO) { r.port.generate(c.req) })
         }
         is AiCall.Matting -> {
             val m = route(call, AiPort.Matting).first.port

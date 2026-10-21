@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 指南针：读浏览器的方向事件，罗盘盘面随航向反向旋转
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { useFloatPause } from '@/shared/useFloatPause'
 import { createAppAwake } from '../clock-screen/awake'
 import { createCompassSession, directionName, normalizeDeg, startCompass, type CompassStatus, type EventSourceLike } from './logic'
 
@@ -72,6 +73,17 @@ else session.begin()
 /** 常亮控制器：看指南针时不让屏幕熄掉 */
 const awake = createAppAwake()
 onMounted(() => void awake.acquire())
+// 浮起时取消方向订阅并释放常亮，取回时按浮起前状态重订
+useFloatPause({
+  pause: () => {
+    session.pause()
+    void awake.release()
+  },
+  resume: () => {
+    session.resume()
+    void awake.acquire()
+  },
+})
 onUnmounted(() => {
   session.dispose()
   void awake.release()

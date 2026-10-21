@@ -4,6 +4,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { showFailToast, showSuccessToast, showToast } from 'vant'
 import BottomActions from '@/shared/BottomActions.vue'
+import { useFloatPause } from '@/shared/useFloatPause'
 import ModelPicker from '@/shared/ModelPicker.vue'
 import ModelMissingNotice from '@/shared/ModelMissingNotice.vue'
 import { copyText } from '@/shared/clipboard'
@@ -20,6 +21,7 @@ import {
   isSttEmpty,
   settleStt,
   speechReadiness,
+  sttPausePlan,
   transcriptText,
   type SttState,
 } from './logic'
@@ -43,6 +45,8 @@ const listening = ref(false)
 const elapsed = ref(0)
 /** 计时器 */
 let timer: ReturnType<typeof setInterval> | null = null
+/** 启动中被暂停：启动完成后立刻停止 */
+let stopAfterStart = false
 /** 事件取消订阅函数 */
 let offs: Array<() => void> = []
 
@@ -78,6 +82,11 @@ async function start(): Promise<void> {
     listening.value = true
     elapsed.value = 0
     timer = setInterval(() => (elapsed.value += 1), 1000)
+    // 启动期间被浮起或切走：启动完成后立刻收尾，不留后台会话
+    if (stopAfterStart) {
+      stopAfterStart = false
+      void stop()
+    }
   } catch (e) {
     cleanup()
     showFailToast(speechErrorMessage(e))
@@ -133,6 +142,16 @@ function clear(): void {
   state.value = emptySttState()
 }
 
+// 识别不能无损暂停：录音中浮起由 BottomActions 的 main-loading 拦成 busy；
+// 经导航离开前台时直接收尾（保留已识别文本），取回后需手动再点录音
+useFloatPause({
+  pause: () => {
+    const plan = sttPausePlan(listening.value, starting.value)
+    if (plan === 'stop') void stop()
+    else if (plan === 'stop-after-start') stopAfterStart = true
+  },
+  resume: () => undefined,
+})
 onMounted(() => void probe())
 onBeforeUnmount(() => {
   cleanup()
@@ -153,7 +172,7 @@ onBeforeUnmount(() => {
       <p class="tool-hint">本机识别，音频不落盘不上传；小模型识别有误差，请自己校对。</p>
     </tool-group>
 
-    <bottom-actions ai
+    <bottom-actions :main-loading="listening" ai
       :actions="{ clear: { disabled: listening || empty }, copy: { disabled: empty }, save: { disabled: empty } }"
       main
       :main-text="mainText"

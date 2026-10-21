@@ -560,3 +560,56 @@ export function buildStatusGroups(status: NativeStatus, totalMemBytes: number | 
     },
   ]
 }
+
+/** 可暂停的定时器句柄 */
+export interface PausableInterval {
+  /** 开始定时（先清掉旧的）；会清除暂停标记 */
+  start(): void
+  /** 彻底停止，恢复时不会重开 */
+  stop(): void
+  /** 浮起暂停：清掉计时器并记住“在跑”；没在跑或已暂停时无副作用 */
+  pause(): void
+  /** 取回恢复：仅当暂停前在跑才重开；返回是否真的重开了 */
+  resume(): boolean
+}
+
+/**
+ * 包一层可暂停的 setInterval，pause/resume 幂等（普通路由切换也会触发）。
+ *
+ * @param fn 每次触发执行的函数
+ * @param ms 间隔（毫秒）
+ * @returns 句柄
+ * @example
+ * const t = createPausableInterval(refresh, 3000)
+ * t.start(); t.pause(); t.resume(); t.stop()
+ */
+export function createPausableInterval(fn: () => void, ms: number): PausableInterval {
+  let timer: ReturnType<typeof setInterval> | undefined
+  let suspended = false
+  const clear = (): void => {
+    if (timer !== undefined) clearInterval(timer)
+    timer = undefined
+  }
+  return {
+    start() {
+      suspended = false
+      clear()
+      timer = setInterval(fn, ms)
+    },
+    stop() {
+      suspended = false
+      clear()
+    },
+    pause() {
+      if (timer === undefined) return
+      clear()
+      suspended = true
+    },
+    resume() {
+      if (!suspended) return false
+      suspended = false
+      timer = setInterval(fn, ms)
+      return true
+    },
+  }
+}

@@ -132,7 +132,7 @@ function clear(): void {
     </tool-group>
 
     <!-- 底部动作栏：主按钮运行（运行中变成停止） -->
-    <bottom-actions main :main-text="running ? '停止' : '运行'" :main-type="running ? 'danger' : 'primary'" @main="running ? stop() : run()" />
+    <bottom-actions :main-loading="running" main :main-text="running ? '停止' : '运行'" :main-type="running ? 'danger' : 'primary'" @main="running ? stop() : run()" />
   </div>
 </template>
 

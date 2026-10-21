@@ -9,7 +9,7 @@ description = "Arkli AI 运行时：推理后端抽象、provider 探测、PP-OC
 default = []
 # MNN 后端：运行时通过 libloading 动态加载 libarkli-mnn.so（C ABI 见 native/mnn/arkli_mnn_capi.h）；
 # 翻译引擎（NLLB 的 MNN 三图实现）也在此 feature 下，所以同时带上翻译的依赖（分词、检测、清单解析）
-mnn-backend = ["dep:libloading", "dep:tokenizers", "dep:serde", "dep:serde_json", "dep:whatlang"]
+mnn-backend = ["dep:libloading", "dep:tokenizers", "dep:serde", "dep:serde_json", "dep:whatlang", "dep:vtracer"]
 
 [dependencies]
 # 本地翻译（translate 模块）：tokenizers 已获用户批准（只开 fancy-regex，不带 onig/进度条/HTTP）；
@@ -19,5 +19,9 @@ serde = { version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
 # 翻译源语言自动检测：whatlang 已获用户批准（纯 Rust、MIT、无模型文件；默认特性为空，不带 serde/enum-map/arbitrary）。
 whatlang = { version = "0.18.0", default-features = false, optional = true }
+# logo 符号生成（logo_gen 模块）：位图描摹成单色 SVG 用 vtracer（用户已批准，MIT OR Apache-2.0）。
+# 取 1.0 预发布版：它是纯库（不做图像解码），只依赖 visioncortex 与 flo_curves；
+# 0.6.x 稳定版无条件依赖 image 0.23 与 clap 2，体积与依赖树都大得多。
+vtracer = { version = "=1.0.0-alpha.4", optional = true }
 # MNN 后端的动态加载：钉死版本避免 lock 漂移。
 libloading = { version = "=0.9.0", optional = true }

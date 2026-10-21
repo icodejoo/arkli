@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-  androidVersionFromUa, buildStaticGroups, buildStatusGroups, chromeVersion, collectDeviceInfo, DASH, formatBytes, formatDpi, formatFlag,
+  androidVersionFromUa, buildStaticGroups, buildStatusGroups, chromeVersion, collectDeviceInfo, createPausableInterval, DASH, formatBytes, formatDpi, formatFlag,
   formatPercent, formatRefresh, formatSize, formatTemp, formatText, formatVoltage, groupsToText, isWebView, NA, probeFeatures,
   type DeviceEnv, type InfoGroup, type NativeDisplay, type NativeInfo,
 } from './logic'
@@ -225,5 +225,48 @@ describe('buildStaticGroups / buildStatusGroups', () => {
     expect(val(gs, '内存', '总内存')).toBe(DASH)
     expect(val(gs, '网络与省电', '网络类型')).toBe(DASH)
     expect(val(gs, '网络与省电', '省电模式')).toBe(DASH)
+  })
+})
+
+describe('createPausableInterval', () => {
+  afterEach(() => vi.useRealTimers())
+  it('暂停后不再触发，恢复后继续', () => {
+    vi.useFakeTimers()
+    const fn = vi.fn()
+    const t = createPausableInterval(fn, 100)
+    t.start()
+    vi.advanceTimersByTime(250)
+    expect(fn).toHaveBeenCalledTimes(2)
+    t.pause()
+    vi.advanceTimersByTime(1000)
+    expect(fn).toHaveBeenCalledTimes(2)
+    expect(t.resume()).toBe(true)
+    vi.advanceTimersByTime(100)
+    expect(fn).toHaveBeenCalledTimes(3)
+  })
+  it('重复暂停/恢复幂等', () => {
+    vi.useFakeTimers()
+    const fn = vi.fn()
+    const t = createPausableInterval(fn, 100)
+    t.start()
+    t.pause()
+    t.pause()
+    expect(t.resume()).toBe(true)
+    expect(t.resume()).toBe(false)
+    vi.advanceTimersByTime(100)
+    expect(fn).toHaveBeenCalledTimes(1)
+  })
+  it('没开启时暂停/恢复无副作用；stop 后恢复不重开', () => {
+    vi.useFakeTimers()
+    const fn = vi.fn()
+    const t = createPausableInterval(fn, 100)
+    t.pause()
+    expect(t.resume()).toBe(false)
+    t.start()
+    t.pause()
+    t.stop()
+    expect(t.resume()).toBe(false)
+    vi.advanceTimersByTime(500)
+    expect(fn).not.toHaveBeenCalled()
   })
 })

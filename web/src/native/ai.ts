@@ -367,7 +367,7 @@ export async function fetchAiResult(path: string, fetchFn: typeof fetch = (...a)
 }
 
 /** AI 任务：页面只认任务，不认厂商 */
-export type AiTask = 'summarize' | 'proofread' | 'rewrite' | 'describeImage' | 'prompt' | 'translate' | 'classifyImage' | 'ocr' | 'couplet' | 'matting' | 'matting'
+export type AiTask = 'summarize' | 'proofread' | 'rewrite' | 'describeImage' | 'prompt' | 'translate' | 'classifyImage' | 'ocr' | 'couplet' | 'matting' | 'logoSymbol'
 
 /** 提供者不可用的原因（未知值按字符串透传，页面不认识就当「不可用」） */
 export type AiUnavailableReason = 'no_handler' | 'unsupported_device' | 'not_installed' | 'not_configured' | (string & {})
@@ -376,7 +376,7 @@ export type AiUnavailableReason = 'no_handler' | 'unsupported_device' | 'not_ins
 export type AiLayer = 'L1' | 'L2' | 'L3' | 'L4'
 
 /** 任务入口：执行该任务要调的桥方法，取 `AI_METHODS.run/translate/classify/ocr/couplet/matting`（未知值按字符串透传） */
-export type AiEntry = (typeof AI_METHODS)['run' | 'translate' | 'classify' | 'ocr' | 'couplet' | 'matting'] | (string & {})
+export type AiEntry = (typeof AI_METHODS)['run' | 'translate' | 'classify' | 'ocr' | 'couplet' | 'matting' | 'logoSymbol'] | (string & {})
 
 /** 一项任务的约束，由原生给出（前端不再自己写语言清单） */
 export interface AiOfferConstraints {
@@ -722,6 +722,39 @@ export interface MattingResult {
   modelId: string
 }
 
+/** logo 符号生成的输入（`native.ai.logoSymbol`） */
+export interface AiLogoInput {
+  /** 英文提示词（原生 trim 后非空、UTF-8 不超过 2000 字节） */
+  prompt: string
+  /** 随机种子，0~2^53-1 的整数；缺省由原生随机并在结果里回报 */
+  seed?: number
+  /** 是否去掉模型自己画的外圈，缺省 true */
+  removeRing?: boolean
+}
+
+/** logo 符号的质量闸门原因码（原生给的字符串，未知值按字符串透传） */
+export type LogoGateReason = 'empty' | 'ink_low' | 'ink_high' | 'concentric' | 'fragments' | 'specks' | 'small' | 'off_center' | (string & {})
+
+/** logo 符号生成结果（`native.ai.logoSymbol`） */
+export interface LogoSymbolResult {
+  /** 单色符号的 `<path .../>` 片段拼接（fill 为 #000000，坐标系 512x512，各 path 自带 transform="translate(x,y)"）；空图为 null */
+  svgPaths: string | null
+  /** path 条数 */
+  pathCount: number
+  /** 质量闸门是否通过（没过时 svgPaths 仍可能有值） */
+  gateOk: boolean
+  /** 闸门未通过的原因码 */
+  gateReasons: LogoGateReason[]
+  /** 本次使用的种子 */
+  seed: number
+  /** 驻留方式：resident 常驻 / per_stage 每段即卸 */
+  residency: string
+  /** 总耗时毫秒 */
+  elapsedMs: number
+  /** 模型标识，如 `sdxs512-mnn-w8` */
+  modelId: string
+}
+
 /** 没有附加选项的任务 */
 type NoOptions = Record<string, never>
 
@@ -763,6 +796,8 @@ export interface AiTaskMap {
   couplet: { input: AiCoupletInput; options: AiCoupletOptions; output: CoupletResult }
   /** 抠图（matting 专用端口，输出带透明通道的 PNG 路径） */
   matting: { input: AiMattingInput; options: NoOptions; output: MattingResult }
+  /** logo 符号生成（logoSymbol 专用端口，英文提示词进、单色 SVG path 出） */
+  logoSymbol: { input: AiLogoInput; options: NoOptions; output: LogoSymbolResult }
 }
 
 /** {@link aiInvoke} 的调用选项 */
@@ -770,7 +805,7 @@ export interface AiInvokeOptions<T extends keyof AiTaskMap> {
   /** 指定提供者 id；缺省由原生取该任务缺省端口的第一个候选 */
   provider?: string
   /**
-   * 钉住入口（桥方法名，取 `AI_METHODS.run/translate/classify/ocr/couplet/matting`）。不钉时：指定了 provider 就走它报价里的入口，
+   * 钉住入口（桥方法名，取 `AI_METHODS.run/translate/classify/ocr/couplet/matting/logoSymbol`）。不钉时：指定了 provider 就走它报价里的入口，
    * 否则走任务的缺省入口。**注意**：只点名交接类提供者（它的 translate 报价入口是 run）而不钉入口时，结果是 {@link AiRunResult}
    * 形状而不是 {@link TranslateResult}；需要确定形状就钉住入口（旧封装都钉了）。
    */

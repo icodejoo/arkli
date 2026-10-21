@@ -8,6 +8,7 @@ import {
   isSttEmpty,
   settleStt,
   speechReadiness,
+  sttPausePlan,
   transcriptText,
 } from './logic'
 
@@ -48,5 +49,13 @@ describe('可用性与格式', () => {
   it('时长格式化', () => {
     expect(formatElapsed(65)).toBe('01:05')
     expect(formatElapsed(-3)).toBe('00:00')
+  })
+})
+
+describe('sttPausePlan', () => {
+  it('录音中收尾，启动中等启动完再收尾，空闲不处理', () => {
+    expect(sttPausePlan(true, false)).toBe('stop')
+    expect(sttPausePlan(false, true)).toBe('stop-after-start')
+    expect(sttPausePlan(false, false)).toBe('none')
   })
 })

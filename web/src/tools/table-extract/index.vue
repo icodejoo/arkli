@@ -179,7 +179,7 @@ onBeforeUnmount(cleanup)
     </tool-group>
 
     <!-- 底部动作栏：图片页有相册 / 拍照，复制 TSV、下载 CSV，主按钮识别或拆表 -->
-    <bottom-actions ai
+    <bottom-actions :main-loading="busy" ai
       :album="tab === 'image'"
       :photo="tab === 'image'"
       main

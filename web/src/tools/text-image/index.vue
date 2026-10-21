@@ -208,7 +208,7 @@ async function run(): Promise<void> {
     </tool-group>
 
     <!-- 底部动作栏：保存结果，主按钮生成图片 -->
-    <bottom-actions :actions="{ save: { disabled: !results.length || saving } }" main :main-text="busy ? '生成中' : '生成图片'" :disabled="{ main: busy }" @main="run" @save="saveAll" />
+    <bottom-actions :main-loading="busy" :actions="{ save: { disabled: !results.length || saving } }" main :main-text="busy ? '生成中' : '生成图片'" :disabled="{ main: busy }" @main="run" @save="saveAll" />
   </div>
 </template>
 

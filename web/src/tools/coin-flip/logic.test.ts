@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { countSides, envelopePoints, flipCoin, flipCoins, loadFlag, MAX_FLIPS, MIN_GAIN, saveFlag, toneSpecs, VIBRATE_LAND, VIBRATE_START } from './logic'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { countSides, createSettleTimer, envelopePoints, flipCoin, flipCoins, loadFlag, MAX_FLIPS, MIN_GAIN, saveFlag, toneSpecs, VIBRATE_LAND, VIBRATE_START } from './logic'
 
 describe('flipCoin', () => {
   it('随机源偶数为正面、奇数为反面', () => {
@@ -92,5 +92,58 @@ describe('开关存取', () => {
     expect(loadFlag(bad, 'k', false)).toBe(false)
     expect(() => saveFlag(bad, 'k', true)).not.toThrow()
     expect(() => saveFlag(undefined, 'k', true)).not.toThrow()
+  })
+})
+
+describe('createSettleTimer', () => {
+  afterEach(() => vi.useRealTimers())
+
+  it('到点自然结算：finish(false) 只调一次，tick 在期间触发', () => {
+    vi.useFakeTimers()
+    const t = createSettleTimer()
+    const done: boolean[] = []
+    let ticks = 0
+    t.start((early) => done.push(early), 600, { fn: () => ticks++, ms: 100 })
+    expect(t.pending).toBe(true)
+    vi.advanceTimersByTime(650)
+    expect(done).toEqual([false])
+    expect(ticks).toBe(5)
+    expect(t.pending).toBe(false)
+  })
+  it('settleNow：提前结算为 finish(true)，之后到点不再重复结算，tick 也停了', () => {
+    vi.useFakeTimers()
+    const t = createSettleTimer()
+    const done: boolean[] = []
+    let ticks = 0
+    t.start((early) => done.push(early), 600, { fn: () => ticks++, ms: 100 })
+    vi.advanceTimersByTime(250)
+    expect(t.settleNow()).toBe(true)
+    vi.advanceTimersByTime(2000)
+    expect(done).toEqual([true])
+    expect(ticks).toBe(2)
+  })
+  it('没有进行中的动画时 settleNow 返回 false 且无副作用（普通路由切换也会触发 pause）', () => {
+    const t = createSettleTimer()
+    expect(t.settleNow()).toBe(false)
+  })
+  it('结算后可再次 start（结算后下一次能正常跑）', () => {
+    vi.useFakeTimers()
+    const t = createSettleTimer()
+    const done: boolean[] = []
+    t.start((e) => done.push(e), 100)
+    t.settleNow()
+    t.start((e) => done.push(e), 100)
+    vi.advanceTimersByTime(120)
+    expect(done).toEqual([true, false])
+  })
+  it('clear 只清不结算', () => {
+    vi.useFakeTimers()
+    const t = createSettleTimer()
+    const done: boolean[] = []
+    t.start((e) => done.push(e), 100)
+    t.clear()
+    vi.advanceTimersByTime(500)
+    expect(done).toEqual([])
+    expect(t.pending).toBe(false)
   })
 })

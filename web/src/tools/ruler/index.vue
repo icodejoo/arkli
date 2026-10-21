@@ -5,6 +5,7 @@ import ColorPicker from '@/shared/ColorPicker.vue'
 import CellPicker from '@/shared/CellPicker.vue'
 import type { CellOption } from '@/shared/cellPicker'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useFloatPause } from '@/shared/useFloatPause'
 import { showToast } from 'vant'
 import { deviceDisplay } from '@/native/system'
 import {
@@ -524,19 +525,42 @@ async function loadAutoScale(): Promise<void> {
 
 /** 深色模式媒体查询，用于卸载时解绑 */
 let mql: MediaQueryList | undefined
+/** 挂上窗口尺寸与深浅色监听（先解绑再绑，不会重复） */
+function bindListeners(): void {
+  unbindListeners()
+  window.addEventListener('resize', onResize)
+  mql = window.matchMedia?.('(prefers-color-scheme: dark)')
+  mql?.addEventListener?.('change', onResize)
+}
+
+/** 解绑窗口尺寸与深浅色监听 */
+function unbindListeners(): void {
+  window.removeEventListener('resize', onResize)
+  mql?.removeEventListener?.('change', onResize)
+  mql = undefined
+}
+
+/**
+ * 浮起 / 离开前台：解绑 resize 与深浅色监听（页面已脱离文档，此时量尺寸会量到 0）；
+ * 回来时重新绑定并按当前尺寸重量重画，期间屏幕转向或深浅色变化也能补上。
+ * 校准、单位、标记点等状态都在 ref 里，不受影响。
+ */
+useFloatPause({
+  pause: unbindListeners,
+  resume: () => {
+    bindListeners()
+    void redraw()
+  },
+})
+
 onMounted(() => {
   void loadAutoScale()
   void redraw()
   // 挂载当帧顶栏可能还没排好版，下一帧再量一次，避免尺子顶端与顶栏下沿差几像素
   requestAnimationFrame(() => void redraw())
-  window.addEventListener('resize', onResize)
-  mql = window.matchMedia?.('(prefers-color-scheme: dark)')
-  mql?.addEventListener?.('change', onResize)
+  bindListeners()
 })
-onUnmounted(() => {
-  window.removeEventListener('resize', onResize)
-  mql?.removeEventListener?.('change', onResize)
-})
+onUnmounted(unbindListeners)
 </script>
 
 <template>

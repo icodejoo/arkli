@@ -144,7 +144,7 @@ onBeforeUnmount(() => image.value?.release())
     </tool-group>
 
     <!-- 底部动作栏：相册 / 拍照选图，保存全部结果，主按钮开始切图 -->
-    <bottom-actions :actions="{ save: { disabled: !results.length || saving, text: '保存全部' } }" album photo main :main-text="busy ? `切图中 ${progress}` : '开始切图'" :disabled="{ album: busy, photo: busy, main: busy || !image }" @album="choose" @photo="shoot" @main="run" @save="saveAll" />
+    <bottom-actions :main-loading="busy" :actions="{ save: { disabled: !results.length || saving, text: '保存全部' } }" album photo main :main-text="busy ? `切图中 ${progress}` : '开始切图'" :disabled="{ album: busy, photo: busy, main: busy || !image }" @album="choose" @photo="shoot" @main="run" @save="saveAll" />
   </div>
 </template>
 

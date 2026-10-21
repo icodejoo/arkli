@@ -119,6 +119,20 @@ function nativeProviders(over: Partial<Record<string, Partial<AiProviderInfo>>> 
       downloading: false,
     },
     {
+      id: 'local-logo-sdxs',
+      displayName: '本地 logo 符号生成（SDXS）',
+      layer: 'L1',
+      available: false,
+      reason: 'not_installed',
+      session: true,
+      tasks: ['logoSymbol'],
+      offers: [{ task: 'logoSymbol', entry: 'native.ai.logoSymbol' }],
+      modelId: 'sdxs512-mnn-w8',
+      downloaded: false,
+      sizeBytes: 0,
+      downloading: false,
+    },
+    {
       id: 'local-nllb',
       displayName: '本地翻译（NLLB）',
       layer: 'L1',
@@ -234,6 +248,13 @@ describe('适用性回归（registry 里的真实工具）', () => {
     const installed = catalogOf('matting', nativeProviders(), { 'matting-u2netp-mnn-f16': st('matting-u2netp-mnn-f16', 'installed') })
     expect(installed.map((i) => i.status)).toEqual(['missing', 'ready', 'missing', 'missing'])
   })
+  it('logo：目录是 Qwen（排版参数，L2）与 SDXS（符号生成，L1），L4 占位随文本任务出现；SDXS 状态读 store', () => {
+    const items = catalogOf('logo')
+    expect(items.map((i) => i.key)).toEqual(['local-logo-sdxs', 'local-qwen', L4_OPENAI_ID])
+    expect(items[0]).toMatchObject({ layer: 'L1', status: 'missing', modelId: 'sdxs512-mnn-w8', entries: { logoSymbol: 'native.ai.logoSymbol' }, session: true })
+    const installed = catalogOf('logo', nativeProviders(), { 'sdxs512-mnn-w8': st('sdxs512-mnn-w8', 'installed') })
+    expect(installed[0].status).toBe('ready')
+  })
   it('各 AI 工具声明的任务（改了要同步文档与汇报）', () => {
     const declared = Object.fromEntries(tools.filter((t) => hasAiChoices(t)).map((t) => [t.id, (t.tasks ?? []).map((x) => (typeof x === 'string' ? x : `${x.task}@${x.entry}`))]))
     expect(declared).toEqual({
@@ -249,7 +270,7 @@ describe('适用性回归（registry 里的真实工具）', () => {
       colorize: [],
       'speech-to-text': [],
       'ai-writer': ['prompt@native.ai.run'],
-      logo: ['prompt@native.ai.run'],
+      logo: ['prompt@native.ai.run', 'logoSymbol@native.ai.logoSymbol'],
     })
   })
 })
@@ -405,7 +426,7 @@ describe('会话（预热跟随）', () => {
     const noSession = nativeProviders({ 'local-nllb': { session: false } })
     expect(sessionProviderOf(catalogOf('translate', noSession)[0])).toBeUndefined()
     const old = nativeProviders().map(({ session: _s, ...rest }) => rest)
-    expect(old.map(hasSession)).toEqual([false, true, true, true, true, true, true, true, true])
+    expect(old.map(hasSession)).toEqual([false, true, true, true, true, true, true, true, true, true])
   })
 })
 

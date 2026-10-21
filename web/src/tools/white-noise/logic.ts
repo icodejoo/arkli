@@ -168,6 +168,18 @@ export function remainingMs(endAt: number | null, now: number): number | null {
 }
 
 /**
+ * 浮起恢复后重算关闭时刻：把冻结的剩余毫秒接到当前时刻上，浮起期间的时间不计入。
+ *
+ * @param remain 浮起时冻结的剩余毫秒
+ * @param now 恢复时的当前时刻
+ * @returns 新的关闭时刻（毫秒时间戳）
+ * @example resumeEndAt(600, 5000) // 5600
+ */
+export function resumeEndAt(remain: number, now: number): number {
+  return now + Math.max(0, remain)
+}
+
+/**
  * 剩余时间格式化为 mm:ss。
  *
  * @param ms 毫秒数

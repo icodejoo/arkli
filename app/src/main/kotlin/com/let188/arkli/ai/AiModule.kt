@@ -17,6 +17,7 @@ import org.json.JSONObject
  * - `native.ai.ocr`：本地 PP-OCRv6 small 文字识别，是第一个按统一协议新增的任务（新增任务的步骤见 docs/design/ai-protocol.md），
  *   见 [AiOcrPolicy] 与 [OcrService]；
  * - `native.ai.matting`：本地抠图（人像 MODNet / 通用 U2Net-p / 实验的 PP-MattingV2 与 BiRefNet-lite，各是一个提供者），见 [AiMattingPolicy] 与 [MattingService]；
+ * - `native.ai.logoSymbol`：本地 SDXS 符号生成（英文提示词进、单色 SVG path 出，带质量闸门），见 [AiLogoPolicy] 与 [LogoService]；
  * - `native.ai.couplet`：本地 GPT-2 对联（MNN），上联进、等长下联出，见 [AiCoupletPolicy] 与 [CoupletService]；
  * - `native.ai.translate`：带语言对的翻译，缺省本地 NLLB（6 种联合国语言），可用 `provider` 指定 `local-qwen`，见 [AiTranslatePolicy] 与 [TranslateService]；
  * - 本地文本模型（Qwen3.5-0.8B，MNN）作为 `local-qwen` 提供者，经 `native.ai.run` 做摘要、校对、改写、提示词问答，经 `native.ai.translate` 做翻译，见 [AiQwenPolicy] 与 [QwenService]；
@@ -54,6 +55,9 @@ object AiModule {
 
     /** 方法名：抠图（本地 MODNet 人像 / U2Net-p 通用） */
     const val METHOD_MATTING = "native.ai.matting"
+
+    /** 方法名：logo 符号生成（本地 SDXS 一步文生图 + 描摹） */
+    const val METHOD_LOGO = "native.ai.logoSymbol"
 
     /** 方法名：本地翻译（NLLB-200 600M） */
     const val METHOD_TRANSLATE = "native.ai.translate"
@@ -101,9 +105,10 @@ object AiModule {
      * @param mattingGeneral 通用抠图服务
      * @param mattingPpMatting 人像 v2（实验）抠图服务
      * @param mattingBiRefNet 通用高精（实验）抠图服务
+     * @param logo logo 符号生成服务
      * @param models 模型状态来源；null 时各本地提供者只看文件是否齐全
      * @return 提供者列表（注册顺序即缺省路由的优先级）
-     * @example `ProviderRegistry(AiModule.providers(platform, clip, ocr, translate, qwen, couplet, mattingPortrait, mattingGeneral, mattingPpMatting, mattingBiRefNet, models))`
+     * @example `ProviderRegistry(AiModule.providers(platform, clip, ocr, translate, qwen, couplet, mattingPortrait, mattingGeneral, mattingPpMatting, mattingBiRefNet, logo, models))`
      */
     fun providers(
         handoff: HandoffPlatform,
@@ -116,6 +121,7 @@ object AiModule {
         mattingGeneral: MattingService,
         mattingPpMatting: MattingService,
         mattingBiRefNet: MattingService,
+        logo: LogoService,
         models: ModelStateSource?,
     ): List<AiProvider> = listOf(
         IntentHandoffProvider(handoff),
@@ -128,6 +134,7 @@ object AiModule {
         LocalMattingProvider(mattingGeneral, models),
         LocalMattingProvider(mattingPpMatting, models),
         LocalMattingProvider(mattingBiRefNet, models),
+        LocalLogoProvider(logo, models),
     )
 
     /**
@@ -150,6 +157,7 @@ object AiModule {
             MattingRuntime.get(env.appContext, MattingMode.GENERAL),
             MattingRuntime.get(env.appContext, MattingMode.PPMATTING),
             MattingRuntime.get(env.appContext, MattingMode.BIREFNET),
+            LogoRuntime.get(env.appContext),
             models,
         )
         // 生命周期全从提供者派生：删模型前先卸会话（按 id 登记，重复安装只会替换）、进程级回收
@@ -170,6 +178,7 @@ object AiModule {
         bridge.register(METHOD_OCR, AiOcrHandler(invoker))
         bridge.register(METHOD_COUPLET, AiCoupletHandler(invoker))
         bridge.register(METHOD_MATTING, AiMattingHandler(invoker))
+        bridge.register(METHOD_LOGO, AiLogoHandler(invoker))
         bridge.register(METHOD_TRANSLATE, AiTranslateHandler(invoker))
         bridge.register(METHOD_WARMUP, AiWarmupHandler(registry))
         bridge.register(METHOD_UNLOAD, AiUnloadHandler(registry))

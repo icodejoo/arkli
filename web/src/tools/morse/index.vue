@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 摩斯电码：文本与摩斯互转，可调 WPM 与频率，用 WebAudio 发声播放
 import BottomActions from '@/shared/BottomActions.vue'
+import { useFloatPause } from '@/shared/useFloatPause'
 import CellPicker from '@/shared/CellPicker.vue'
 import type { CellOption } from '@/shared/cellPicker'
 import { computed, onBeforeUnmount, ref } from 'vue'
@@ -126,6 +127,16 @@ async function copy(): Promise<void> {
   else showFailToast('复制失败，请长按文字手动选择')
 }
 
+/**
+ * 浮起 / 离开前台：正在播放就停掉（一段摩斯很短，回来后点播放重来即可；不作为 busy，免得拦住浮窗）。
+ * 输入内容、方向、速度与频率都保留；AudioContext 留着复用。
+ */
+useFloatPause({
+  pause: stop,
+  /** 不自动续播：回来后由用户点播放 */
+  resume: () => {},
+})
+
 onBeforeUnmount(() => {
   stop()
   if (ctx) {
@@ -171,7 +182,7 @@ onBeforeUnmount(() => {
     </tool-group>
 
     <!-- 底部动作栏：复制结果，主按钮播放（播放中变成停止） -->
-    <bottom-actions :actions="{ copy: { disabled: !output } }" main :main-text="playing ? '停止' : '播放'" :main-type="playing ? 'danger' : 'primary'" :disabled="{ main: !playing && !morse.trim() }" @main="playing ? stop() : play()" @copy="copy" />
+    <bottom-actions :main-loading="playing" :actions="{ copy: { disabled: !output } }" main :main-text="playing ? '停止' : '播放'" :main-type="playing ? 'danger' : 'primary'" :disabled="{ main: !playing && !morse.trim() }" @main="playing ? stop() : play()" @copy="copy" />
   </div>
 </template>
 

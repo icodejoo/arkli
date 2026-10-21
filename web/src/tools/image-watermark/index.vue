@@ -274,7 +274,7 @@ onBeforeUnmount(() => {
     </tool-group>
 
     <!-- 底部动作栏：相册 / 拍照追加图片，保存结果，主按钮生成水印图 -->
-    <bottom-actions :actions="{ save: { disabled: !results.length || saving } }" album photo main :main-text="busy ? `处理中 ${progress}` : '生成水印图'" :disabled="{ album: busy, photo: busy, main: busy || !images.length || !text.trim() }" @album="add" @photo="shoot" @main="run" @save="saveAll" />
+    <bottom-actions :main-loading="busy" :actions="{ save: { disabled: !results.length || saving } }" album photo main :main-text="busy ? `处理中 ${progress}` : '生成水印图'" :disabled="{ album: busy, photo: busy, main: busy || !images.length || !text.trim() }" @album="add" @photo="shoot" @main="run" @save="saveAll" />
   </div>
 </template>
 

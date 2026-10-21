@@ -152,7 +152,7 @@ onBeforeUnmount(() => {
     <p class="tool-hint st-src">测速数据来自 Cloudflare（speed.cloudflare.com），结果受网络与服务器影响，仅供参考。</p>
 
     <!-- 底部动作栏：主按钮开始测速（测速中变成取消） -->
-    <bottom-actions main :main-text="phase === 'latency' || phase === 'download' ? '取消' : '开始测速'" :main-type="phase === 'latency' || phase === 'download' ? 'danger' : 'primary'" :disabled="{ main: !inApp }" @main="start" />
+    <bottom-actions :main-loading="phase === 'latency' || phase === 'download'" main :main-text="phase === 'latency' || phase === 'download' ? '取消' : '开始测速'" :main-type="phase === 'latency' || phase === 'download' ? 'danger' : 'primary'" :disabled="{ main: !inApp }" @main="start" />
   </div>
 </template>
 

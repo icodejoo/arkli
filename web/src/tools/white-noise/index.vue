@@ -1,11 +1,12 @@
 <script setup lang="ts">
 // 白噪音：WebAudio 实时合成噪声循环播放，可调音量与定时关闭
 import BottomActions from '@/shared/BottomActions.vue'
+import { useFloatPause } from '@/shared/useFloatPause'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { showToast } from 'vant'
 import CellPicker from '@/shared/CellPicker.vue'
 import type { CellOption } from '@/shared/cellPicker'
-import { BUFFER_SECONDS, clampVolume, DEFAULT_VOLUME, fillNoise, formatRemaining, MS_PER_MIN, NOISES, remainingMs, TIMER_OPTIONS, type NoiseKind } from './logic'
+import { BUFFER_SECONDS, clampVolume, DEFAULT_VOLUME, fillNoise, formatRemaining, MS_PER_MIN, NOISES, remainingMs, resumeEndAt, TIMER_OPTIONS, type NoiseKind } from './logic'
 
 /** 音频不可用提示 */
 const TIP_NO_AUDIO = '这个环境不支持音频播放'
@@ -112,6 +113,12 @@ function resetTimer(): void {
     return
   }
   endAt.value = Date.now() + timerMin.value * MS_PER_MIN
+  startTicker()
+}
+
+/** 起定时关闭的倒计时刷新；到点停止播放。先清旧的，不会叠加 */
+function startTicker(): void {
+  clearInterval(ticker)
   now.value = Date.now()
   ticker = setInterval(() => {
     now.value = Date.now()
@@ -130,6 +137,36 @@ function pick(k: NoiseKind): void {
     startSource()
   }
 }
+
+/** 浮起时冻结的定时剩余毫秒；null 表示没有定时 */
+let frozenRemain: number | null = null
+/** 浮起时是否正在播放（决定恢复时要不要续播） */
+let resumeAfterFloat = false
+
+/**
+ * 浮起 / 离开前台：播放中则静音挂起 AudioContext，定时关闭的倒计时一并冻结（剩余时间不在浮起期间流逝）。
+ * 恢复时 resume 并以剩余时间重算关闭时刻。未在播放时什么都不做。
+ */
+useFloatPause({
+  pause: () => {
+    resumeAfterFloat = playing.value
+    if (!resumeAfterFloat) return
+    frozenRemain = endAt.value === null ? null : remainingMs(endAt.value, Date.now())
+    clearInterval(ticker)
+    ticker = undefined
+    void ctx?.suspend()
+  },
+  resume: () => {
+    if (!resumeAfterFloat) return
+    resumeAfterFloat = false
+    void ctx?.resume()
+    if (frozenRemain !== null) {
+      endAt.value = resumeEndAt(frozenRemain, Date.now())
+      startTicker()
+    }
+    frozenRemain = null
+  },
+})
 
 watch(volume, applyVolume)
 watch(timerMin, resetTimer)
@@ -160,6 +197,6 @@ onBeforeUnmount(() => {
 
     <p class="tool-hint">声音由手机实时合成，不占流量。建议把音量调低、放在枕边稍远处。</p>
 
-    <bottom-actions main :main-text="playing ? '停止' : '开始播放'" :main-type="playing ? 'warning' : 'primary'" @main="playing ? stop() : play()" />
+    <bottom-actions :main-loading="playing" main :main-text="playing ? '停止' : '开始播放'" :main-type="playing ? 'warning' : 'primary'" @main="playing ? stop() : play()" />
   </div>
 </template>

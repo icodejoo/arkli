@@ -63,6 +63,14 @@ internal object AiFixtures {
         override fun cancel() {}
     }
 
+    /** 不该被调用的 logo 引擎（卸载与取消除外） */
+    class NoLogo : LogoBackend {
+        override fun load(modelDir: String, residency: LogoResidency) = error("不该加载")
+        override fun unload() {}
+        override fun generate(req: AiLogoRequest, seed: Long): LogoOutcome = error("不该生成")
+        override fun cancel() {}
+    }
+
     /** 不该被调用的抠图引擎（卸载除外） */
     class NoMatting : MattingBackend {
         override fun load(modelPath: String) = error("不该加载")
@@ -122,6 +130,8 @@ internal object AiFixtures {
         val mattingGeneral = mattingService(tmp, MattingMode.GENERAL)
         val mattingPpMatting = mattingService(tmp, MattingMode.PPMATTING)
         val mattingBiRefNet = mattingService(tmp, MattingMode.BIREFNET)
-        return AiModule.providers(OkHandoff(), clip, ocr, translate, qwen, couplet, mattingPortrait, mattingGeneral, mattingPpMatting, mattingBiRefNet, models)
+        val logoDir = tmp.newFolder()
+        val logo = LogoService(object : LogoEnv { override fun modelDir() = logoDir }, NoLogo(), availMem = { 0L })
+        return AiModule.providers(OkHandoff(), clip, ocr, translate, qwen, couplet, mattingPortrait, mattingGeneral, mattingPpMatting, mattingBiRefNet, logo, models)
     }
 }

@@ -170,7 +170,7 @@ onBeforeUnmount(() => {
     </p>
 
     <!-- 底部动作栏：主按钮刷新汇率，仅 App 内可用（浏览器里没有联网通道） -->
-    <bottom-actions main :main-text="loading ? '刷新中' : '刷新汇率'" :disabled="{ main: loading || !inApp }" @main="load" />
+    <bottom-actions :main-loading="loading" main :main-text="loading ? '刷新中' : '刷新汇率'" :disabled="{ main: loading || !inApp }" @main="load" />
 
     <van-popup v-model:show="pickerOpen" position="bottom" round>
       <van-picker :columns="columns" :model-value="[pickSide === 'from' ? from : to]" @confirm="onConfirm" @cancel="pickerOpen = false" />

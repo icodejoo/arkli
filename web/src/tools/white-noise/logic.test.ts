@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { clampVolume, DEFAULT_VOLUME, fillBrown, fillNoise, fillOcean, fillPink, fillRain, fillWhite, formatRemaining, remainingMs, type NoiseKind } from './logic'
+import { clampVolume, DEFAULT_VOLUME, fillBrown, fillNoise, fillOcean, fillPink, fillRain, fillWhite, formatRemaining, remainingMs, resumeEndAt, type NoiseKind } from './logic'
 
 /** 可复现的伪随机（mulberry32） */
 function seeded(seed: number): () => number {
@@ -92,5 +92,20 @@ describe('定时与音量', () => {
     expect(clampVolume(-1)).toBe(0)
     expect(clampVolume(0.3)).toBe(0.3)
     expect(clampVolume(NaN)).toBe(DEFAULT_VOLUME)
+  })
+})
+
+describe('浮窗暂停 / 恢复的定时重算', () => {
+  it('resumeEndAt：冻结的剩余接到恢复时刻上，浮起期间的时间不计入', () => {
+    const endAt = 100_000
+    const pausedAt = 40_000
+    const remain = remainingMs(endAt, pausedAt) as number
+    expect(remain).toBe(60_000)
+    // 浮起 5 秒后在 45_000 回来，剩余仍是 60 秒
+    const resumed = resumeEndAt(remain, 45_000)
+    expect(remainingMs(resumed, 45_000)).toBe(60_000)
+  })
+  it('resumeEndAt：负数按 0 处理，恢复即到点', () => {
+    expect(resumeEndAt(-5, 1000)).toBe(1000)
   })
 })

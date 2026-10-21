@@ -16,3 +16,4 @@
 - `<van-notice-bar>` 一律写 `wrapable :scrollable="false"`（多行显示、不滚动）。注意 prop 名是 `wrapable`，写成 `wrap-able` 无效；`vant-usage.test.ts` 会拦截。
 - 单选一律用 `web/src/shared/CellPicker.vue`（`<cell-picker v-model title :options />`，单项禁用用 `option.disabled`），布尔开关用 `van-cell` + `van-switch`，禁止 `van-radio` / `van-checkbox`；`vant-usage.test.ts` 会扫描拦截。
 - 引入新第三方依赖前先问用户，待确认清单在 docs/status.md。
+- 持有计时器/音频/传感器/相机的工具必须用 `useFloatPause` 在浮起时暂停；有不可暂停的任务要汇报 busy（`useFloatBusy`，用 BottomActions 的 mainLoading 已自动汇报）。见 docs/design/float-window.md。

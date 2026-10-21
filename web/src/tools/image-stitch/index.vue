@@ -466,7 +466,7 @@ onBeforeUnmount(() => {
     </tool-group>
 
     <!-- 底部动作栏：相册 / 拍照追加图片，主按钮开始拼接（原生任务进行中变成取消）；各路径的保存按钮留在结果区 -->
-    <bottom-actions
+    <bottom-actions :main-loading="busy || nativeBusy"
       album
       photo
       main

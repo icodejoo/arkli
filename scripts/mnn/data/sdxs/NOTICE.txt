@@ -1,0 +1,36 @@
+NOTICE
+
+This package contains a local symbol/image generation model derived from SDXS-512 DreamShaper (IDKiro/sdxs-512-dreamshaper), converted to the MNN runtime format.
+
+Original work and components
+- Upstream model: IDKiro/sdxs-512-dreamshaper
+- Source: https://huggingface.co/IDKiro/sdxs-512-dreamshaper
+- UNet and text encoder: SDXS weights (distilled from DreamShaper-8, which declares creativeml-openrail-m on Hugging Face; Stable Diffusion 1.5 lineage).
+- VAE: Tiny AutoEncoder for Stable Diffusion (TAESD) by madebyollin, licensed under MIT.
+- Text encoder architecture: CLIP ViT-L/14 text tower (OpenAI CLIP), licensed under MIT.
+
+License status
+- The SDXS repository itself does not include an independent LICENSE file and only declares "openrail++" in its metadata; both OpenRAIL++-M and OpenRAIL-M full texts are attached here, pending upstream clarification.
+- Shipped license files:
+  - LICENSE-CreativeML-OpenRAIL-PlusPlus-M.txt
+  - LICENSE-CreativeML-OpenRAIL-M.txt
+  - LICENSE-MIT-TAESD.txt
+  - LICENSE-MIT-OpenAI-CLIP.txt
+
+OpenRAIL terms and restrictions
+- Use restrictions specified in Attachment A of the OpenRAIL licenses must be conveyed downstream with any distribution or derivative works.
+- The model and derivatives must not be used for any prohibited uses enumerated in Attachment A.
+- Outputs and generated content are the responsibility of the user; the creators and contributors accept no liability for generated outputs.
+- Full license texts must accompany all redistributions.
+
+Modifications made in this package
+- Exported PyTorch components to ONNX format with diffusion timestep fixed to 999.
+- Quantization: {quant_desc}.
+- Constructed standard CLIP BPE tokenizer.json from vocab.json and merges.txt.
+- Converted ONNX graphs to MNN runtime format.
+- Weights were not retrained or fine-tuned; the semantic behavior of the weights was not altered. Outputs of the modified weights may differ slightly from the original model due to numerical precision.
+
+Disclaimers
+- This package is not affiliated with, endorsed by, or sponsored by the original authors or upstream projects.
+- The model is provided "as is", without warranty of any kind. Generated content may be inaccurate or inappropriate.
+- This notice is not legal advice.

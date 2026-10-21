@@ -105,7 +105,7 @@ class AiProviderContractTest {
     fun everyRegisteredProvider_keepsCapabilityPortContract() {
         val all = registered()
         assertEquals(
-            listOf(IntentHandoffProvider.ID, LocalClipProvider.ID, LocalOcrProvider.ID, LocalNllbProvider.ID, LocalQwenProvider.ID, LocalCoupletProvider.ID, MattingMode.PORTRAIT.providerId, MattingMode.GENERAL.providerId, MattingMode.PPMATTING.providerId, MattingMode.BIREFNET.providerId),
+            listOf(IntentHandoffProvider.ID, LocalClipProvider.ID, LocalOcrProvider.ID, LocalNllbProvider.ID, LocalQwenProvider.ID, LocalCoupletProvider.ID, MattingMode.PORTRAIT.providerId, MattingMode.GENERAL.providerId, MattingMode.PPMATTING.providerId, MattingMode.BIREFNET.providerId, LocalLogoProvider.ID),
             all.map { it.id },
         )
         assertEquals("id 不能重复", all.size, all.map { it.id }.toSet().size)
@@ -145,6 +145,7 @@ class AiProviderContractTest {
                 MattingMode.GENERAL.providerId to AiLayer.L1,
                 MattingMode.PPMATTING.providerId to AiLayer.L1,
                 MattingMode.BIREFNET.providerId to AiLayer.L1,
+                LocalLogoProvider.ID to AiLayer.L1,
             ),
             registered().associate { it.id to it.layer },
         )
@@ -166,6 +167,7 @@ class AiProviderContractTest {
         assertEquals(AiModule.METHOD_MATTING, entry(MattingMode.GENERAL.providerId, AiTask.MATTING))
         assertEquals(AiModule.METHOD_MATTING, entry(MattingMode.PPMATTING.providerId, AiTask.MATTING))
         assertEquals(AiModule.METHOD_MATTING, entry(MattingMode.BIREFNET.providerId, AiTask.MATTING))
+        assertEquals(AiModule.METHOD_LOGO, entry(LocalLogoProvider.ID, AiTask.LOGO_SYMBOL))
         /** 某提供者 translate 报价的约束 */
         fun tr(id: String) = byId.getValue(id).offers().first { it.task == AiTask.TRANSLATE }.constraints
         // 语言清单与 auto 规则相同；Qwen 的原文上限更小、不收 numBeams
@@ -183,6 +185,7 @@ class AiProviderContractTest {
         AiModule.METHOD_TRANSLATE -> JSONObject().put("text", "hi").put("src", "en").put("tgt", "fr")
         AiModule.METHOD_CLASSIFY, AiModule.METHOD_OCR -> JSONObject().put("path", "cache/pick/a.jpg")
         AiModule.METHOD_COUPLET -> JSONObject().put("text", "春风送暖")
+        AiModule.METHOD_LOGO -> JSONObject().put("prompt", "flat pictogram glyph of a carrot")
         // 抠图的 mode 与提供者一一对应，样例按提供者给
         AiModule.METHOD_MATTING -> JSONObject().put("path", "cache/pick/a.jpg")
             .put("mode", MattingMode.values().first { it.providerId == providerId }.wire)
@@ -212,7 +215,7 @@ class AiProviderContractTest {
     fun sessionModelId_matchesModelInfo() {
         val all = AiFixtures.registered(tmp, ModelStateSource { ModelStateInfo(installed = false, diskBytes = 0, downloading = false) })
         val sessions = all.mapNotNull { p -> AiPort.Session.bind(p)?.let { p to it } }
-        assertEquals(listOf(LocalClipProvider.ID, LocalOcrProvider.ID, LocalNllbProvider.ID, LocalQwenProvider.ID, LocalCoupletProvider.ID, MattingMode.PORTRAIT.providerId, MattingMode.GENERAL.providerId, MattingMode.PPMATTING.providerId, MattingMode.BIREFNET.providerId), sessions.map { it.first.id })
+        assertEquals(listOf(LocalClipProvider.ID, LocalOcrProvider.ID, LocalNllbProvider.ID, LocalQwenProvider.ID, LocalCoupletProvider.ID, MattingMode.PORTRAIT.providerId, MattingMode.GENERAL.providerId, MattingMode.PPMATTING.providerId, MattingMode.BIREFNET.providerId, LocalLogoProvider.ID), sessions.map { it.first.id })
         // 删模型前卸会话靠 sessionModelId，它必须就是 providers 里报给前端的 modelId
         sessions.forEach { (p, s) -> assertEquals("${p.id} 的会话模型", p.modelInfo()?.modelId, s.sessionModelId) }
     }
@@ -271,6 +274,18 @@ class AiProviderContractTest {
         override suspend fun run(task: AiTask, input: String): AiRunResult =
             if (task == AiTask.PROMPT) AiRunResult.Text("") else throw AiRouter.notRunnable(id, task)
         override suspend fun matte(file: java.io.File, refine: MattingRefine): MattingResult = throw UnsupportedOperationException()
+    }
+
+    /** 说谎者 9：实现了 LogoEngine，却没声明 logoSymbol */
+    private class HiddenLogo : AiProvider, LogoEngine {
+        override val id = "liar-logo"
+        override val displayName = "说谎"
+        override val layer = AiLayer.L1
+        override fun capabilities() = setOf(AiTask.PROMPT)
+        override fun availability() = AiAvailability.AVAILABLE
+        override suspend fun run(task: AiTask, input: String): AiRunResult =
+            if (task == AiTask.PROMPT) AiRunResult.Text("") else throw AiRouter.notRunnable(id, task)
+        override suspend fun generate(req: AiLogoRequest): LogoResult = throw UnsupportedOperationException()
     }
 
     /** 说谎者 7：实现了 CoupletEngine，却没声明 couplet */
@@ -658,6 +673,7 @@ class AiProviderContractTest {
         assertEquals(1, violations(HiddenOcr()).size)
         assertEquals(1, violations(HiddenCouplet()).size)
         assertEquals(1, violations(HiddenMatting()).size)
+        assertEquals(1, violations(HiddenLogo()).size)
     }
 
     @Test
@@ -691,5 +707,15 @@ class AiProviderContractTest {
         assertEquals(CoupletService.MODEL_ID, (p as AiSessionControl).sessionModelId)
         assertEquals(AiCoupletPolicy.OFFER_CONSTRAINTS, p.offers().single().constraints)
         assertTrue(runRejects(p, AiTask.COUPLET))
+    }
+
+    @Test
+    fun logoProvider_isL1SessionBoundToItsModel_andRunNeverAcceptsLogoSymbol() {
+        val p = registered().first { it.id == LocalLogoProvider.ID }
+        assertEquals(setOf(AiTask.LOGO_SYMBOL), p.capabilities())
+        assertEquals(setOf(AiTask.LOGO_SYMBOL), AiRouter.dedicatedTasks(p))
+        assertEquals(emptySet<AiTask>(), AiRouter.runTasks(p))
+        assertEquals(LogoService.MODEL_ID, (p as AiSessionControl).sessionModelId)
+        assertTrue(runRejects(p, AiTask.LOGO_SYMBOL))
     }
 }

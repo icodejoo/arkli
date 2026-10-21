@@ -182,6 +182,17 @@ export function minesLeft(g: Game): number {
 }
 
 /**
+ * 对局是否该走字：只有进行中才走；待开始、胜负已分都不走。浮起回来时据此决定要不要接着计时。
+ *
+ * @param status 对局状态
+ * @returns 该走字为 true
+ * @example isClockTicking('playing') // true
+ */
+export function isClockTicking(status: Status): boolean {
+  return status === 'playing'
+}
+
+/**
  * 计时秒数格式化为三位（最大 999）。
  *
  * @param sec 秒数

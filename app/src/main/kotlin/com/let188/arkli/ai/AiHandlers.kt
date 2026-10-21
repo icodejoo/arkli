@@ -131,6 +131,22 @@ internal class AiMattingHandler(private val invoker: AiInvoker) : BridgeHandler 
 }
 
 /**
+ * `native.ai.logoSymbol`（`native.ai.invoke` 钉死 logo 符号端口的别名）：`{ provider?, prompt, seed?, removeRing? }` ->
+ * `{ svgPaths, pathCount, gateOk, gateReasons, ringDetected, features, timings, seed, residency, elapsedMs, modelId }`（见 [AiLogoPolicy.resultJson]）。
+ * 推理在后台线程，同一时刻只跑一个（[AiHeavyGate]；logo 自身并发第二个请求直接回 INTERNAL「正在生成，请稍候」）；
+ * 取消（`native.task.cancel`）在段间生效，最长约一次 UNet（真机 6~8 秒）。
+ *
+ * @param invoker 分派器
+ */
+internal class AiLogoHandler(private val invoker: AiInvoker) : BridgeHandler {
+    /** 按参数形状校验后交给分派器 */
+    override suspend fun handle(ctx: CallContext, params: JSONObject): Any? {
+        requireMainFrame(ctx)
+        return invoker.dispatch(AiCall.Logo(AiLogoPolicy.parse(params)))
+    }
+}
+
+/**
  * `native.ai.couplet`（`native.ai.invoke` 钉死对联端口的别名）：`{ provider?, text, temperature?, topK?, seed? }` ->
  * `{ text, elapsedMs, modelId }`（见 [AiCoupletPolicy.resultJson]）。推理在后台线程，同一时刻只跑一个（[AiHeavyGate]）；
  * 取消（`native.task.cancel`）会打断 Rust 里的生成。

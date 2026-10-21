@@ -2,12 +2,14 @@
 // 根组件：路由出口（工具页 iOS 风格推入/弹出，底栏 tab 之间淡入淡出）+ 底部 tab 栏，并按主题设置（亮/暗/跟随系统）切 Vant 暗色类
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import FloatBall from '@/shared/FloatBall.vue'
+import { notifyToolPageLeft } from '@/shared/floatLive'
 import { useKeyboardOpen } from '@/shared/useKeyboardOpen'
 import { initTheme } from '@/shared/theme'
 import { holdScroll, isCachedRoute, isTabPath, pageTransition, releaseScroll, type PageTransition } from '@/router/transition'
 
-/** keep-alive 缓存的视图组件名（与 CACHED_ROUTES 对应） */
-const CACHED_VIEWS = ['HomeView', 'AiView', 'FavoritesView', 'SettingsView']
+/** keep-alive 缓存的视图组件名；四个 tab 与 CACHED_ROUTES 对应，ToolView 被缓存是为了让浮窗工具离开路由后实例仍在（哪些实例该留由 ToolView 内部决定，见 docs/design/float-window.md） */
+const CACHED_VIEWS = ['HomeView', 'AiView', 'FavoritesView', 'SettingsView', 'ToolView']
 
 /** 底栏四个 tab：路径、文案、Vant 图标、是否只显示自定义图标（AI 用 `<i-arkli-ai />`，不带文字；顺序与 TAB_PATHS 一致） */
 const TABS: ReadonlyArray<{ to: string; label: string; icon: string; onlyIcon?: boolean }> = [
@@ -53,6 +55,8 @@ function onBeforeLeave(el: Element): void {
 /** 离开转场结束：被缓存的页面是同一个节点，清掉内联的 top 等，免得下次进来残留 */
 function onAfterLeave(el: Element): void {
   releaseScroll(el as HTMLElement)
+  // 工具页离开动画结束：让 ToolView 卸载不需要保活的工具实例（动画中途卸载会让内容凭空消失）
+  if (leavingName === 'tool') notifyToolPageLeft()
 }
 
 /** 进入的页面脱离文档流前：回到被缓存的页面时，让它先停在上次离开的位置 */
@@ -97,6 +101,8 @@ onBeforeUnmount(() => {
       </keep-alive>
     </transition>
   </router-view>
+  <!-- 浮窗圆球：层级在底栏之上、Vant 弹层之下 -->
+  <float-ball />
   <!-- 底栏：route 模式按当前路径高亮；tab 之间用 replace，不堆历史，返回键从工具页回到来的那个 tab -->
   <van-tabbar v-if="showTabbar" route replace fixed safe-area-inset-bottom>
     <!-- AI tab 只放一个 <i-arkli-ai /> 图标、不显示文字；用 aria-label 保留无障碍名称 -->

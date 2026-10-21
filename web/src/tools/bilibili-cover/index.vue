@@ -103,7 +103,7 @@ onBeforeUnmount(() => {
     </tool-group>
 
     <!-- 底部动作栏：保存封面，主按钮获取封面（获取中变成取消） -->
-    <bottom-actions :actions="{ save: { disabled: !previewUrl, text: '保存封面' } }" main :main-text="loading ? '取消' : '获取封面'" :main-type="loading ? 'danger' : 'primary'" :disabled="{ main: !inApp }" @main="run" @save="save" />
+    <bottom-actions :main-loading="loading" :actions="{ save: { disabled: !previewUrl, text: '保存封面' } }" main :main-text="loading ? '取消' : '获取封面'" :main-type="loading ? 'danger' : 'primary'" :disabled="{ main: !inApp }" @main="run" @save="save" />
   </div>
 </template>
 

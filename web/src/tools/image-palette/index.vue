@@ -347,7 +347,7 @@ onBeforeUnmount(() => {
     <color-fullscreen v-model="fullShow" :color="fullHex" />
 
     <!-- 底部动作栏：左边相册、右边拍照（没有模型，不带 AI） -->
-    <bottom-actions album main main-text="拍照" main-type="danger" :disabled="{ album: loading, main: loading }" @album="fromAlbum" @main="takePhoto" />
+    <bottom-actions :main-loading="loading" album main main-text="拍照" main-type="danger" :disabled="{ album: loading, main: loading }" @album="fromAlbum" @main="takePhoto" />
   </div>
 </template>
 
