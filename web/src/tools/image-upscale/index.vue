@@ -15,6 +15,7 @@ import { EDIT_BASIC, pickImages, saveBlob, type PickedImage } from '@/shared/ima
 import { aiUpscale, AiNotReadyError, fetchAiResult } from '@/native/ai'
 import AiGapNotice from '@/tools/_ai/AiGapNotice.vue'
 import { useAiModel } from '@/tools/_ai/useAiModel'
+import { useModelGate } from '@/shared/modelGate'
 import { aiErrorText, resolveImagePath } from '@/tools/_ai/aiImage'
 import { DEFAULT_SPLIT, estimateText, estimateUpscale, maxAllowedScale, scaleSuffix, splitClip, splitFromPointer, type UpscaleScale } from './logic'
 
@@ -23,6 +24,8 @@ const TOOL_ID = 'image-upscale'
 
 /** 模型状态 */
 const { ready, checked, loading: checking, refresh, markNotReady } = useAiModel('upscale')
+/** 模型缺失闸门：未就绪时点主按钮弹「去下载」对话框 */
+const { requireModel, promptDownload } = useModelGate()
 
 /** 本工具的持久缓存 */
 const store = createToolStorage(TOOL_ID)
@@ -90,6 +93,7 @@ async function shoot(): Promise<void> {
 
 /** 开始放大 */
 async function run(): Promise<void> {
+  if (!(await requireModel(ready.value || !checked.value))) return
   if (!image.value || busy.value) return
   busy.value = true
   try {
@@ -99,8 +103,10 @@ async function run(): Promise<void> {
     clearResult()
     result.value = { blob, url: URL.createObjectURL(blob), width: res.width, height: res.height, scale: scale.value }
   } catch (e) {
-    if (e instanceof AiNotReadyError) markNotReady()
-    else showFailToast(aiErrorText(e))
+    if (e instanceof AiNotReadyError) {
+      markNotReady()
+      void promptDownload()
+    } else showFailToast(aiErrorText(e))
   } finally {
     busy.value = false
   }
@@ -167,7 +173,7 @@ onBeforeUnmount(() => {
     </tool-group>
 
     <!-- 底部动作栏：相册 / 拍照选图，保存结果，主按钮开始放大 -->
-    <bottom-actions :main-loading="busy" ai :actions="{ save: { disabled: !result || saving } }" album photo main :main-text="busy ? '放大中' : '开始放大'" :disabled="{ album: busy, photo: busy, main: busy || !image || !ready || !!estimate?.tooBig }" @album="choose" @photo="shoot" @main="run" @save="save">
+    <bottom-actions :main-loading="busy" ai :actions="{ save: { disabled: !result || saving } }" album photo main :main-text="busy ? '放大中' : '开始放大'" :disabled="{ album: busy, photo: busy, main: busy || !image || !!estimate?.tooBig }" @album="choose" @photo="shoot" @main="run" @save="save">
       <template #ai><model-picker :tool-id="TOOL_ID" variant="bar" /></template>
     </bottom-actions>
   </div>

@@ -12,7 +12,8 @@ import { useFloatBusy } from '@/shared/useFloatPause'
 import ModelPicker from '@/shared/ModelPicker.vue'
 import { copyText } from '@/shared/clipboard'
 import { AI_CENTER_PATH, MSG_NO_MODEL, type PickerSection } from '@/shared/modelPicker'
-import { aiTranslate, isAiCancelled } from '@/native/ai'
+import { AiNotReadyError, aiTranslate, isAiCancelled } from '@/native/ai'
+import { useModelGate } from '@/shared/modelGate'
 import { useAiCatalog } from '@/native/useAiCatalog'
 import { sessionProviderOf } from '@/shared/aiCatalog'
 import { TEXT_MAX } from './data'
@@ -31,6 +32,9 @@ const OCR_TOOL_ID = 'ocr'
 /** 动作项 key */
 /** 路由器：无可用模型时跳 AI 中心 */
 const router = useRouter()
+
+/** 模型缺失闸门：没模型时点翻译弹「去下载」对话框 */
+const { requireModel, promptDownload } = useModelGate()
 
 /** 点「无可用模型，去查看」：去 AI 中心 */
 function goAiCenter(): void {
@@ -83,10 +87,10 @@ const photoBusy = computed(() => !!photo.value?.busy)
 const working = computed(() => busy.value || photoBusy.value)
 // 拍照翻译处理中（识别+翻译，停用会被中止）不让浮起；文字翻译已由主按钮 loading 自动汇报
 useFloatBusy(() => photoBusy.value)
-/** 主按钮能否点：图片模式要有图、两个模型就绪且不在处理（处理中禁用）；文字模式有文字且模型就绪（翻译中可点以取消） */
+/** 主按钮能否点：图片模式不在处理且语言够用（模型缺失不禁用，点击弹对话框）；文字模式有文字（翻译中可点以取消） */
 const canGo = computed(() => {
-  if (imageMode.value) return !photoBusy.value && !!photo.value?.modelsReady && !tooFewLangs.value
-  return busy.value || (!!input.value.trim() && modelReady.value && !tooFewLangs.value)
+  if (imageMode.value) return !photoBusy.value && !tooFewLangs.value
+  return busy.value || (!!input.value.trim() && !tooFewLangs.value)
 })
 /** 主按钮是否处于「取消」态：只有文字翻译进行中才可取消 */
 const canCancel = computed(() => busy.value && !imageMode.value)
@@ -155,9 +159,11 @@ function cancel(): void {
 }
 
 /** 主按钮：图片模式跑图片翻译；文字模式翻译中则取消，否则开始翻译 */
-function go(): void {
+async function go(): Promise<void> {
   if (imageMode.value) return void photo.value?.run()
   if (busy.value) return cancel()
+  if (!catalogReady.value) await catalog.refresh()
+  if (!(await requireModel(modelReady.value))) return
   void translate()
 }
 
@@ -211,7 +217,10 @@ async function translate(): Promise<void> {
       warnMsg.value = unrecognizedTip(r.unrecognized)
     }
   } catch (e) {
-    if (my === seq && !isAiCancelled(e)) errMsg.value = translateErrorMessage(e)
+    if (my === seq && !isAiCancelled(e)) {
+      if (e instanceof AiNotReadyError || (e as { code?: string } | null)?.code === 'NOT_READY') void promptDownload()
+      else errMsg.value = translateErrorMessage(e)
+    }
   } finally {
     if (my === seq) {
       busy.value = false

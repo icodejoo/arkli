@@ -42,14 +42,18 @@ describe('handleNotReady', () => {
   it('探测后仍显示就绪：重新探测并弹通用提示，不含下载字样', async () => {
     const refresh = vi.fn(async () => {})
     const toast = vi.fn()
-    await handleNotReady(refresh, () => true, toast)
+    const prompt = vi.fn(async () => true)
+    await handleNotReady(refresh, () => true, toast, prompt)
+    expect(prompt).not.toHaveBeenCalled()
     expect(refresh).toHaveBeenCalledTimes(1)
     expect(toast).toHaveBeenCalledWith(MSG_TEMP_UNAVAILABLE)
     expect(MSG_TEMP_UNAVAILABLE).not.toMatch(/下载|校验/)
   })
-  it('探测后已不就绪：提示条会出现，不再弹提示', async () => {
+  it('探测后已不就绪：弹「没有可用模型」对话框，不弹 toast', async () => {
     const toast = vi.fn()
-    await handleNotReady(async () => {}, () => false, toast)
+    const prompt = vi.fn(async () => true)
+    await handleNotReady(async () => {}, () => false, toast, prompt)
     expect(toast).not.toHaveBeenCalled()
+    expect(prompt).toHaveBeenCalledTimes(1)
   })
 })

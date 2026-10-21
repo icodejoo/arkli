@@ -13,6 +13,7 @@ import { EDIT_BASIC, pickImages, type PickedImage } from '@/shared/image-io'
 import { aiFuse, AiNotReadyError, fetchAiResult } from '@/native/ai'
 import AiGapNotice from '@/tools/_ai/AiGapNotice.vue'
 import { useAiModel } from '@/tools/_ai/useAiModel'
+import { useModelGate } from '@/shared/modelGate'
 import { aiErrorText, resolveImagePath } from '@/tools/_ai/aiImage'
 import { DEFAULT_RATIO, RATIO_STEP, clampRatio, ratioText, validateFuse } from './logic'
 
@@ -26,6 +27,8 @@ const NAME_SUFFIX = '_fusion'
 
 /** 模型状态 */
 const { ready, checked, loading: checking, refresh, markNotReady } = useAiModel('fuse')
+/** 模型缺失闸门：未就绪时点主按钮弹「去下载」对话框 */
+const { requireModel, promptDownload } = useModelGate()
 /** 结果与处理状态 */
 const { results, busy, saving, process, saveAll, clear } = useImageResults()
 
@@ -62,6 +65,7 @@ async function choose(slot: 'a' | 'b'): Promise<void> {
 
 /** 开始融合 */
 async function run(): Promise<void> {
+  if (!(await requireModel(ready.value || !checked.value))) return
   const a = imageA.value
   const b = imageB.value
   if (problem.value || !a || !b) {
@@ -80,7 +84,7 @@ async function run(): Promise<void> {
       // process 会吞掉错误，这里先给出明确提示
       if (e instanceof AiNotReadyError) {
         markNotReady()
-        showToast(e.message)
+        void promptDownload()
       } else {
         showToast(aiErrorText(e))
       }
@@ -128,7 +132,7 @@ onBeforeUnmount(() => {
     </tool-group>
 
     <!-- 底部动作栏：两个槽位各自选图，这里只放保存与主按钮开始融合 -->
-    <bottom-actions :main-loading="busy" ai :actions="{ save: { disabled: !results.length || saving } }" main :main-text="busy ? '融合中' : '开始融合'" :disabled="{ main: busy || !!problem || !ready }" @main="run" @save="saveAll">
+    <bottom-actions :main-loading="busy" ai :actions="{ save: { disabled: !results.length || saving } }" main :main-text="busy ? '融合中' : '开始融合'" :disabled="{ main: busy || !!problem }" @main="run" @save="saveAll">
       <template #ai><model-picker :tool-id="TOOL_ID" variant="bar" /></template>
     </bottom-actions>
   </div>

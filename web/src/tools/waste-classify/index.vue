@@ -8,6 +8,7 @@ import { isNativeAvailable } from '@/native/bridge'
 import { cameraItemToPicked, captureCamera, clearCamera, isAlbum, isCancelled } from '@/native/camera'
 import { aiClassifyImage, type ImageClassifyResult } from '@/native/ai'
 import { useModelsStore } from '@/stores/models'
+import { useModelGate } from '@/shared/modelGate'
 import { EDIT_BASIC, pickImages, type PickedImage } from '@/shared/image-io'
 import { resolveImagePath } from '@/tools/_ai/aiImage'
 import {
@@ -57,8 +58,10 @@ let tick: ReturnType<typeof setInterval> | null = null
 // CLIP 识物只有一次前向、无法中途打断：识别中不让浮起（动作栏只是禁用按钮，不会自动汇报）
 useFloatBusy(() => busy.value)
 
-/** 是否已就绪（模型装好，可以拍照/选图） */
-const ready = computed(() => stage.value === 'ready')
+/** 模型缺失闸门：没模型时点拍照/相册弹「去下载」对话框 */
+const { promptDownload } = useModelGate()
+/** 能否操作（在 App 内；模型缺失时按钮仍可点，点后弹对话框） */
+const usable = computed(() => stage.value !== 'noHost')
 
 /** 页面阶段 */
 const stage = computed(() => stageOf(host, model.value?.state ?? 'absent'))
@@ -96,7 +99,8 @@ async function classify(img: PickedImage): Promise<void> {
     selected.value = defaultSelection(r)
   } catch (e) {
     const f = classifyFailure(e)
-    showToast(f.text)
+    if (f.kind === 'notReady') void promptDownload()
+    else showToast(f.text)
   } finally {
     stopTick()
     busy.value = false
@@ -127,6 +131,7 @@ async function accept(got: PickedImage): Promise<void> {
 /** 拍照并立刻识别；取消时若旧图是拍的（原生拍前已清掉文件）就一并丢掉 */
 async function takePhoto(): Promise<void> {
   if (busy.value) return
+  if (stage.value === 'notReady') return void promptDownload()
   const hadCam = isCamImage(image.value)
   try {
     const r = await captureCamera({ modes: ['photo'] })
@@ -144,6 +149,7 @@ async function takePhoto(): Promise<void> {
 /** 从自带相册页单选一张并立刻识别 */
 async function fromAlbum(): Promise<void> {
   if (busy.value) return
+  if (stage.value === 'notReady') return void promptDownload()
   try {
     const got = (await pickImages({ edit: EDIT_BASIC, multiple: false }))[0]
     if (got) await accept(got)
@@ -158,7 +164,7 @@ function adopt(i: number): void {
 }
 
 /** 供宿主页的底部动作栏调用 */
-defineExpose({ takePhoto, fromAlbum, ready, busy })
+defineExpose({ takePhoto, fromAlbum, usable, busy })
 
 onBeforeUnmount(() => {
   stopTick()

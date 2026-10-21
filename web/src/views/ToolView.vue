@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 工具容器页：顶部导航栏 + 内容区（安全区内边距），按路由 id 异步加载工具组件
-import { computed, defineAsyncComponent, nextTick, ref, watchEffect, type Component } from 'vue'
+import { computed, defineAsyncComponent, nextTick, ref, watch, watchEffect, type Component } from 'vue'
 import { showConfirmDialog } from 'vant'
 import { useRoute, useRouter } from 'vue-router'
 import { showToast } from 'vant'
@@ -73,6 +73,13 @@ const meta = computed(() => findTool(props.id))
 const route = useRoute()
 /** 当前是否在工具设置页（此时工具首页只隐藏、不卸载，状态保留） */
 const inSetting = computed(() => route.name === TOOL_SETTING_ROUTE)
+/** 首页与设置页切换用的转场名：进设置推入，回首页弹出 */
+const settingTransition = computed(() => (inSetting.value ? 'page-push' : 'page-pop'))
+/** 设置页退场动画是否还没结束：期间设置内容要继续挂着，免得动画中途凭空消失 */
+const settingLingering = ref(false)
+watch(inSetting, (now) => {
+  if (!now) settingLingering.value = true
+})
 /** 浮窗 store */
 const floatStore = useFloatStore()
 /** 保活的工具 id 列表：前台工具 + 被浮起的工具（状态机见 shared/floatLive.ts） */
@@ -233,12 +240,19 @@ watchEffect(() => {
     <pin-tool-sheet v-if="meta" v-model:show="pinSheet" :tool="meta" />
     <main class="shell__body">
       <!-- 工具舞台：前台工具 + 被浮起的工具各自保活，其余离开即卸载；工具之间互跳（取色器 → 颜色助手）再返回仍保留状态 -->
-      <div v-show="!inSetting">
-        <tool-stage v-if="meta" :ids="live" :active-id="props.id" :resolve="resolveTool" />
-      </div>
-      <!-- 设置舞台：只保活当前工具的设置页，切到别的工具就卸载（首页舞台里被浮起的工具另当别论） -->
-      <tool-stage v-if="meta" :ids="[props.id]" :active-id="inSetting ? props.id : ''" :resolve="resolveSetting" />
-      <van-empty v-else description="没有找到这个工具" />
+      <!-- 首页与设置页互相进退：复用全局页面转场（进设置推入、回首页弹出），样式见 styles/index.scss 的“页面转场” -->
+      <transition :name="settingTransition">
+        <div v-show="!inSetting" class="shell__page">
+          <tool-stage v-if="meta" :ids="live" :active-id="props.id" :resolve="resolveTool" />
+        </div>
+      </transition>
+      <!-- 设置舞台：只保活当前工具的设置页，切到别的工具就卸载（首页舞台里被浮起的工具另当别论）；退场动画结束后才卸载内容 -->
+      <transition :name="settingTransition" @after-leave="settingLingering = false">
+        <div v-if="meta" v-show="inSetting" class="shell__page">
+          <tool-stage :ids="[props.id]" :active-id="inSetting || settingLingering ? props.id : ''" :resolve="resolveSetting" />
+        </div>
+      </transition>
+      <van-empty v-if="!meta" description="没有找到这个工具" />
     </main>
   </div>
 </template>
@@ -313,11 +327,20 @@ watchEffect(() => {
     background: var(--c-border, rgba(127, 127, 127, 0.35));
   }
 
-  &__body {
+  // 首页 / 设置页各占一页；转场时它会变成 fixed 叠在导航栏下方（见下面 :deep 规则）
+  &__page {
+    box-sizing: border-box;
     max-width: 720px;
     margin: 0 auto;
     padding: var(--page-pad);
     padding-bottom: calc(var(--page-pad) + var(--safe-bottom));
+  }
+
+  // 转场中：全局样式让页面铺满屏幕，这里把顶部让给导航栏，内容超出时在页内裁掉
+  &__page[class*='page-'][class*='-active'] {
+    top: calc(var(--van-nav-bar-height, 46px) + var(--safe-top));
+    max-width: none;
+    margin: 0;
   }
 }
 </style>

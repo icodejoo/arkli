@@ -13,6 +13,7 @@ import { copyText } from '@/shared/clipboard'
 import { AiNotReadyError, aiInvoke, isAiCancelled } from '@/native/ai'
 import { AI_METHODS } from '@/native/aiMethods'
 import { useAiCatalog } from '@/native/useAiCatalog'
+import { useModelGate } from '@/shared/modelGate'
 import {
   MODE_NOTE,
   MSG_TRUNCATED,
@@ -33,8 +34,6 @@ import {
 const TOOL_ID = 'ai-writer'
 /** 文本生成用的提供者 */
 const PROVIDER_QWEN = 'local-qwen'
-/** 模型未就绪提示 */
-const MSG_NOT_READY = '模型还没就绪，请先下载'
 /** 各模式输入框占位 */
 const PLACEHOLDERS: Record<WriterMode, string> = {
   name: '说说用途或要求，如：一家卖手冲咖啡的小店',
@@ -48,6 +47,8 @@ const PLACEHOLDERS: Record<WriterMode, string> = {
 const store = createToolStorage(TOOL_ID)
 /** 本工具的 AI 目录 */
 const catalog = useAiCatalog(TOOL_ID)
+/** 模型缺失闸门：没模型时点主按钮弹「去下载」对话框 */
+const { promptDownload } = useModelGate()
 
 /** 当前模式 */
 const mode = usePersistedRef<WriterMode>(store, 'mode', 'name', (v) => WRITER_MODES.some((m) => m.key === v))
@@ -97,7 +98,7 @@ async function onRun(): Promise<void> {
   const params = { mode: mode.value, input: input.value, nameKind: nameKind.value, style: style.value }
   const issue = validateInput(params)
   if (issue) return void showToast(issue)
-  if (missing.value || !qwenReady.value) return void showToast(MSG_NOT_READY)
+  if (missing.value || !qwenReady.value) return void promptDownload()
   const req = buildRequest(params)
   if (req.truncated) showToast(MSG_TRUNCATED(req.inputMax))
   abort = new AbortController()
@@ -117,7 +118,7 @@ async function onRun(): Promise<void> {
   } catch (e) {
     if (isAiCancelled(e)) return
     if (e instanceof AiNotReadyError) {
-      showToast(MSG_NOT_READY)
+      void promptDownload()
       void catalog.refresh()
     } else {
       showFailToast((e as { message?: string } | null)?.message || '出错了，请重试')

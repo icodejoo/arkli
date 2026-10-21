@@ -12,6 +12,7 @@ import { shootPhoto } from '@/shared/shootPhoto'
 import { aiColorize, AiNotReadyError, fetchAiResult } from '@/native/ai'
 import AiGapNotice from '@/tools/_ai/AiGapNotice.vue'
 import { useAiModel } from '@/tools/_ai/useAiModel'
+import { useModelGate } from '@/shared/modelGate'
 import { aiErrorText, resolveImagePath } from '@/tools/_ai/aiImage'
 import { isColorful, validateColorize } from './logic'
 
@@ -25,6 +26,8 @@ const NAME_SUFFIX = '_color'
 
 /** 模型状态 */
 const { ready, checked, loading: checking, refresh, markNotReady } = useAiModel('colorize')
+/** 模型缺失闸门：未就绪时点主按钮弹「去下载」对话框 */
+const { requireModel, promptDownload } = useModelGate()
 /** 结果与处理状态 */
 const { results, busy, saving, process, saveAll, clear } = useImageResults()
 
@@ -78,6 +81,7 @@ async function shoot(): Promise<void> {
 
 /** 开始上色 */
 async function run(): Promise<void> {
+  if (!(await requireModel(ready.value || !checked.value))) return
   const img = image.value
   if (problem.value || !img) {
     if (problem.value) showToast(problem.value)
@@ -95,7 +99,7 @@ async function run(): Promise<void> {
       // process 会吞掉错误，这里先给出明确提示
       if (e instanceof AiNotReadyError) {
         markNotReady()
-        showToast(e.message)
+        void promptDownload()
       } else {
         showToast(aiErrorText(e))
       }
@@ -123,7 +127,7 @@ onBeforeUnmount(() => image.value?.release())
     </tool-group>
 
     <!-- 底部动作栏：相册 / 拍照选图，保存结果，主按钮开始上色 -->
-    <bottom-actions :main-loading="busy" ai :actions="{ save: { disabled: !results.length || saving } }" album photo main :main-text="busy ? '上色中' : '开始上色'" :disabled="{ album: busy, photo: busy, main: busy || !!problem || !image || !ready }" @album="choose" @photo="shoot" @main="run" @save="saveAll">
+    <bottom-actions :main-loading="busy" ai :actions="{ save: { disabled: !results.length || saving } }" album photo main :main-text="busy ? '上色中' : '开始上色'" :disabled="{ album: busy, photo: busy, main: busy || !!problem || !image }" @album="choose" @photo="shoot" @main="run" @save="saveAll">
       <template #ai><model-picker :tool-id="TOOL_ID" variant="bar" /></template>
     </bottom-actions>
   </div>

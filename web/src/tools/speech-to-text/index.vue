@@ -7,6 +7,7 @@ import BottomActions from '@/shared/BottomActions.vue'
 import { useFloatPause } from '@/shared/useFloatPause'
 import ModelPicker from '@/shared/ModelPicker.vue'
 import ModelMissingNotice from '@/shared/ModelMissingNotice.vue'
+import { useModelGate } from '@/shared/modelGate'
 import { copyText } from '@/shared/clipboard'
 import { saveBlob } from '@/shared/image-io'
 import { getSpeechStatus, onSpeechFinal, onSpeechPartial, speechErrorMessage, startSpeech, stopSpeech } from '@/native/speech'
@@ -29,6 +30,8 @@ import {
 /** 本工具 id（模型选择器用） */
 const TOOL_ID = 'speech-to-text'
 
+/** 模型缺失闸门：没模型时点按钮弹「去下载」对话框 */
+const { promptDownload } = useModelGate()
 /** 模型 store（只读） */
 const store = useModelsStore()
 /** 识别文本状态 */
@@ -111,10 +114,8 @@ async function stop(): Promise<void> {
 function onMain(): void {
   if (starting.value) return
   if (listening.value) return void stop()
-  if (readiness.value !== 'ready') {
-    showToast(readiness.value === 'no-model' ? '模型还没就绪，请先下载' : '语音识别暂不可用')
-    return
-  }
+  if (readiness.value === 'no-model') return void promptDownload()
+  if (readiness.value !== 'ready') return void showToast('语音识别暂不可用')
   void start()
 }
 

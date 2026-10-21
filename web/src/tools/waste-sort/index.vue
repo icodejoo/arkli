@@ -24,13 +24,13 @@ const router = useRouter();
 const classify = ref<{
     takePhoto: () => void;
     fromAlbum: () => void;
-    ready: boolean;
+    usable: boolean;
     busy: boolean;
 } | null>(null);
 /** 是否处于拍照识别模式 */
 const camera = computed(() => route.query[MODE_QUERY] === MODE_CAMERA);
-/** 识别不可用（模型未就绪或正在识别）时禁用拍照/相册 */
-const blocked = computed(() => !classify.value?.ready || !!classify.value?.busy);
+/** 识别不可用（不在 App 内或正在识别）时禁用拍照/相册；模型缺失不禁用，点击后弹对话框 */
+const blocked = computed(() => !classify.value?.usable || !!classify.value?.busy);
 /** 在查询与拍照识别模式间切换（replace，不堆历史） */
 function toggleMode(): void {
     const q = { ...route.query };

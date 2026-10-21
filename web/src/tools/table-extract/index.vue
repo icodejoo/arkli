@@ -13,6 +13,7 @@ import { aiOcr, AiNotReadyError } from '@/native/ai'
 import { useAiCatalog } from '@/native/useAiCatalog'
 import ModelMissingNotice from '@/shared/ModelMissingNotice.vue'
 import { aiErrorText, handleNotReady, resolveImagePath } from '@/tools/_ai/aiImage'
+import { useModelGate } from '@/shared/modelGate'
 import { isAiCancelled } from '@/native/ai'
 import { blocksToTable, removeColumn, removeRow, textToTable, toCsv, toTsv, updateCell } from './logic'
 
@@ -31,6 +32,8 @@ const catalog = useAiCatalog(TOOL_ID)
 const catalogReady = catalog.ready
 /** 所选文字识别模型是否已安装 */
 const modelReady = computed(() => catalog.current.value?.status === 'ready')
+/** 模型缺失闸门：未就绪时点按钮弹「去下载」对话框 */
+const { requireModel, promptDownload } = useModelGate()
 /** 当前识别的取消控制器 */
 let controller: AbortController | null = null
 
@@ -79,6 +82,7 @@ function onMain(): void {
 
 /** 识别图片并聚类成表 */
 async function recognize(): Promise<void> {
+  if (!(await requireModel(modelReady.value))) return
   if (!image.value || busy.value) return
   busy.value = true
   controller = new AbortController()
@@ -89,7 +93,7 @@ async function recognize(): Promise<void> {
   } catch (e) {
     if (isAiCancelled(e)) return
     // 撞上“模型未就绪”：重新探测目录，提示条随之出现；状态仍显示可用时给一句通用提示
-    if (e instanceof AiNotReadyError) await handleNotReady(catalog.refresh, () => catalog.current.value?.status === 'ready', showFailToast)
+    if (e instanceof AiNotReadyError) await handleNotReady(catalog.refresh, () => catalog.current.value?.status === 'ready', showFailToast, promptDownload)
     else showFailToast(aiErrorText(e))
   } finally {
     controller = null
@@ -188,7 +192,7 @@ onBeforeUnmount(cleanup)
       :photo="tab === 'image'"
       main
       :main-text="tab === 'image' ? (busy ? '识别中' : '识别') : '拆成表格'"
-      :disabled="{ album: busy, photo: busy, main: tab === 'image' ? busy || !image || !modelReady : !pasted.trim() }"
+      :disabled="{ album: busy, photo: busy, main: tab === 'image' ? busy || !image : !pasted.trim() }"
       @album="choose"
       @photo="shoot"
       @main="onMain"

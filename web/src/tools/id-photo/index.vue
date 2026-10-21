@@ -16,6 +16,7 @@ import { canvasToBlob, createCanvas, drawScaled, loadBitmap, EDIT_BASIC, pickIma
 import { aiMatte, AiNotReadyError, fetchAiResult } from '@/native/ai'
 import AiGapNotice from '@/tools/_ai/AiGapNotice.vue'
 import { useAiModel } from '@/tools/_ai/useAiModel'
+import { useModelGate } from '@/shared/modelGate'
 import { aiErrorText, resolveImagePath } from '@/tools/_ai/aiImage'
 import {
   BG_PRESETS,
@@ -60,6 +61,8 @@ type MattingMode = 'none' | 'ai' | 'chroma'
 
 /** 抠图模型状态 */
 const { ready, checked, loading: checking, refresh, markNotReady } = useAiModel('matte')
+/** 模型缺失闸门：未就绪时选 AI 抠图或点主按钮弹「去下载」对话框 */
+const { requireModel, promptDownload } = useModelGate()
 /** 结果与处理状态 */
 const { results, busy, saving, process, saveAll, clear } = useImageResults()
 
@@ -92,11 +95,11 @@ const customH = ref(531)
 const crop = ref<CropState>({ frac: FRAC_MAX, cx: 0, cy: 0 })
 /** 抠图方式 */
 const matting = usePersistedRef<MattingMode>(store, 'matting', 'none', (v) => v === 'none' || v === 'ai' || v === 'chroma')
-/** 抠图方式选项；AI 抠图在模型未就绪时禁用 */
+/** 抠图方式选项 */
 const MATTING_OPTIONS = computed<CellOption[]>(() => [
   { value: 'none', label: '保持原背景' },
   { value: 'chroma', label: '纯色背景抠图' },
-  { value: 'ai', label: 'AI 抠图', disabled: !ready.value },
+  { value: 'ai', label: 'AI 抠图' },
 ])
 /** 底色预设标识，`custom` 为自定义 */
 const bgId = usePersistedRef(store, 'bgId', BG_PRESETS[1].id, (v) => v === CUSTOM_ID_BG || BG_PRESETS.some((b) => b.id === v))
@@ -141,7 +144,7 @@ const bgColor = computed(() => (bgId.value === CUSTOM_ID_BG ? bgCustom.value : B
 /** 取色的十六进制，供色块显示 */
 const keyHex = computed(() => (key.value ? rgbToHex(key.value) : ''))
 /** 能否生成 */
-const canRun = computed(() => !!bitmap.value && (matting.value !== 'chroma' || !!key.value) && (matting.value !== 'ai' || ready.value))
+const canRun = computed(() => !!bitmap.value && (matting.value !== 'chroma' || !!key.value))
 
 /** 换图或换规格时重置裁剪框 */
 function resetCrop(): void {
@@ -264,8 +267,15 @@ async function ensureMatted(img: PickedImage): Promise<ImageBitmap> {
   return bmp
 }
 
+/** 切换抠图方式；选 AI 抠图而模型未就绪时弹「去下载」对话框，不改选项 */
+async function onMattingChange(v: MattingMode): Promise<void> {
+  if (v === 'ai' && !(await requireModel(ready.value || !checked.value))) return
+  matting.value = v
+}
+
 /** 生成证件照 */
 async function run(): Promise<void> {
+  if (matting.value === 'ai' && !(await requireModel(ready.value || !checked.value))) return
   const img = image.value
   const orig = bitmap.value
   if (!img || !orig || busy.value) return
@@ -282,7 +292,7 @@ async function run(): Promise<void> {
         if (e instanceof AiNotReadyError) {
           markNotReady()
           matting.value = 'none'
-          showToast(e.message)
+          void promptDownload()
         }
         throw e
       }
@@ -362,7 +372,7 @@ onBeforeUnmount(() => {
     </tool-group>
 
     <tool-group title="背景">
-      <cell-picker :model-value="matting" title="抠图方式" :options="MATTING_OPTIONS" @update:model-value="matting = $event as MattingMode" />
+      <cell-picker :model-value="matting" title="抠图方式" :options="MATTING_OPTIONS" @update:model-value="onMattingChange($event as MattingMode)" />
 
       <template v-if="matting === 'chroma'">
         <p class="tool-hint">仅适用于纯色背景的照片（白墙、蓝布等）。点「取背景色」后点照片上的背景处，再调容差。</p>

@@ -44,14 +44,16 @@ export function aiErrorText(e: unknown): string {
 }
 
 /**
- * 处理“模型未就绪”错误：先重新探测目录；探测后状态仍显示就绪（用户看不到提示条），就弹一句通用提示，免得点了像没反应。
+ * 处理“模型未就绪”错误：先重新探测目录；探测后确实没有就绪模型就弹「没有可用模型」对话框（去下载）；状态仍显示就绪（如提供者暂不可用）就弹一句通用提示，免得点了像没反应。
  *
  * @param refresh 重新探测目录
  * @param stillReady 探测后所选模型是否仍显示就绪
  * @param toast 弹提示的函数
- * @example await handleNotReady(catalog.refresh, () => catalog.current.value?.status === 'ready', showToast)
+ * @param prompt 弹「没有可用模型」对话框的函数（useModelGate().promptDownload）
+ * @example await handleNotReady(catalog.refresh, () => catalog.current.value?.status === 'ready', showToast, promptDownload)
  */
-export async function handleNotReady(refresh: () => Promise<void>, stillReady: () => boolean, toast: (msg: string) => void): Promise<void> {
+export async function handleNotReady(refresh: () => Promise<void>, stillReady: () => boolean, toast: (msg: string) => void, prompt: () => Promise<unknown>): Promise<void> {
   await refresh()
   if (stillReady()) toast(MSG_TEMP_UNAVAILABLE)
+  else await prompt()
 }

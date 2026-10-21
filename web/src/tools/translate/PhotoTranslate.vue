@@ -13,6 +13,7 @@ import { captureCamera, cameraItemToPicked, clearCamera, isCancelled, isAlbum } 
 import { isNativeAvailable } from '@/native/bridge'
 import { aiOcr, aiTranslate, isAiCancelled } from '@/native/ai'
 import { useAiCatalog } from '@/native/useAiCatalog'
+import { useModelGate } from '@/shared/modelGate'
 import { resolveImagePath } from '../_ai/aiImage'
 import { isPairSupported, PROVIDER_QWEN } from './shortInput'
 import { runPhotoTranslate, type PhotoInput } from './photoRun'
@@ -53,6 +54,9 @@ const emit = defineEmits<{
 const trCatalog = useAiCatalog(TRANSLATE_TOOL_ID)
 /** 文字识别模型目录（只读） */
 const ocrCatalog = useAiCatalog(OCR_TOOL_ID)
+
+/** 模型缺失闸门：没模型时点翻译弹「去下载」对话框 */
+const { promptDownload } = useModelGate()
 
 /** 翻译与 OCR 模型是否都就绪 */
 const modelsReady = computed(() => trCatalog.current.value?.status === 'ready' && ocrCatalog.current.value?.status === 'ready')
@@ -176,12 +180,13 @@ function clear(): void {
   active.value = 0
 }
 
-/** 对已载入的图片逐张识别并翻译；没图、正在处理或模型没就绪时什么也不做 */
+/** 对已载入的图片逐张识别并翻译；没图或正在处理时什么也不做，模型没就绪弹「去下载」对话框 */
 async function run(): Promise<void> {
   if (!held.length || busy.value) return
   if (!trCatalog.ready.value) await trCatalog.refresh()
   const provider = trCatalog.current.value?.providerId
-  if (!provider || !modelsReady.value) return
+  if (!ocrCatalog.ready.value) await ocrCatalog.refresh()
+  if (!provider || !modelsReady.value) return void promptDownload()
   const picked = held
   const ac = new AbortController()
   controller = ac
@@ -210,8 +215,11 @@ async function run(): Promise<void> {
       },
       ac.signal,
     )
-    // 撞上模型未就绪：重新探测目录，提示条随之出现，不弹下载相关文案
-    if (out.notReady) await Promise.all([trCatalog.refresh(), ocrCatalog.refresh()])
+    // 撞上模型未就绪：重新探测目录，提示条随之出现，并弹「去下载」对话框
+    if (out.notReady) {
+      await Promise.all([trCatalog.refresh(), ocrCatalog.refresh()])
+      void promptDownload()
+    }
     else if (!ac.signal.aborted && !items.value.some((i) => i.blocks.length)) showToast(MSG_NO_TEXT)
   } catch (e) {
     if (!isAiCancelled(e)) showFailToast((e as { message?: string }).message ?? '处理失败')

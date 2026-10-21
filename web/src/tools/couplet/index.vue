@@ -18,6 +18,7 @@ import { AiNotReadyError, aiCouplet, aiInvoke, isAiCancelled } from '@/native/ai
 import { AI_METHODS } from '@/native/aiMethods'
 import { corpusGet, corpusInfo, COUPLET_CORPUS_ID, type CorpusInfo, type CorpusPool } from '@/native/corpus'
 import { useAiCatalog } from '@/native/useAiCatalog'
+import { useModelGate } from '@/shared/modelGate'
 import { useModelsStore } from '@/stores/models'
 import { createToolStorage } from '@/shared/toolStorage'
 import { usePersistedRef } from '@/shared/usePersistedRef'
@@ -74,7 +75,6 @@ const CATEGORY_OPTIONS = CATEGORY_HINTS.map((c) => ({ value: c.name, label: c.na
 const MOURNING_LABEL = '挽联（哀悼）'
 /** 提示条文案 */
 const MSG_CORPUS_MISSING = '随机模式需要对联语料库，请先下载'
-const MSG_NOT_READY = '模型还没就绪，请先下载'
 const MSG_REVIEW = '提示：0.8B 小模型会写出不工整甚至不通的句子，请自己把关'
 const MSG_QUIZ_MISS = '没抽到这个字数的上联，换个字数或类型试试'
 const MSG_RANDOM_NOTE = '横批与分类是系统推导的，仅供参考，不是原联自带'
@@ -90,6 +90,8 @@ const router = useRouter()
 const store = useModelsStore()
 /** 本工具的 AI 目录：含对联与文本两类提供者 */
 const catalog = useAiCatalog(TOOL_ID)
+/** 模型缺失闸门：没模型时点主按钮弹「去下载」对话框 */
+const { promptDownload } = useModelGate()
 
 /** 当前模式 */
 const mode = usePersistedRef<Mode>(prefs, 'mode', 'random', (v) => MODES.includes(v))
@@ -305,7 +307,8 @@ async function onRun(): Promise<void> {
     return
   }
   if (missing.value) {
-    showToast(needCorpus.value ? MSG_CORPUS_MISSING : MSG_NOT_READY)
+    if (needCorpus.value) showToast(MSG_CORPUS_MISSING)
+    else void promptDownload()
     return
   }
   abort = new AbortController()
@@ -319,7 +322,7 @@ async function onRun(): Promise<void> {
   } catch (e) {
     if (isAiCancelled(e)) return
     if (e instanceof AiNotReadyError) {
-      showToast(MSG_NOT_READY)
+      void promptDownload()
       void catalog.refresh()
     } else {
       showFailToast((e as { message?: string } | null)?.message || '出错了，请重试')

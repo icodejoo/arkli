@@ -19,6 +19,7 @@ import { useAiCatalog } from '@/native/useAiCatalog'
 import { canvasToBlob, createCanvas, EDIT_BASIC, pickImages, previewBlob, releaseCanvas, saveBlob, writeBlobToCache, type PickedImage } from '@/shared/image-io'
 import { shootPhoto } from '@/shared/shootPhoto'
 import { aiErrorText, handleNotReady, resolveImagePath } from '@/tools/_ai/aiImage'
+import { useModelGate } from '@/shared/modelGate'
 import {
   BG_OPTIONS,
   DEFAULT_CUSTOM_HEX,
@@ -53,6 +54,8 @@ const catalogReady = catalog.ready
 const mode = computed(() => modeOfProvider(catalog.current.value?.providerId))
 /** 当前模式的模型是否已安装 */
 const modelReady = computed(() => catalog.current.value?.status === 'ready')
+/** 模型缺失闸门：未就绪时点按钮弹「去下载」对话框 */
+const { requireModel, promptDownload } = useModelGate()
 /** 标签页下标 */
 const tabIndex = computed(() => MATTING_MODES.indexOf(mode.value))
 
@@ -139,6 +142,7 @@ async function shoot(): Promise<void> {
 
 /** 开始抠图 */
 async function run(): Promise<void> {
+  if (!(await requireModel(modelReady.value))) return
   if (!image.value || busy.value) return
   const my = ++runId
   busy.value = true
@@ -151,7 +155,7 @@ async function run(): Promise<void> {
   } catch (e) {
     if (isAiCancelled(e) || my !== runId) return
     // 撞上“模型未就绪”：重新探测目录，提示条随之出现；状态仍显示可用时给一句通用提示
-    if (e instanceof AiNotReadyError) await handleNotReady(catalog.refresh, () => catalog.current.value?.status === 'ready', showToast)
+    if (e instanceof AiNotReadyError) await handleNotReady(catalog.refresh, () => catalog.current.value?.status === 'ready', showToast, promptDownload)
     else showToast(aiErrorText(e))
   } finally {
     if (my === runId) {
@@ -285,7 +289,7 @@ onBeforeUnmount(cleanup)
       photo
       main
       :main-text="busy ? '处理中' : '开始抠图'"
-      :disabled="{ album: busy, photo: busy, main: busy || !image || !modelReady }"
+      :disabled="{ album: busy, photo: busy, main: busy || !image }"
       @album="choose"
       @photo="shoot"
       @save="save"
