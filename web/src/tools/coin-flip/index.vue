@@ -2,12 +2,16 @@
 // 抛硬币：点一下抛一次，可连抛并统计；先定结果再播动画
 import BottomActions from '@/shared/BottomActions.vue'
 import { useFloatPause } from '@/shared/useFloatPause'
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import CellPicker from '@/shared/CellPicker.vue'
 import { prefersReducedMotion } from '@/shared/motion'
-import { countSides, createSettleTimer, flipCoin, flipCoins, loadFlag, MAX_FLIPS, saveFlag, SIDE_LABEL, SOUND_KEY, VIBRATE_KEY, VIBRATE_LAND, VIBRATE_START, type CoinSide } from './logic'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
+import { countSides, createSettleTimer, flipCoin, flipCoins, MAX_FLIPS, parseLegacyFlag, SIDE_LABEL, SOUND_KEY, VIBRATE_KEY, VIBRATE_LAND, VIBRATE_START, type CoinSide } from './logic'
 import { createSoundPlayer, tryVibrate } from './feedback'
 
+/** 本工具的持久缓存（震动/音效开关与 dice 共用旧键，保持原逻辑不动） */
+const store = createToolStorage('coin-flip')
 /** 动画时长（毫秒），需与样式里的 --flip-ms 一致 */
 const ANIM_MS = 900
 /** 一次抛掷至少翻的整圈数 */
@@ -37,29 +41,20 @@ const angle = ref(0)
 /** 是否带过渡动画（减弱动效时直接落位） */
 const animated = ref(true)
 /** 连抛次数 */
-const batch = ref(1)
+const batch = usePersistedRef(store, 'batch', 1, (v) => BATCH_OPTIONS.some((o) => o.value === v))
 /** 本轮历史结果（最新在前） */
 const history = ref<CoinSide[]>([])
 /** 动画定时器：到点结算，也可在浮起时提前结算 */
 const anim = createSettleTimer()
-/** 取 localStorage，不可用时为 undefined */
-function getStorage(): Storage | undefined {
-  try {
-    return window.localStorage
-  } catch {
-    return undefined
-  }
-}
+// 旧版与掷骰子共用的开关键：只迁一次，之后两个工具各存各的
+store.adoptLegacy(VIBRATE_KEY, 'vibrate', parseLegacyFlag)
+store.adoptLegacy(SOUND_KEY, 'sound', parseLegacyFlag)
 /** 震动反馈开关，默认开 */
-const vibrateOn = ref(loadFlag(getStorage(), VIBRATE_KEY, true))
+const vibrateOn = usePersistedRef(store, 'vibrate', true, (v) => typeof v === 'boolean')
 /** 音效开关，默认关 */
-const soundOn = ref(loadFlag(getStorage(), SOUND_KEY, false))
+const soundOn = usePersistedRef(store, 'sound', false, (v) => typeof v === 'boolean')
 /** 合成音播放器 */
 const sound = createSoundPlayer()
-
-/** 开关变化时落盘 */
-watch(vibrateOn, (v) => saveFlag(getStorage(), VIBRATE_KEY, v))
-watch(soundOn, (v) => saveFlag(getStorage(), SOUND_KEY, v))
 
 /** 触发某个时刻的反馈（震动与音效各自看开关） */
 function feedback(kind: 'start' | 'land'): void {

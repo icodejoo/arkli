@@ -30,6 +30,8 @@ export interface ToolMeta {
   models?: ToolModelOption[]
   /** 为 true 时标题栏显示摄像头按钮，可在普通模式与拍照识别模式间切换；模型选择器在页面操作栏里 */
   camera?: boolean
+  /** 该工具自己的设置页（可选，没有就显示空白页）；同样懒加载，进入过后随工具一起 keep-alive */
+  setting?: () => Promise<{ default: Component }>
   /** 懒加载组件，每个工具会被打成独立 chunk */
   load: () => Promise<{ default: Component }>
 }
@@ -127,7 +129,7 @@ export const tools: ToolMeta[] = [
   { id: 'sketchpad', name: '画板', description: '手指涂画，撤销重做，保存成图片', load: () => import('./sketchpad/index.vue') },
   { id: 'ledger', name: '记账', description: '记收支，按月看分类占比，可导出备份', load: () => import('./ledger/index.vue') },
   { id: 'express-track', name: '快递识别', description: '识别单号属于哪家快递，跳官网查询', load: () => import('./express-track/index.vue') },
-  { id: 'waste-sort', name: '垃圾分类', description: '查物品该扔哪个桶，或拍照识别（标题栏摄像头切换）', tags: [TAG_AI], camera: true, tasks: ['classifyImage'], models: [{ modelId: 'siglip2-mnn-w8', title: '识物 SigLIP2（MNN）', desc: '识别垃圾品类' }], load: () => import('./waste-sort/index.vue') },
+  { id: 'waste-sort', name: '垃圾分类', description: '查物品该扔哪个桶，或拍照识别（底部栏切换）', tags: [TAG_AI], camera: true, tasks: ['classifyImage'], models: [{ modelId: 'siglip2-mnn-w8', title: '识物 SigLIP2（MNN）', desc: '识别垃圾品类' }], load: () => import('./waste-sort/index.vue') },
   { id: 'wifi-qr', name: 'WiFi 二维码', description: '输入 WiFi 信息生成可扫码连接的二维码', load: () => import('./wifi-qr/index.vue') },
   { id: 'sys-helper', name: '系统调试助手', description: '按参数生成 ADB 命令，可一键复制', load: () => import('./sys-helper/index.vue') },
   { id: 'personality-test', name: '人格倾向测试', description: '28 道原创题，测出十六型人格倾向', load: () => import('./personality-test/index.vue') },
@@ -196,7 +198,7 @@ export const tools: ToolMeta[] = [
   { id: 'game-2048', name: '2048', description: '滑动合并方块，冲击更高分', load: () => import('./game-2048/index.vue') },
   { id: 'minesweeper', name: '扫雷', description: '初中高三档难度，长按插旗，首击必安全', load: () => import('./minesweeper/index.vue') },
   { id: 'times-table', name: '九九乘法', description: '四选一或输入答案，统计连对与错题回顾', load: () => import('./times-table/index.vue') },
-  { id: 'roll-call', name: '随机点名', description: '粘贴名单随机抽人，可选不重复', load: () => import('./roll-call/index.vue') },
+  { id: 'roll-call', name: '随机点名', description: '粘贴、导入文本或拍照识别名单，随机抽人，可选不重复', tags: [TAG_AI], tasks: [{ task: 'ocr', entry: AI_METHODS.ocr }], load: () => import('./roll-call/index.vue') },
   { id: 'torch', name: '手电筒', description: '后置闪光灯常亮，支持 SOS 和限频频闪', load: () => import('./torch/index.vue') },
   { id: 'speech-to-text', name: '语音转文字', description: '本地模型离线听写，边说边出字，可复制、存成文本', tags: [TAG_AI], models: [{ modelId: 'asr-zipformer-zh-en-mnn-w8', title: '语音识别 zipformer（MNN）', desc: '中英文流式听写' }], load: () => import('./speech-to-text/index.vue') },
   { id: 'logo', name: 'logo 设计', description: '输入品牌名，智能排版出 logo 方案；装了本地模型还能生成 AI 图形，可换版式、配色，存成 PNG', tags: [TAG_AI], tasks: [{ task: 'prompt', entry: AI_METHODS.run }, { task: 'logoSymbol', entry: AI_METHODS.logoSymbol }], load: () => import('./logo/index.vue') },

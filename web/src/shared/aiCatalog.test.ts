@@ -263,6 +263,7 @@ describe('适用性回归（registry 里的真实工具）', () => {
       ocr: ['ocr@native.ai.ocr'],
       matting: ['matting@native.ai.matting'],
       'table-extract': ['ocr@native.ai.ocr'],
+      'roll-call': ['ocr@native.ai.ocr'],
       couplet: ['couplet@native.ai.couplet', 'prompt@native.ai.run'],
       'image-upscale': [],
       'object-count': [],

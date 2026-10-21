@@ -4,19 +4,22 @@ import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useFloatStore } from '@/stores/float'
 import { toolIcon } from '@/views/toolIcons'
+import { createToolStorage } from './toolStorage'
 import {
   BALL_SIZE,
   DEFAULT_Y_RATIO,
   DROP_BOTTOM,
   DROP_SIZE,
+  FLOAT_NS,
   FLOAT_POS_KEY,
+  LEGACY_FLOAT_POS_KEY,
   FLOAT_Z,
   clampX,
   clampY,
   exceedsDrag,
   floatBallLabel,
   inDropZone,
-  parsePos,
+  normalizePos,
   sideX,
   snapSide,
   type FloatPos,
@@ -29,23 +32,17 @@ const float = useFloatStore()
 const route = useRoute()
 const router = useRouter()
 
-/** 读存储的停靠位置；没有或存储不可用返回 null（默认位置在渲染时按当时屏高算，因为模块初始化时 innerHeight 可能还是 0） */
+/** 圆球位置的持久缓存 */
+const posStore = createToolStorage(FLOAT_NS)
+
+/** 读存储的停靠位置（顺带迁移旧键）；没有或存储不可用返回 null（默认位置在渲染时按当时屏高算，因为模块初始化时 innerHeight 可能还是 0） */
 function loadPos(): FloatPos | null {
-  try {
-    const p = parsePos(localStorage.getItem(FLOAT_POS_KEY))
-    if (p) return p
-  } catch {
-    // 存储不可用走默认
-  }
-  return null
+  posStore.adoptLegacy(LEGACY_FLOAT_POS_KEY, FLOAT_POS_KEY, (raw) => normalizePos(JSON.parse(raw)) ?? undefined)
+  return normalizePos(posStore.get<unknown>(FLOAT_POS_KEY, null))
 }
 /** 保存停靠位置（失败静默） */
 function savePos(p: FloatPos): void {
-  try {
-    localStorage.setItem(FLOAT_POS_KEY, JSON.stringify(p))
-  } catch {
-    // 只在内存里
-  }
+  posStore.set(FLOAT_POS_KEY, p)
 }
 
 /** 停靠位置 */

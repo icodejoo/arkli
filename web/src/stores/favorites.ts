@@ -1,8 +1,13 @@
 import { defineStore } from 'pinia'
 import { findTool, type ToolMeta } from '@/tools/registry'
+import { APP_NS, appStorage } from '@/shared/appStorage'
 
-/** localStorage 里存收藏 id 数组的键 */
-export const FAVORITES_KEY = 'arkli.favorites'
+/** app 命名空间下存收藏 id 数组的键（不含前缀） */
+const FAVORITES_ITEM = 'favorites'
+/** localStorage 里收藏的完整键（命名空间 + 键） */
+export const FAVORITES_KEY = `${APP_NS}_${FAVORITES_ITEM}`
+/** 旧版收藏键，读取时一次性迁移 */
+export const LEGACY_FAVORITES_KEY = 'arkli.favorites'
 
 /**
  * 读取已存的收藏 id；存储不可用、数据损坏或类型不对时返回空数组。
@@ -10,15 +15,10 @@ export const FAVORITES_KEY = 'arkli.favorites'
  * @returns 收藏的工具 id，保持收藏顺序、已去重
  */
 export function loadFavorites(): string[] {
-  try {
-    const raw = localStorage.getItem(FAVORITES_KEY)
-    if (!raw) return []
-    const data: unknown = JSON.parse(raw)
-    if (!Array.isArray(data)) return []
-    return [...new Set(data.filter((x): x is string => typeof x === 'string'))]
-  } catch {
-    return []
-  }
+  appStorage.adoptLegacy(LEGACY_FAVORITES_KEY, FAVORITES_ITEM)
+  const data = appStorage.get<unknown>(FAVORITES_ITEM, [])
+  if (!Array.isArray(data)) return []
+  return [...new Set(data.filter((x): x is string => typeof x === 'string'))]
 }
 
 /**
@@ -27,11 +27,7 @@ export function loadFavorites(): string[] {
  * @param ids 收藏的工具 id
  */
 export function saveFavorites(ids: string[]): void {
-  try {
-    localStorage.setItem(FAVORITES_KEY, JSON.stringify(ids))
-  } catch {
-    // 降级为只在内存里
-  }
+  appStorage.set(FAVORITES_ITEM, ids)
 }
 
 /** 收藏：id 列表（按收藏先后）持久化到 localStorage，展示时过滤掉已下线的工具 */

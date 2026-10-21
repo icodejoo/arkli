@@ -1,6 +1,7 @@
 // 翻译页的纯逻辑：语言选择规则、存取、错误归类（不依赖 Vue，便于单测）
 import { isLang, isSourceLang, type LangPair } from '@/shared/languages'
-import { DEFAULT_SRC, DEFAULT_TGT, LANGS_STORAGE_KEY } from './data'
+import type { ToolStorage } from '@/shared/toolStorage'
+import { DEFAULT_SRC, DEFAULT_TGT, LANGS_KEY, LEGACY_LANGS_KEY } from './data'
 
 export type { LangPair }
 
@@ -26,37 +27,50 @@ export function swapPair(pair: LangPair): LangPair {
 }
 
 /**
- * 解析存储里的语言组合（源可为 auto，是否被当前模型支持由页面再纠正）；格式不对、语言不支持或两侧相同都回落默认值。
+ * 校验缓存里的语言组合（源可为 auto，是否被当前模型支持由页面再纠正）；格式不对、语言不支持或两侧相同都回落默认值。
+ *
+ * @param v 缓存里读出的值
+ * @returns 合法的语言组合
+ */
+export function sanitizePair(v: unknown): LangPair {
+  const p = v as Partial<LangPair> | null
+  if (p && isSourceLang(p.src) && isLang(p.tgt) && p.src !== p.tgt) return { src: p.src, tgt: p.tgt }
+  return defaultPair()
+}
+
+/**
+ * 解析旧版存储里的原始字符串。
  *
  * @param raw localStorage 里的原始字符串
  * @returns 合法的语言组合
  */
 export function parsePair(raw: string | null): LangPair {
   try {
-    const v = JSON.parse(raw ?? 'null') as Partial<LangPair> | null
-    if (v && isSourceLang(v.src) && isLang(v.tgt) && v.src !== v.tgt) return { src: v.src, tgt: v.tgt }
-  } catch {
-    // 脏数据，走默认值
-  }
-  return defaultPair()
-}
-
-/** 从 localStorage 读语言组合；不可用时给默认值 */
-export function readPair(): LangPair {
-  try {
-    return parsePair(localStorage.getItem(LANGS_STORAGE_KEY))
+    return sanitizePair(JSON.parse(raw ?? 'null'))
   } catch {
     return defaultPair()
   }
 }
 
-/** 把语言组合写进 localStorage；失败忽略 */
-export function writePair(pair: LangPair): void {
-  try {
-    localStorage.setItem(LANGS_STORAGE_KEY, JSON.stringify(pair))
-  } catch {
-    // 仅偏好，写不进去不影响使用
-  }
+/**
+ * 从持久缓存读语言组合（首次会迁移旧键）；不可用时给默认值。
+ *
+ * @param store 翻译工具的持久缓存
+ * @returns 语言组合
+ */
+export function readPair(store: ToolStorage): LangPair {
+  store.adoptLegacy(LEGACY_LANGS_KEY, LANGS_KEY)
+  return sanitizePair(store.get<unknown>(LANGS_KEY, null))
+}
+
+/**
+ * 把语言组合写进持久缓存；失败忽略。
+ *
+ * @param store 翻译工具的持久缓存
+ * @param pair 语言组合
+ */
+export function writePair(store: ToolStorage, pair: LangPair): void {
+  store.set(LANGS_KEY, pair)
 }
 
 /**

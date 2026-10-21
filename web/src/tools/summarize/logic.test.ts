@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { pageRank, similarity, splitSentences, summarize, tokenizeForRank } from './logic'
+import { isValidN, MAX_N, pageRank, similarity, splitSentences, summarize, tokenizeForRank } from './logic'
 
 describe('splitSentences', () => {
   it('按中文标点分句并保留标点', () => {
@@ -84,5 +84,15 @@ describe('summarize', () => {
   it('n 非法抛错', () => {
     expect(() => summarize(text, 0)).toThrow(RangeError)
     expect(() => summarize(text, 1.5)).toThrow(RangeError)
+  })
+})
+
+describe('isValidN', () => {
+  it('只认 1..MAX_N 的整数', () => {
+    expect(isValidN(3)).toBe(true)
+    expect(isValidN(MAX_N)).toBe(true)
+    expect(isValidN(0)).toBe(false)
+    expect(isValidN(MAX_N + 1)).toBe(false)
+    expect(isValidN(2.5)).toBe(false)
   })
 })

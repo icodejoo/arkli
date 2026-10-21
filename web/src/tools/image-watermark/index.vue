@@ -4,6 +4,9 @@ import BottomActions from '@/shared/BottomActions.vue'
 import CellPicker from '@/shared/CellPicker.vue'
 import ColorPicker from '@/shared/ColorPicker.vue'
 import type { CellOption } from '@/shared/cellPicker'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
+import { inRange, isBool, isHexColor, oneOf } from '@/shared/persistValidators'
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { showToast } from 'vant'
 import ImageResultList from '@/shared/ImageResultList.vue'
@@ -11,7 +14,7 @@ import { useImageResults } from '@/shared/useImageResults'
 import { shootPhoto } from '@/shared/shootPhoto'
 import { FORMAT_MIME, fitMaxEdge, outputName } from '@/shared/image-calc'
 import { canvasToBlob, createCanvas, drawScaled, loadBitmap, pickImages, releaseCanvas, type PickedImage } from '@/shared/image-io'
-import { clamp, fontPx, layoutWatermark, type WatermarkMode } from './logic'
+import { clamp, fontPx, GRID_COUNT, layoutWatermark, type WatermarkMode } from './logic'
 
 /** 最多处理张数 */
 const MAX_PICK = 20
@@ -44,30 +47,32 @@ const ROTATION_RANGE = { min: -90, max: 90 }
 /** 平铺间距百分比范围（占字号） */
 const GAP_RANGE = { min: 0, max: 300 }
 
+/** 本工具的持久缓存 */
+const store = createToolStorage('image-watermark')
 /** 已选图片 */
 const images = ref<PickedImage[]>([])
 /** 水印文字 */
 const text = ref('仅供办理业务使用')
 /** 模式 */
-const mode = ref<WatermarkMode>('tile')
+const mode = usePersistedRef<WatermarkMode>(store, 'mode', 'tile', oneOf(MODE_OPTIONS))
 /** 九宫格位置 */
-const position = ref(8)
+const position = usePersistedRef(store, 'position', 8, (v) => inRange(v, { min: 0, max: GRID_COUNT - 1 }))
 /** 字号占短边的百分比 */
-const sizePct = ref(5)
+const sizePct = usePersistedRef(store, 'sizePct', 5, (v) => inRange(v, FONT_RANGE))
 /** 颜色 */
-const color = ref('#ffffff')
+const color = usePersistedRef(store, 'color', '#ffffff', isHexColor)
 /** 透明度（百分比） */
-const opacity = ref(45)
+const opacity = usePersistedRef(store, 'opacity', 45, (v) => inRange(v, OPACITY_RANGE))
 /** 旋转角度 */
-const rotation = ref(-30)
+const rotation = usePersistedRef(store, 'rotation', -30, (v) => inRange(v, ROTATION_RANGE))
 /** 平铺横向间距（占字号百分比） */
-const gapX = ref(80)
+const gapX = usePersistedRef(store, 'gapX', 80, (v) => inRange(v, GAP_RANGE))
 /** 平铺纵向间距（占字号百分比） */
-const gapY = ref(120)
+const gapY = usePersistedRef(store, 'gapY', 120, (v) => inRange(v, GAP_RANGE))
 /** 平铺时奇数行是否错开 */
-const stagger = ref(true)
+const stagger = usePersistedRef(store, 'stagger', true, isBool)
 /** 输出格式 */
-const format = ref<'png' | 'jpeg'>('jpeg')
+const format = usePersistedRef<'png' | 'jpeg'>(store, 'format', 'jpeg', oneOf(FORMAT_OPTIONS))
 
 /** 预览画布元素 */
 const previewEl = ref<HTMLCanvasElement | null>(null)

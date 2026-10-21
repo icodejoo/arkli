@@ -1,10 +1,11 @@
 <script setup lang="ts">
 // 倒数日 / 纪念日：本地保存，按剩余天数排序（农历重复暂不支持）
 import { computed, onMounted, ref } from 'vue'
-import { buildList, describeDays, parseStored, todayDay, validateEvent, type CountdownEvent } from './logic'
+import { createToolStorage } from '@/shared/toolStorage'
+import { buildList, describeDays, loadEvents, saveEvents, todayDay, validateEvent, type CountdownEvent } from './logic'
 
-/** localStorage 键 */
-const STORE_KEY = 'arkli.countdown.events'
+/** 本工具的持久缓存 */
+const store = createToolStorage('countdown')
 
 /** 全部事件 */
 const events = ref<CountdownEvent[]>([])
@@ -26,26 +27,13 @@ const fYearly = ref(false)
 /** 表单错误 */
 const error = ref('')
 
-/** 读存储，失败返回 null */
-function lsGet(): string | null {
-  try {
-    return localStorage.getItem(STORE_KEY)
-  } catch {
-    return null
-  }
-}
-
 /** 写存储，失败忽略 */
 function save(): void {
-  try {
-    localStorage.setItem(STORE_KEY, JSON.stringify(events.value))
-  } catch {
-    /* 存储不可用就只在本次有效 */
-  }
+  saveEvents(store, events.value)
 }
 
 onMounted(() => {
-  events.value = parseStored(lsGet())
+  events.value = loadEvents(store)
 })
 
 /** 打开编辑弹层，传入事件则为修改 */

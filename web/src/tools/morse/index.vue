@@ -7,7 +7,10 @@ import type { CellOption } from '@/shared/cellPicker'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { showFailToast, showSuccessToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
-import { buildTimeline, FREQ_MAX, FREQ_MIN, morseToText, textToMorse, timelineDuration, WPM_MAX, WPM_MIN } from './logic'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
+import { inRange, oneOf } from '@/shared/persistValidators'
+import { buildTimeline, FREQ_MAX, FREQ_MIN, MODE_VALUES, morseToText, STORE_NS, textToMorse, timelineDuration, WPM_MAX, WPM_MIN } from './logic'
 
 /** 起音与收音的淡入淡出时长（秒），避免咔哒声 */
 const RAMP_S = 0.005
@@ -22,14 +25,16 @@ const MODE_OPTIONS: readonly CellOption[] = [
   { value: 'decode', label: '摩斯 → 文本' },
 ]
 
+/** 持久缓存 */
+const store = createToolStorage(STORE_NS)
 /** 方向：文本转摩斯，或摩斯转文本 */
-const mode = ref<'encode' | 'decode'>('encode')
+const mode = usePersistedRef<'encode' | 'decode'>(store, 'mode', 'encode', oneOf(MODE_VALUES))
 /** 输入内容 */
 const input = ref('')
 /** 每分钟字数 */
-const wpm = ref(15)
+const wpm = usePersistedRef(store, 'wpm', 15, (x) => inRange(x, { min: WPM_MIN, max: WPM_MAX }))
 /** 音调频率（Hz） */
-const freq = ref(600)
+const freq = usePersistedRef(store, 'freq', 600, (x) => inRange(x, { min: FREQ_MIN, max: FREQ_MAX }))
 /** 是否正在播放 */
 const playing = ref(false)
 

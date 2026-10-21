@@ -3,7 +3,9 @@
 ;(function () {
   var mode = 'system'
   try {
-    var saved = localStorage.getItem('arkli.theme')
+    // 新键 app_theme 存 JSON（"dark"）；还没迁移时回退旧键 arkli.theme（原文）
+    var raw = localStorage.getItem('app_theme')
+    var saved = raw == null ? localStorage.getItem('arkli.theme') : JSON.parse(raw)
     if (saved === 'light' || saved === 'dark') mode = saved
   } catch (e) {
     // 存储不可用：按跟随系统

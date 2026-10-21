@@ -8,6 +8,8 @@ import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { showFailToast, showToast } from 'vant'
 import ImageResultList from '@/shared/ImageResultList.vue'
 import { useImageResults } from '@/shared/useImageResults'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { shootPhoto } from '@/shared/shootPhoto'
 import { FORMAT_MIME, fitMaxEdge, outputName } from '@/shared/image-calc'
 import { canvasToBlob, createCanvas, drawScaled, loadBitmap, EDIT_BASIC, pickImages, releaseCanvas, type PickedImage } from '@/shared/image-io'
@@ -51,6 +53,8 @@ const TOLERANCE_MAX = 160
 const JPEG_QUALITY = 0.95
 /** 输出文件名后缀前缀 */
 const NAME_SUFFIX = '_idphoto'
+/** 自定义底色的预设标识 */
+const CUSTOM_ID_BG = 'custom'
 /** 抠图方式 */
 type MattingMode = 'none' | 'ai' | 'chroma'
 
@@ -69,10 +73,12 @@ const matted = shallowRef<ImageBitmap | null>(null)
 const sample = shallowRef<ImageData | null>(null)
 /** 选图/解码中 */
 const loading = ref(false)
-/** 规格标识 */
-const specId = ref(ID_SPECS[0].id)
+/** 持久缓存 */
+const store = createToolStorage('id-photo')
 /** 规格选项：预设规格 + 自定义 */
 const SPEC_OPTIONS = [...ID_SPECS.map((s) => ({ value: s.id, label: s.name })), { value: CUSTOM_ID, label: '自定义' }]
+/** 规格标识 */
+const specId = usePersistedRef(store, 'specId', ID_SPECS[0].id, (v) => SPEC_OPTIONS.some((o) => o.value === v))
 /** 输出格式选项 */
 const FORMAT_OPTIONS = [
   { value: 'jpeg', label: 'JPEG' },
@@ -85,7 +91,7 @@ const customH = ref(531)
 /** 裁剪状态 */
 const crop = ref<CropState>({ frac: FRAC_MAX, cx: 0, cy: 0 })
 /** 抠图方式 */
-const matting = ref<MattingMode>('none')
+const matting = usePersistedRef<MattingMode>(store, 'matting', 'none', (v) => v === 'none' || v === 'ai' || v === 'chroma')
 /** 抠图方式选项；AI 抠图在模型未就绪时禁用 */
 const MATTING_OPTIONS = computed<CellOption[]>(() => [
   { value: 'none', label: '保持原背景' },
@@ -93,19 +99,19 @@ const MATTING_OPTIONS = computed<CellOption[]>(() => [
   { value: 'ai', label: 'AI 抠图', disabled: !ready.value },
 ])
 /** 底色预设标识，`custom` 为自定义 */
-const bgId = ref(BG_PRESETS[1].id)
+const bgId = usePersistedRef(store, 'bgId', BG_PRESETS[1].id, (v) => v === CUSTOM_ID_BG || BG_PRESETS.some((b) => b.id === v))
 /** 自定义底色 */
-const bgCustom = ref('#ffffff')
+const bgCustom = usePersistedRef(store, 'bgCustom', '#ffffff', (v) => typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v))
 /** 纯色抠图的原背景取色 */
 const key = ref<Rgb | null>(null)
 /** 正在等用户点图取色 */
 const picking = ref(false)
 /** 容差 */
-const tolerance = ref(TOLERANCE_DEFAULT)
+const tolerance = usePersistedRef(store, 'tolerance', TOLERANCE_DEFAULT, (v) => Number.isFinite(v) && v >= 1 && v <= Math.min(TOLERANCE_MAX, MAX_COLOR_DISTANCE))
 /** 是否只抠与边缘相连的背景 */
-const onlyConnected = ref(true)
+const onlyConnected = usePersistedRef(store, 'onlyConnected', true, (v) => typeof v === 'boolean')
 /** 输出格式 */
-const format = ref<'png' | 'jpeg'>('jpeg')
+const format = usePersistedRef<'png' | 'jpeg'>(store, 'format', 'jpeg', (v) => v === 'png' || v === 'jpeg')
 /** 预览容器 */
 const stage = ref<HTMLElement | null>(null)
 
@@ -131,7 +137,7 @@ const fracPercent = computed({
   },
 })
 /** 当前底色 */
-const bgColor = computed(() => (bgId.value === 'custom' ? bgCustom.value : BG_PRESETS.find((b) => b.id === bgId.value)!.color))
+const bgColor = computed(() => (bgId.value === CUSTOM_ID_BG ? bgCustom.value : BG_PRESETS.find((b) => b.id === bgId.value)!.color))
 /** 取色的十六进制，供色块显示 */
 const keyHex = computed(() => (key.value ? rgbToHex(key.value) : ''))
 /** 能否生成 */
@@ -387,8 +393,8 @@ onBeforeUnmount(() => {
             :aria-label="`底色${b.name}`"
             @click="bgId = b.id"
           />
-          <button type="button" class="bg-chip bg-chip--custom" :class="{ 'is-on': bgId === 'custom' }" :style="{ background: bgCustom }" aria-label="自定义底色" @click="bgId = 'custom'" />
-          <color-picker v-if="bgId === 'custom'" v-model="bgCustom" label="自定义底色" />
+          <button type="button" class="bg-chip bg-chip--custom" :class="{ 'is-on': bgId === CUSTOM_ID_BG }" :style="{ background: bgCustom }" aria-label="自定义底色" @click="bgId = 'custom'" />
+          <color-picker v-if="bgId === CUSTOM_ID_BG" v-model="bgCustom" label="自定义底色" />
         </div>
       </template>
 

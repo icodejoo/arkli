@@ -4,9 +4,15 @@ import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { showToast } from 'vant'
 import CellPicker from '@/shared/CellPicker.vue'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { burnInOffset, clockParts, formatDateLine, lunarText, startSecondTicker, type LunarLib } from './logic'
 import { createAppAwake } from './awake'
 
+/** 本工具的持久缓存 */
+const store = createToolStorage('clock-screen')
+/** 判断是否布尔值，供开关缓存校验 */
+const isBool = (v: unknown): boolean => typeof v === 'boolean'
 /** 一分钟的毫秒数 */
 const MS_PER_MINUTE = 60000
 /** 不支持常亮时的提示 */
@@ -23,15 +29,15 @@ const STYLE_OPTIONS = [
 ]
 
 /** 显示样式：数字或翻页 */
-const style = ref<ClockStyle>('digital')
+const style = usePersistedRef<ClockStyle>(store, 'style', 'digital', (v) => STYLE_OPTIONS.some((o) => o.value === v))
 /** 是否显示秒 */
-const showSeconds = ref(true)
+const showSeconds = usePersistedRef(store, 'showSeconds', true, isBool)
 /** 是否显示日期与星期 */
-const showDate = ref(true)
+const showDate = usePersistedRef(store, 'showDate', true, isBool)
 /** 是否 24 小时制 */
-const hour24 = ref(true)
+const hour24 = usePersistedRef(store, 'hour24', true, isBool)
 /** 是否显示农历 */
-const showLunar = ref(false)
+const showLunar = usePersistedRef(store, 'showLunar', false, isBool)
 /** 是否全屏展示 */
 const full = ref(false)
 /** 当前时间 */
@@ -91,16 +97,20 @@ async function exitFull(): Promise<void> {
   await wake.release()
 }
 
-/** 打开农历开关后才动态加载 tyme4ts，避免拖慢首屏 */
-watch(showLunar, async (on) => {
-  if (!on || lunarLib.value) return
-  try {
-    lunarLib.value = (await import('tyme4ts')) as unknown as LunarLib
-  } catch {
-    showLunar.value = false
-    showToast(TIP_LUNAR_FAIL)
-  }
-})
+/** 打开农历开关后才动态加载 tyme4ts，避免拖慢首屏；缓存里已开启时进页即加载 */
+watch(
+  showLunar,
+  async (on) => {
+    if (!on || lunarLib.value) return
+    try {
+      lunarLib.value = (await import('tyme4ts')) as unknown as LunarLib
+    } catch {
+      showLunar.value = false
+      showToast(TIP_LUNAR_FAIL)
+    }
+  },
+  { immediate: true },
+)
 
 onMounted(() => {
   startTick()

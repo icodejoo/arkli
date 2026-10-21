@@ -5,6 +5,9 @@ import { useFloatBusy, useFloatPause } from '@/shared/useFloatPause'
 import CellPicker from '@/shared/CellPicker.vue'
 import ColorPicker from '@/shared/ColorPicker.vue'
 import type { CellOption } from '@/shared/cellPicker'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
+import { inRange, isHexColor, oneOf } from '@/shared/persistValidators'
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { showToast } from 'vant'
 import ImageResultList from '@/shared/ImageResultList.vue'
@@ -13,7 +16,7 @@ import { shootPhoto } from '@/shared/shootPhoto'
 import { fitMaxEdge, FORMAT_MIME, type Size } from '@/shared/image-calc'
 import { canvasToBlob, createCanvas, drawScaled, loadBitmap, EDIT_FULL, pickImages, releaseCanvas, type PickedImage } from '@/shared/image-io'
 import { GifWriter } from '../gif-tool/gif-encoder'
-import { animFrames, CLASSIC_BASE_PCT, hitLayer, moveLayer, ratioSize, type MemePreset, type TextLayer } from './logic'
+import { animFrames, CLASSIC_BASE_PCT, FORMAT_VALUES, GIF_EDGES, hitLayer, PRESET_VALUES, STORE_NS, moveLayer, ratioSize, type MemePreset, type TextLayer } from './logic'
 import { drawMeme, makeMeasure, type MemeScene } from './render'
 
 /** 底图工作尺寸的长边上限（像素） */
@@ -47,8 +50,6 @@ const RATIOS: Array<{ key: string; label: string; w: number; h: number }> = [
   { key: '16:9', label: '16:9', w: 16, h: 9 },
   { key: '9:16', label: '9:16', w: 9, h: 16 },
 ]
-/** GIF 长边选项 */
-const GIF_EDGES = [240, 360, 480]
 /** 比例选项 */
 const RATIO_OPTIONS: readonly CellOption[] = RATIOS.map((r) => ({ value: r.key, label: r.label }))
 /** GIF 长边选择器选项 */
@@ -65,7 +66,9 @@ const FORMAT_OPTIONS: readonly CellOption[] = [
   { value: 'jpeg', label: 'JPEG' },
 ]
 
-/** 底图来源：图片或纯色 */
+/** 持久缓存 */
+const store = createToolStorage(STORE_NS)
+/** 底图来源：图片或纯色（依赖导入的图片，属于数据，不持久化） */
 const baseMode = ref<'image' | 'solid'>('solid')
 /** 已缩到工作尺寸的底图（不放进响应式深层） */
 const baseCanvas = shallowRef<HTMLCanvasElement | null>(null)
@@ -75,25 +78,25 @@ const BASE_OPTIONS = computed<CellOption[]>(() => [
   { value: 'image', label: '图片', disabled: !baseCanvas.value },
 ])
 /** 底色 */
-const bgColor = ref(BG_DEFAULT)
+const bgColor = usePersistedRef(store, 'bgColor', BG_DEFAULT, isHexColor)
 /** 纯色底比例 */
-const ratioKey = ref('1:1')
+const ratioKey = usePersistedRef(store, 'ratioKey', '1:1', oneOf(RATIOS.map((r) => r.key)))
 /** 顶部字幕 */
 const topText = ref('')
 /** 底部字幕 */
 const bottomText = ref('')
 /** 经典字幕字号（占宽度百分比） */
-const classicPct = ref(CLASSIC_BASE_PCT)
+const classicPct = usePersistedRef(store, 'classicPct', CLASSIC_BASE_PCT, (x) => inRange(x, { min: CLASSIC_PCT_MIN, max: CLASSIC_PCT_MAX }))
 /** 自由文字层 */
 const layers = ref<TextLayer[]>([])
 /** 选中的文字层 id */
 const selectedId = ref<number | null>(null)
 /** 动效预设 */
-const preset = ref<MemePreset>('none')
+const preset = usePersistedRef<MemePreset>(store, 'preset', 'none', oneOf(PRESET_VALUES))
 /** GIF 长边 */
-const gifEdge = ref(GIF_EDGES[1])
+const gifEdge = usePersistedRef(store, 'gifEdge', GIF_EDGES[1], oneOf(GIF_EDGES))
 /** 静态输出格式 */
-const format = ref<'png' | 'jpeg'>('png')
+const format = usePersistedRef<'png' | 'jpeg'>(store, 'format', 'png', oneOf(FORMAT_VALUES))
 /** 导出结果 */
 const { results, busy, progress, saving, process, saveAll, clear } = useImageResults()
 /** GIF 导出进度文案 */

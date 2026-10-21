@@ -4,17 +4,19 @@ import BottomActions from '@/shared/BottomActions.vue'
 import { ref } from 'vue'
 import { showToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
-import { summarize, type SummaryResult } from './logic'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
+import { isValidN, MAX_N, summarize, TOOL_NS, type SummaryResult } from './logic'
 
 /** 默认摘要句数 */
 const DEFAULT_N = 3
-/** 最多可选句数 */
-const MAX_N = 10
+/** 持久缓存 */
+const store = createToolStorage(TOOL_NS)
 
 /** 原文 */
 const text = ref('')
-/** 摘要句数 */
-const n = ref(DEFAULT_N)
+/** 摘要句数（持久化） */
+const n = usePersistedRef<number>(store, 'n', DEFAULT_N, isValidN)
 /** 摘要结果 */
 const result = ref<SummaryResult | null>(null)
 

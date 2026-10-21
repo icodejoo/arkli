@@ -169,3 +169,27 @@ export async function copyWithFallback(
   }
   return fallback(text)
 }
+
+/** 持久缓存命名空间 */
+export const STORE_NS = 'password-gen'
+
+/**
+ * 把缓存里读出的选项整理成合法选项：缺项补默认，越界或类型不对的字段回落默认。
+ *
+ * @param raw 缓存里读出的任意值
+ * @returns 完整合法的选项（新对象）
+ * @example sanitizeOptions({ length: 999 }).length // 16
+ */
+export function sanitizeOptions(raw: unknown): PasswordOptions {
+  const o = (raw && typeof raw === 'object' ? raw : {}) as Partial<PasswordOptions>
+  const sets = (o.sets && typeof o.sets === 'object' ? o.sets : {}) as Partial<Record<CharsetKey, boolean>>
+  const outSets = { ...DEFAULT_OPTIONS.sets }
+  for (const k of Object.keys(outSets) as CharsetKey[]) if (typeof sets[k] === 'boolean') outSets[k] = sets[k] as boolean
+  const lenOk = typeof o.length === 'number' && Number.isInteger(o.length) && o.length >= MIN_LENGTH && o.length <= MAX_LENGTH
+  return {
+    length: lenOk ? (o.length as number) : DEFAULT_OPTIONS.length,
+    sets: outSets,
+    excludeAmbiguous: typeof o.excludeAmbiguous === 'boolean' ? o.excludeAmbiguous : DEFAULT_OPTIONS.excludeAmbiguous,
+    ensureEach: typeof o.ensureEach === 'boolean' ? o.ensureEach : DEFAULT_OPTIONS.ensureEach,
+  }
+}

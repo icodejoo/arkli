@@ -18,8 +18,12 @@ export const DROP_BOTTOM = 56
 export const DROP_HIT_RADIUS = 64
 /** 圆球层级：高于底栏与操作栏（≤ 2），低于 Vant 弹层（2000+） */
 export const FLOAT_Z = 100
-/** 圆球位置存储键 */
-export const FLOAT_POS_KEY = 'arkli.float.pos'
+/** 圆球位置的持久缓存命名空间 */
+export const FLOAT_NS = 'float'
+/** 圆球位置在命名空间下的键 */
+export const FLOAT_POS_KEY = 'pos'
+/** 旧版圆球位置键，读取时一次性迁移 */
+export const LEGACY_FLOAT_POS_KEY = 'arkli.float.pos'
 /** 默认纵向位置占屏高比例 */
 export const DEFAULT_Y_RATIO = 0.6
 
@@ -122,20 +126,30 @@ export function exceedsDrag(dx: number, dy: number): boolean {
 }
 
 /**
- * 解析存储的位置；格式不对返回 null。
+ * 把缓存里读出的值规范成位置；格式不对返回 null。
  *
- * @param raw localStorage 里的原文
+ * @param d 缓存里的值（已 JSON 解析）
+ * @returns 位置或 null
+ */
+export function normalizePos(d: unknown): FloatPos | null {
+  const p = d as Partial<FloatPos> | null
+  if (p && (p.side === 'left' || p.side === 'right') && typeof p.y === 'number' && Number.isFinite(p.y)) return { side: p.side, y: p.y }
+  return null
+}
+
+/**
+ * 解析存储的位置原文；格式不对返回 null。
+ *
+ * @param raw JSON 原文
  * @returns 位置或 null
  */
 export function parsePos(raw: string | null): FloatPos | null {
   if (!raw) return null
   try {
-    const d = JSON.parse(raw) as Partial<FloatPos>
-    if ((d.side === 'left' || d.side === 'right') && typeof d.y === 'number' && Number.isFinite(d.y)) return { side: d.side, y: d.y }
+    return normalizePos(JSON.parse(raw))
   } catch {
-    // 损坏的数据当没有
+    return null // 损坏的数据当没有
   }
-  return null
 }
 
 /**

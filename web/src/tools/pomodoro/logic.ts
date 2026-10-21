@@ -1,4 +1,5 @@
 // 番茄时钟：阶段状态机与时间计算（纯逻辑）。倒计时一律用绝对时间戳算，不靠 setInterval 累加，后台节流也不会漂移
+import { createToolStorage, type StorageLike, type ToolStorage } from '@/shared/toolStorage'
 
 /** 阶段：专注 / 短休 / 长休 */
 export type Phase = 'focus' | 'short' | 'long'
@@ -25,10 +26,20 @@ export const LONG_RANGE = { min: 1, max: 60 } as const
 export const EVERY_RANGE = { min: 2, max: 10 } as const
 /** 闹钟标识：整个页面只用这一个，重设会覆盖 */
 export const ALARM_ID = 'pomodoro'
+/** 持久缓存命名空间 */
+export const STORE_NS = 'pomodoro'
 /** 今日完成数的存储键 */
-export const TODAY_KEY = 'arkli.pomodoro.today'
+export const TODAY_KEY = 'today'
 /** 设置的存储键 */
-export const SETTINGS_KEY = 'arkli.pomodoro.settings'
+export const SETTINGS_KEY = 'settings'
+/** 旧版（带 arkli.pomodoro. 前缀）存储键对照：旧完整键 -> 新键 */
+export const LEGACY_KEYS: Record<string, string> = {
+  'arkli.pomodoro.today': 'today',
+  'arkli.pomodoro.settings': 'settings',
+  'arkli.pomodoro.state': 'state',
+}
+/** 保持常亮开关的存储键 */
+export const KEEP_ON_KEY = 'keepOn'
 
 /** 时长设置 */
 export interface Settings {
@@ -66,10 +77,16 @@ export interface AdvanceResult {
   finished: Phase
 }
 
-/** 键值存储的最小形状（localStorage 或测试替身） */
-export interface KV {
-  getItem(key: string): string | null
-  setItem(key: string, value: string): void
+/**
+ * 创建番茄钟的持久缓存，并一次性迁移旧键数据。
+ *
+ * @param backend 存储后端，缺省 localStorage（测试可注入）
+ * @returns 持久缓存实例
+ */
+export function createPomodoroStore(backend?: StorageLike | null): ToolStorage {
+  const store = createToolStorage(STORE_NS, backend)
+  for (const [legacy, key] of Object.entries(LEGACY_KEYS)) store.adoptLegacy(legacy, key)
+  return store
 }
 
 /** 默认设置 */
@@ -328,11 +345,10 @@ export function dayKey(now: number): string {
  * @param now 毫秒时间戳
  * @returns 完成数
  */
-export function loadToday(kv: KV | null, now: number): number {
+export function loadToday(kv: ToolStorage | null, now: number): number {
   try {
-    const raw = kv?.getItem(TODAY_KEY)
-    if (!raw) return 0
-    const o = JSON.parse(raw) as { day?: string; count?: number }
+    const o = kv?.get<{ day?: string; count?: number } | null>(TODAY_KEY, null)
+    if (!o || typeof o !== 'object') return 0
     return o.day === dayKey(now) && typeof o.count === 'number' && o.count >= 0 ? Math.floor(o.count) : 0
   } catch {
     return 0
@@ -346,10 +362,10 @@ export function loadToday(kv: KV | null, now: number): number {
  * @param now 毫秒时间戳
  * @returns 加一后的数；写失败也返回内存里的新值
  */
-export function bumpToday(kv: KV | null, now: number): number {
+export function bumpToday(kv: ToolStorage | null, now: number): number {
   const next = loadToday(kv, now) + 1
   try {
-    kv?.setItem(TODAY_KEY, JSON.stringify({ day: dayKey(now), count: next }))
+    kv?.set(TODAY_KEY, { day: dayKey(now), count: next })
   } catch {
     // 存储不可用时只在内存里计数
   }
@@ -362,10 +378,9 @@ export function bumpToday(kv: KV | null, now: number): number {
  * @param kv 存储
  * @returns 合法设置
  */
-export function loadSettings(kv: KV | null): Settings {
+export function loadSettings(kv: ToolStorage | null): Settings {
   try {
-    const raw = kv?.getItem(SETTINGS_KEY)
-    return normalizeSettings(raw ? (JSON.parse(raw) as Partial<Settings>) : null)
+    return normalizeSettings(kv?.get<Partial<Settings> | null>(SETTINGS_KEY, null))
   } catch {
     return { ...DEFAULT_SETTINGS }
   }
@@ -377,16 +392,16 @@ export function loadSettings(kv: KV | null): Settings {
  * @param kv 存储
  * @param s 设置
  */
-export function saveSettings(kv: KV | null, s: Settings): void {
+export function saveSettings(kv: ToolStorage | null, s: Settings): void {
   try {
-    kv?.setItem(SETTINGS_KEY, JSON.stringify(s))
+    kv?.set(SETTINGS_KEY, s)
   } catch {
     // 存储不可用时忽略
   }
 }
 
 /** 计时状态的存储键：退出页面后闹钟仍会响，回来时据此恢复 */
-export const STATE_KEY = 'arkli.pomodoro.state'
+export const STATE_KEY = 'state'
 
 /**
  * 读上次保存的计时状态；缺失、损坏或字段不合法返回 null。
@@ -394,11 +409,10 @@ export const STATE_KEY = 'arkli.pomodoro.state'
  * @param kv 存储
  * @returns 状态或 null
  */
-export function loadState(kv: KV | null): TimerState | null {
+export function loadState(kv: ToolStorage | null): TimerState | null {
   try {
-    const raw = kv?.getItem(STATE_KEY)
-    if (!raw) return null
-    const o = JSON.parse(raw) as Partial<TimerState>
+    const o = kv?.get<Partial<TimerState> | null>(STATE_KEY, null)
+    if (!o || typeof o !== 'object') return null
     const phaseOk = o.phase === 'focus' || o.phase === 'short' || o.phase === 'long'
     const statusOk = o.status === 'idle' || o.status === 'running' || o.status === 'paused'
     if (!phaseOk || !statusOk) return null
@@ -416,9 +430,9 @@ export function loadState(kv: KV | null): TimerState | null {
  * @param kv 存储
  * @param st 状态
  */
-export function saveState(kv: KV | null, st: TimerState): void {
+export function saveState(kv: ToolStorage | null, st: TimerState): void {
   try {
-    kv?.setItem(STATE_KEY, JSON.stringify(st))
+    kv?.set(STATE_KEY, st)
   } catch {
     // 存储不可用时忽略
   }

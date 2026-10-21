@@ -182,3 +182,10 @@ export function decryptText(key: string, cipher: string, enc: Encoding): CryptRe
   if (!bytes) return { ok: false, error: enc === 'hex' ? '密文不是合法的十六进制' : '密文不是合法的 Base64' }
   return { ok: true, text: utf8Decode(rc4(k, bytes)) }
 }
+
+/** 持久缓存命名空间 */
+export const STORE_NS = 'rc4'
+/** 可选方向值 */
+export const MODE_VALUES = ['encrypt', 'decrypt'] as const
+/** 可选密文编码值 */
+export const ENC_VALUES: readonly Encoding[] = ['base64', 'hex']

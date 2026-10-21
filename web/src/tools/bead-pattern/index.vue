@@ -9,6 +9,8 @@ import type { CellOption } from '@/shared/cellPicker'
 import { cameraItemToPicked, captureCamera, clearCamera, isAlbum, isCancelled } from '@/native/camera'
 import { isNativeAvailable } from '@/native/bridge'
 import { useImageResults } from '@/shared/useImageResults'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { baseName } from '@/shared/image-calc'
 import { canvasToBlob, createCanvas, loadBitmap, EDIT_BASIC, pickImages, previewBlob, releaseCanvas, type PickedImage } from '@/shared/image-io'
 import { GENERIC_PALETTE, PALETTES } from './data'
@@ -49,17 +51,24 @@ const LEGEND_FONT_RATIO = 0.4
 const LEGEND_TITLE_RATIO = 0.5
 /** 行列号标注间隔 */
 const LABEL_EVERY = 5
+/** 本工具的持久缓存 */
+const store = createToolStorage('bead-pattern')
 /** 图例色块占单项高度比例 */
 const SWATCH_RATIO = 0.7
 
 /** 当前图片 */
 const image = ref<PickedImage | null>(null)
 /** 规格选择：29 / 52 / custom */
-const gridChoice = ref<number | typeof CUSTOM>(GRID_PRESETS[0])
+const gridChoice = usePersistedRef<number | typeof CUSTOM>(
+  store,
+  'gridChoice',
+  GRID_PRESETS[0],
+  (v) => v === CUSTOM || GRID_PRESETS.includes(v as number),
+)
 /** 自定义边长 */
-const customN = ref(40)
+const customN = usePersistedRef(store, 'customN', 40, (v) => typeof v === 'number' && v >= GRID_MIN && v <= GRID_MAX)
 /** 当前调色板 */
-const paletteId = ref(GENERIC_PALETTE.id)
+const paletteId = usePersistedRef(store, 'paletteId', GENERIC_PALETTE.id, (v) => PALETTES.some((p) => p.id === v))
 /** 用量统计 */
 const stats = ref<UsageRow[]>([])
 /** 结果与批处理状态 */

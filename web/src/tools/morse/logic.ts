@@ -18,6 +18,10 @@ export const WPM_MAX = 40
 export const FREQ_MIN = 300
 /** 音频频率上限（Hz） */
 export const FREQ_MAX = 1000
+/** 持久缓存命名空间 */
+export const STORE_NS = 'morse'
+/** 可选转换方向值 */
+export const MODE_VALUES = ['encode', 'decode'] as const
 /** 标准词 PARIS 共 50 个单位，WPM = 每分钟播多少个 PARIS */
 const UNITS_PER_WORD = 50
 /** 每分钟毫秒数 */

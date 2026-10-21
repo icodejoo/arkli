@@ -2,17 +2,21 @@
 // 九九乘法练习：四选一或输入答案，统计连对，错题回顾
 import BottomActions from '@/shared/BottomActions.vue'
 import { ref } from 'vue'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import CellPicker from '@/shared/CellPicker.vue'
 import type { CellOption } from '@/shared/cellPicker'
 import { accuracy, emptyStats, MAX_OPTIONS, makeQuestion, parseAnswer, recordAnswer, type Question } from './logic'
 
+/** 本工具的持久缓存 */
+const store = createToolStorage('times-table')
 /** 答完后停留多久进入下一题（毫秒） */
 const NEXT_DELAY_MS = 700
 
 /** 乘数上限 */
-const max = ref(9)
+const max = usePersistedRef(store, 'max', 9, (v) => MAX_OPTIONS.includes(v))
 /** 作答方式 */
-const mode = ref<'choice' | 'input'>('choice')
+const mode = usePersistedRef<'choice' | 'input'>(store, 'mode', 'choice', (v) => v === 'choice' || v === 'input')
 /** 乘数上限选项 */
 const MAX_PICK_OPTIONS: CellOption[] = MAX_OPTIONS.map((m) => ({ value: m, label: `1~${m}` }))
 /** 作答方式选项 */

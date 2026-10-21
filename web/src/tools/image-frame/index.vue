@@ -11,6 +11,9 @@ import { baseName } from '@/shared/image-calc'
 import { shootPhoto } from '@/shared/shootPhoto'
 import { canvasToBlob, createCanvas, drawScaled, loadBitmap, EDIT_FULL, pickImages, releaseCanvas, type PickedImage } from '@/shared/image-io'
 import type { CellOption } from '@/shared/cellPicker'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
+import { inRange, isHexColor, oneOf } from '@/shared/persistValidators'
 import { BG_PRESETS, DEFAULT_ANGLE, frameLayout, gradientLine, type CutoutKind, type FrameLayout, type FrameStyle } from './logic'
 
 /** 手机机身 / 刘海 / 挖孔颜色 */
@@ -47,20 +50,28 @@ const CUTOUT_OPTIONS: readonly CellOption[] = [
 
 /** 当前截图 */
 const image = ref<PickedImage | null>(null)
+/** 边距百分比范围 */
+const PAD_RANGE = { min: 0, max: 25 }
+/** 圆角百分比范围 */
+const RADIUS_RANGE = { min: 0, max: 12 }
+/** 渐变角度范围 */
+const ANGLE_RANGE = { min: 0, max: 360 }
+/** 本工具的持久缓存 */
+const store = createToolStorage('image-frame')
 /** 外壳样式 */
-const style = ref<FrameStyle>('phone')
+const style = usePersistedRef<FrameStyle>(store, 'style', 'phone', oneOf(STYLE_OPTIONS))
 /** 手机缺口 */
-const cutout = ref<CutoutKind>('punch')
+const cutout = usePersistedRef<CutoutKind>(store, 'cutout', 'punch', oneOf(CUTOUT_OPTIONS))
 /** 边距百分比 */
-const padPct = ref(8)
+const padPct = usePersistedRef(store, 'padPct', 8, (v) => inRange(v, PAD_RANGE))
 /** 圆角百分比 */
-const radiusPct = ref(6)
+const radiusPct = usePersistedRef(store, 'radiusPct', 6, (v) => inRange(v, RADIUS_RANGE))
 /** 背景起始色 */
-const c1 = ref(BG_PRESETS[0].c1)
+const c1 = usePersistedRef(store, 'c1', BG_PRESETS[0].c1, isHexColor)
 /** 背景结束色 */
-const c2 = ref(BG_PRESETS[0].c2)
+const c2 = usePersistedRef(store, 'c2', BG_PRESETS[0].c2, isHexColor)
 /** 渐变角度 */
-const angle = ref(DEFAULT_ANGLE)
+const angle = usePersistedRef(store, 'angle', DEFAULT_ANGLE, (v) => inRange(v, ANGLE_RANGE))
 /** 浏览器地址栏文字 */
 const address = ref(DEFAULT_ADDRESS)
 /** 结果与批处理状态 */
@@ -234,11 +245,11 @@ onBeforeUnmount(() => image.value?.release())
         <van-field v-if="style === 'browser'" v-model="address" label="地址栏" placeholder="显示在地址栏里的文字" />
         <van-cell title="边距" :value="`${padPct}%`" />
       </van-cell-group>
-      <div class="is-slider"><van-slider v-model="padPct" :min="0" :max="25" /></div>
+      <div class="is-slider"><van-slider v-model="padPct" :min="PAD_RANGE.min" :max="PAD_RANGE.max" /></div>
       <van-cell-group :border="false">
         <van-cell title="圆角" :value="`${radiusPct}%`" />
       </van-cell-group>
-      <div class="is-slider"><van-slider v-model="radiusPct" :min="0" :max="12" /></div>
+      <div class="is-slider"><van-slider v-model="radiusPct" :min="RADIUS_RANGE.min" :max="RADIUS_RANGE.max" /></div>
     </tool-group>
 
     <tool-group title="背景">
@@ -262,7 +273,7 @@ onBeforeUnmount(() => image.value?.release())
         </van-cell>
         <van-cell title="渐变角度" :value="`${angle}°`" />
       </van-cell-group>
-      <div class="is-slider"><van-slider v-model="angle" :min="0" :max="360" /></div>
+      <div class="is-slider"><van-slider v-model="angle" :min="ANGLE_RANGE.min" :max="ANGLE_RANGE.max" /></div>
       <p class="tool-hint">两个颜色相同就是纯色背景。</p>
       <p v-if="layout" class="tool-hint">
         预计输出 {{ layout.width }}×{{ layout.height }}

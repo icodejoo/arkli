@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { createToolStorage, type StorageLike } from '@/shared/toolStorage'
 import {
   blinkPeriod,
   clampNum,
@@ -14,13 +15,22 @@ import {
   scrollDuration,
   STAGE_PAD,
   TEXT_MAX,
-  type KvStorage,
+  isHexColor,
+  inRange,
 } from './logic'
 
-/** 内存存储 */
-function memStore(init: Record<string, string> = {}): KvStorage {
-  const data = { ...init }
-  return { getItem: (k) => data[k] ?? null, setItem: (k, v) => void (data[k] = v) }
+/** 内存存储后端 */
+function memBackend(init: Record<string, string> = {}): StorageLike {
+  const m = new Map<string, string>(Object.entries(init))
+  return {
+    getItem: (k) => m.get(k) ?? null,
+    setItem: (k, v) => void m.set(k, v),
+    removeItem: (k) => void m.delete(k),
+    key: (i) => [...m.keys()][i] ?? null,
+    get length() {
+      return m.size
+    },
+  }
 }
 
 describe('overflows', () => {
@@ -86,11 +96,27 @@ describe('最近文案', () => {
     expect(pushRecent(many, 'new')).toHaveLength(RECENT_MAX)
   })
   it('存取往返，损坏或不可用时静默', () => {
-    const s = memStore()
+    const s = createToolStorage('typing-board', memBackend())
     saveRecent(s, ['x', 'y'])
     expect(loadRecent(s)).toEqual(['x', 'y'])
-    expect(loadRecent(memStore({ [RECENT_KEY]: '{bad' }))).toEqual([])
-    expect(loadRecent(undefined)).toEqual([])
-    expect(() => saveRecent(undefined, ['x'])).not.toThrow()
+    expect(loadRecent(createToolStorage('typing-board', memBackend({ typing_board_x: '1', 'typing-board_recent': '{bad' })))).toEqual([])
+    expect(loadRecent(createToolStorage('typing-board', null))).toEqual([])
+    expect(() => saveRecent(createToolStorage('typing-board', null), ['x'])).not.toThrow()
+  })
+  it('旧键迁移', () => {
+    const b = memBackend({ [RECENT_KEY]: '["a","b"]' })
+    expect(loadRecent(createToolStorage('typing-board', b))).toEqual(['a', 'b'])
+    expect(b.getItem(RECENT_KEY)).toBeNull()
+  })
+})
+
+describe('持久化校验', () => {
+  it('isHexColor / inRange', () => {
+    expect(isHexColor('#a1B2c3')).toBe(true)
+    expect(isHexColor('red')).toBe(false)
+    expect(isHexColor(null)).toBe(false)
+    expect(inRange(5, 1, 9)).toBe(true)
+    expect(inRange(10, 1, 9)).toBe(false)
+    expect(inRange('5', 1, 9)).toBe(false)
   })
 })

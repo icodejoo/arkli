@@ -1,22 +1,26 @@
 <script setup lang="ts">
 // 时间计算器：两个标签页——时刻加减、时刻之差（附时长换算）
 import { computed, ref } from 'vue'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import CellPicker from '@/shared/CellPicker.vue'
 import type { CellOption } from '@/shared/cellPicker'
 import { addClock, clockDiff, durationUnits, formatDuration, parseHms } from './logic'
 
+/** 本工具的持久缓存 */
+const store = createToolStorage('time-calc')
 /** 一天的秒数 */
 const DAY_SECONDS = 86400
 
 /** 标签页：add 加减 / diff 之差 */
-const tab = ref<'add' | 'diff'>('add')
+const tab = usePersistedRef<'add' | 'diff'>(store, 'tab', 'add', (v) => v === 'add' || v === 'diff')
 
 /** 加减页：起始时刻 */
 const baseText = ref('')
 /** 加减页：时长 */
 const deltaText = ref('')
 /** 加减页：加还是减 */
-const sign = ref<1 | -1>(1)
+const sign = usePersistedRef<1 | -1>(store, 'sign', 1, (v) => v === 1 || v === -1)
 /** 运算选项：加 / 减 */
 const SIGN_OPTIONS: CellOption[] = [
   { value: 1, label: '加' },
@@ -27,7 +31,7 @@ const aText = ref('')
 /** 之差页：止时刻 */
 const bText = ref('')
 /** 之差页：止早于起时是否视为次日 */
-const crossDay = ref(true)
+const crossDay = usePersistedRef(store, 'crossDay', true, (v) => typeof v === 'boolean')
 
 /** 加减结果；输入未填完为 null，有误为错误文本 */
 const addResult = computed(() => {

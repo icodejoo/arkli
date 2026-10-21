@@ -2,6 +2,8 @@
 // 指尖轮盘：多人手指按在屏幕上，稳定 3 秒后随机选人 / 排先手 / 分两队
 import { computed, onBeforeUnmount, ref } from 'vue'
 import CellPicker from '@/shared/CellPicker.vue'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { assignRoles, canCountdown, colorFor, COUNTDOWN_MS, hasMoved, MAX_FINGERS, MODE_LABEL, type Assignment, type Mode, type Point } from './logic'
 
 /** 一个正在按着的手指 */
@@ -18,7 +20,7 @@ const MODES = Object.keys(MODE_LABEL) as Mode[]
 const MODE_OPTIONS = MODES.map((m) => ({ value: m, label: MODE_LABEL[m] }))
 
 /** 当前模式 */
-const mode = ref<Mode>('one')
+const mode = usePersistedRef<Mode>(createToolStorage('finger-roulette'), 'mode', 'one', (v) => MODES.includes(v))
 /** 按着的手指，响应式数组便于渲染 */
 const fingers = ref<Finger[]>([])
 /** 已出的结果；为空表示还在等 */

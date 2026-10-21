@@ -14,6 +14,10 @@ export const MAX_TITLE = 100
 export const MAX_TEXT = 500
 /** 提醒方式：立即 / 几分钟后 / 指定时间 */
 export type Mode = 'now' | 'delay' | 'at'
+/** 持久缓存命名空间 */
+export const STORE_NS = 'notify-self'
+/** 可选提醒方式值 */
+export const MODE_VALUES: readonly Mode[] = ['now', 'delay', 'at']
 /** 闹钟标识前缀 */
 export const ID_PREFIX = 'note-'
 /** 常用「几分钟后」快捷项 */

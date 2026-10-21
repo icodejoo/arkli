@@ -6,6 +6,8 @@ import { showFailToast, showSuccessToast } from 'vant'
 import CellPicker from '@/shared/CellPicker.vue'
 import { copyText } from '@/shared/clipboard'
 import ColorFullscreen from '@/shared/ColorFullscreen.vue'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import {
   buildPalette, colorFromQuery, contrastRatio, formatColor, parseColor, readableOn, SCHEME_LABEL, wcagLevels, type PaletteScheme, type Rgba,
 } from './logic'
@@ -19,8 +21,12 @@ const CHANNELS = [
   { key: 'b', color: '#1989fa' },
 ] as const
 
+/** 本工具的持久缓存 */
+const store = createToolStorage('color-convert')
+/** 分区可选值 */
+const TABS = ['convert', 'contrast', 'palette'] as const
 /** 分区：转换 / 对比度 / 配色 */
-const tab = ref<'convert' | 'contrast' | 'palette'>('convert')
+const tab = usePersistedRef<(typeof TABS)[number]>(store, 'tab', 'convert', (v) => TABS.includes(v))
 /** 配色方案列表 */
 const SCHEMES = Object.keys(SCHEME_LABEL) as PaletteScheme[]
 /** 配色方案的选择器选项 */
@@ -117,7 +123,7 @@ function swapContrast(): void {
 }
 
 /** 当前选中的配色方案 */
-const scheme = ref<PaletteScheme>('complementary')
+const scheme = usePersistedRef<PaletteScheme>(store, 'scheme', 'complementary', (v) => SCHEMES.includes(v))
 /** 配色结果：每个色块带 HEX 与文字色 */
 const swatches = computed(() =>
   buildPalette(color.value, scheme.value).map((c) => ({ hex: formatColor(c).hex, fg: readableOn(c) })),

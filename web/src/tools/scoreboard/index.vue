@@ -3,16 +3,19 @@
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { showConfirmDialog, showToast } from 'vant'
 import { createAppAwake } from '../clock-screen/awake'
+import { createToolStorage } from '@/shared/toolStorage'
 import {
   addScore, loadState, MAX_NAME_LEN, MAX_PLAYERS, MAX_STEP, MIN_PLAYERS, normalizeStep, PLAYER_COLORS, rankPlayers,
-  renamePlayer, resetScores, saveState, setPlayerCount, undo,
+  renamePlayer, resetScores, saveState, setPlayerCount, TOOL_NS, undo,
 } from './logic'
 
 /** 常用步长快捷项 */
 const STEP_PRESETS = [1, 5, 10]
 
+/** 持久缓存 */
+const store = createToolStorage(TOOL_NS)
 /** 整个记分牌状态，进页面时从本地恢复 */
-const state = ref(loadState())
+const state = ref(loadState(store))
 
 /** 「保持亮屏」开关，默认关，不落盘 */
 const keepOn = ref(false)
@@ -29,7 +32,7 @@ watch(keepOn, async (on) => {
 onUnmounted(() => void awake.release())
 
 // 任何变化都落盘（写失败时静默）
-watch(state, (s) => saveState(s), { deep: true })
+watch(state, (s) => saveState(s, store), { deep: true })
 
 /** 排名信息，按玩家下标索引 */
 const rankByIndex = computed(() => {

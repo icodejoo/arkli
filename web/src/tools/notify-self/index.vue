@@ -5,12 +5,15 @@ import { useFloatPause } from '@/shared/useFloatPause'
 import CellPicker from '@/shared/CellPicker.vue'
 import type { CellOption } from '@/shared/cellPicker'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
+import { inRange, oneOf } from '@/shared/persistValidators'
 import { showFailToast, showSuccessToast, showToast } from 'vant'
 import { isNativeAvailable } from '@/native/bridge'
 import { cancelAlarm, listAlarms, setAlarm, showNotification, type AlarmItem } from '@/native/reminder'
 import { requestPermission } from '@/native/system'
 import {
-  buildPlan, DELAY_PRESETS, formatAt, formatCountdown, isOwnAlarm, makeAlarmId, MAX_TEXT, MAX_TITLE, toLocalDateTime, MS_PER_MIN, type Mode,
+  buildPlan, DELAY_PRESETS, formatAt, formatCountdown, isOwnAlarm, makeAlarmId, MAX_TEXT, MAX_TITLE, MODE_VALUES, STORE_NS, toLocalDateTime, MS_PER_MIN, type Mode,
 } from './logic'
 
 /** 刷新倒计时的间隔（毫秒） */
@@ -28,14 +31,16 @@ const MODE_OPTIONS: readonly CellOption[] = [
   { value: 'delay', label: 'N 分钟后' },
   { value: 'at', label: '指定时间' },
 ]
+/** 持久缓存 */
+const store = createToolStorage(STORE_NS)
 /** 提醒方式 */
-const mode = ref<Mode>('delay')
+const mode = usePersistedRef<Mode>(store, 'mode', 'delay', oneOf(MODE_VALUES))
 /** 标题 */
 const title = ref('')
 /** 正文 */
 const text = ref('')
 /** 几分钟后 */
-const delayMin = ref<string | number>(10)
+const delayMin = usePersistedRef<string | number>(store, 'delayMin', 10, (x) => inRange(Number(x), { min: 1, max: 1440 }))
 /** 指定时间（datetime-local 的值） */
 const atText = ref(toLocalDateTime(Date.now() + DEFAULT_AT_OFFSET_MS))
 /** 待触发的提醒 */

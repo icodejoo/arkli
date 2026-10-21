@@ -38,6 +38,7 @@ export const BOTTOM_ACTION_REGISTRY = [
   { key: 'photo', text: '拍照', icon: 'arkli:camera', group: 'pick' },
   { key: 'paste', text: '粘贴', icon: 'arkli:clipboard-paste', group: 'pick' },
   { key: 'import', text: '导入', icon: 'arkli:file-input', group: 'pick' },
+  { key: 'voice', text: '语音', icon: 'arkli:mic', group: 'pick' },
   // 编辑类
   { key: 'edit', text: '编辑', icon: 'arkli:pencil', group: 'edit' },
   { key: 'undo', text: '撤销', icon: 'arkli:undo-2', group: 'edit' },

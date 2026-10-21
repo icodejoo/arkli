@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { drawNames, loadNames, MAX_PICK, NAMES_KEY, parseNames, saveNames } from './logic'
+import { createToolStorage } from '../../shared/toolStorage'
+import { drawNames, isValidCount, loadNames, MAX_PICK, NAMES_KEY, parseNames, saveNames, TOOL_NS } from './logic'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -67,18 +68,48 @@ describe('drawNames', () => {
   })
 })
 
+/** 内存版存储后端 */
+function memBackend() {
+  const m = new Map<string, string>()
+  return {
+    getItem: (k: string) => m.get(k) ?? null,
+    setItem: (k: string, v: string) => void m.set(k, v),
+    removeItem: (k: string) => void m.delete(k),
+    key: (i: number) => [...m.keys()][i] ?? null,
+    get length() {
+      return m.size
+    },
+  }
+}
+
 describe('名单存储', () => {
   it('读写往返', () => {
-    const m = new Map<string, string>()
-    vi.stubGlobal('localStorage', { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => m.set(k, v) })
-    expect(loadNames()).toBe('')
-    expect(saveNames('甲\n乙')).toBe(true)
-    expect(m.get(NAMES_KEY)).toBe('甲\n乙')
-    expect(loadNames()).toBe('甲\n乙')
+    const b = memBackend()
+    const store = createToolStorage(TOOL_NS, b)
+    expect(loadNames(store)).toBe('')
+    expect(saveNames('甲\n乙', store)).toBe(true)
+    expect(loadNames(store)).toBe('甲\n乙')
+  })
+  it('迁移旧键（原文不按 JSON 解析）', () => {
+    const b = memBackend()
+    b.setItem(NAMES_KEY, '123')
+    expect(loadNames(createToolStorage(TOOL_NS, b))).toBe('123')
+    expect(b.getItem(NAMES_KEY)).toBeNull()
   })
   it('存储不可用时静默', () => {
     vi.stubGlobal('localStorage', undefined)
     expect(loadNames()).toBe('')
     expect(saveNames('x')).toBe(false)
+  })
+})
+
+describe('isValidCount', () => {
+  it('只认 1..MAX_PICK 的整数', () => {
+    expect(isValidCount(1)).toBe(true)
+    expect(isValidCount(MAX_PICK)).toBe(true)
+    expect(isValidCount(0)).toBe(false)
+    expect(isValidCount(MAX_PICK + 1)).toBe(false)
+    expect(isValidCount(1.5)).toBe(false)
+    expect(isValidCount('2')).toBe(false)
   })
 })

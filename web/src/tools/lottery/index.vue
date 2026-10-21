@@ -1,24 +1,22 @@
 <script setup lang="ts">
 // 自定义抽签：输入选项，抽出 N 个；选项自动存本地，下次打开还在
 import BottomActions from '@/shared/BottomActions.vue'
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { parseOptions } from '@/shared/options'
 import { checkDraw, drawLots } from './logic'
 
-/** localStorage 键 */
-const STORAGE_KEY = 'arkli:lottery:text'
+/** 旧版 localStorage 键（仅用于迁移） */
+const LEGACY_KEY = 'arkli:lottery:text'
 
-/** 读取上次的输入，存储不可用时返回空串 */
-function load(): string {
-  try {
-    return localStorage.getItem(STORAGE_KEY) ?? ''
-  } catch {
-    return ''
-  }
-}
+/** 本工具的持久缓存 */
+const store = createToolStorage('lottery')
+// 旧版把选项原文直接存在单独键里，一次性迁入（不做 JSON 解析）
+store.adoptLegacy(LEGACY_KEY, 'text', (raw) => raw)
 
-/** 选项输入 */
-const text = ref(load())
+/** 选项输入，改动后自动记住（属于已有的自带缓存，保留） */
+const text = usePersistedRef(store, 'text', '', (v) => typeof v === 'string')
 /** 抽取个数 */
 const count = ref(1)
 /** 抽签结果 */
@@ -30,15 +28,6 @@ const drawn = ref(false)
 const parsed = computed(() => parseOptions(text.value))
 /** 校验结果：没输入时不报错，只在有输入但不合规时提示 */
 const error = computed(() => (text.value.trim() ? checkDraw(parsed.value.items, count.value).error : null))
-
-// 输入变化时落盘，失败（隐私模式等）就忽略
-watch(text, (v) => {
-  try {
-    localStorage.setItem(STORAGE_KEY, v)
-  } catch {
-    // 忽略
-  }
-})
 
 /** 开抽 */
 function go(): void {

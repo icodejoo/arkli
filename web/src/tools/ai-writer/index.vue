@@ -7,6 +7,8 @@ import BottomActions from '@/shared/BottomActions.vue'
 import ModelMissingNotice from '@/shared/ModelMissingNotice.vue'
 import ModelPicker from '@/shared/ModelPicker.vue'
 import CellPicker from '@/shared/CellPicker.vue'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { copyText } from '@/shared/clipboard'
 import { AiNotReadyError, aiInvoke, isAiCancelled } from '@/native/ai'
 import { AI_METHODS } from '@/native/aiMethods'
@@ -42,13 +44,15 @@ const PLACEHOLDERS: Record<WriterMode, string> = {
   shrink: '粘贴要缩写的文字',
 }
 
+/** 本工具的持久缓存 */
+const store = createToolStorage(TOOL_ID)
 /** 本工具的 AI 目录 */
 const catalog = useAiCatalog(TOOL_ID)
 
 /** 当前模式 */
-const mode = ref<WriterMode>('name')
+const mode = usePersistedRef<WriterMode>(store, 'mode', 'name', (v) => WRITER_MODES.some((m) => m.key === v))
 /** 起名类别 */
-const nameKind = ref<NameKind>('person')
+const nameKind = usePersistedRef<NameKind>(store, 'nameKind', 'person', (v) => NAME_KINDS.some((k) => k.key === v))
 /** 起名类别选项 */
 const NAME_KIND_OPTIONS = NAME_KINDS.map((k) => ({ value: k.key, label: k.label }))
 /** 风格 */

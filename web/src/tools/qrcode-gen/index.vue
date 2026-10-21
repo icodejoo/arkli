@@ -5,6 +5,9 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { showFailToast, showSuccessToast } from 'vant'
 import CellPicker from '@/shared/CellPicker.vue'
 import type { CellOption } from '@/shared/cellPicker'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
+import { inRange, oneOf } from '@/shared/persistValidators'
 import { canvasToBlob, loadBitmap, EDIT_FULL, pickImages, saveBlob, type PickedImage } from '@/shared/image-io'
 import {
   BORDER_MAX,
@@ -14,6 +17,7 @@ import {
   DEFAULT_FG,
   drawQr,
   ECC_OPTIONS,
+  STORE_NS,
   fitContain,
   layout,
   LOGO_PCT_DEFAULT,
@@ -41,14 +45,16 @@ const BG_PRESETS = ['#ffffff', '#f3f4f6', '#fef9c3', '#dbeafe']
 const text = ref('')
 /** 防抖后的内容 */
 const settled = ref('')
+/** 持久缓存 */
+const store = createToolStorage(STORE_NS)
 /** 纠错等级 */
-const ecc = ref<EccLevel>('M')
+const ecc = usePersistedRef<EccLevel>(store, 'ecc', 'M', oneOf(ECC_OPTIONS.map((o) => o.id)))
 /** 纠错等级选项：字母 + 大致恢复能力 */
 const ECC_PICK_OPTIONS: CellOption[] = ECC_OPTIONS.map((o) => ({ value: o.id, label: `${o.label} ${o.hint}` }))
 /** 边距（模块数） */
-const border = ref(4)
+const border = usePersistedRef(store, 'border', 4, (x) => inRange(x, { min: BORDER_MIN, max: BORDER_MAX }))
 /** 目标边长（像素） */
-const size = ref(512)
+const size = usePersistedRef(store, 'size', 512, (x) => inRange(x, { min: SIZE_MIN, max: SIZE_MAX }))
 /** 前景色输入 */
 const fg = ref(DEFAULT_FG)
 /** 背景色输入 */
@@ -60,7 +66,7 @@ const pixels = ref(0)
 /** 中间图片位图，未选为 null */
 const logo = ref<ImageBitmap | null>(null)
 /** 中间图片想要的占比（占码边长，不含静区；实际可能被安全上限压低） */
-const logoPct = ref(LOGO_PCT_DEFAULT)
+const logoPct = usePersistedRef(store, 'logoPct', LOGO_PCT_DEFAULT, (x) => inRange(x, { min: LOGO_PCT_MIN, max: 100 }))
 /** 保存中 */
 const saving = ref(false)
 /** 防抖定时器 */

@@ -217,3 +217,42 @@ export function removeStop(stops: ColorStop[], index: number): ColorStop[] {
   if (stops.length <= STOP_MIN || index < 0 || index >= stops.length) return stops.slice()
   return stops.filter((_, i) => i !== index)
 }
+
+/** 工具持久缓存的命名空间 */
+export const TOOL_NS = 'solid-gradient'
+
+/**
+ * 校验缓存的色值：必须是能解析的十六进制色。
+ *
+ * @param v 缓存值
+ * @returns 合法返回 true
+ * @example isValidColor('#fff') // true
+ */
+export function isValidColor(v: unknown): v is string {
+  return typeof v === 'string' && parseHex(v) !== null
+}
+
+/**
+ * 校验缓存的色标列表：数量在 STOP_MIN~STOP_MAX，颜色合法，位置 0~100。
+ *
+ * @param v 缓存值
+ * @returns 合法返回 true
+ */
+export function isValidStops(v: unknown): v is ColorStop[] {
+  return (
+    Array.isArray(v) &&
+    v.length >= STOP_MIN &&
+    v.length <= STOP_MAX &&
+    v.every((s) => !!s && isValidColor(s.color) && typeof s.pos === 'number' && s.pos >= 0 && s.pos <= 100)
+  )
+}
+
+/**
+ * 校验缓存的渐变角度：0~360 的有限数。
+ *
+ * @param v 缓存值
+ * @returns 合法返回 true
+ */
+export function isValidAngle(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 360
+}

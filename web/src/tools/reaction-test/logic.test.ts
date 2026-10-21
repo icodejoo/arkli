@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { BEST_KEY, GRADES, gradeFor, isNewBest, isSuspicious, loadBest, randomWait, saveBest, summarize, WAIT_MAX_MS, WAIT_MIN_MS } from './logic'
+import { createToolStorage } from '../../shared/toolStorage'
+import { BEST_KEY, BEST_STORE_KEY, TOOL_NS, GRADES, gradeFor, isNewBest, isSuspicious, loadBest, randomWait, saveBest, summarize, WAIT_MAX_MS, WAIT_MIN_MS } from './logic'
 
 /** 内存版 localStorage，可选让读写抛错 */
 function fakeStorage(throws = false) {
@@ -12,6 +13,11 @@ function fakeStorage(throws = false) {
     setItem: (k: string, v: string) => {
       if (throws) throw new Error('quota')
       m.set(k, v)
+    },
+    removeItem: (k: string) => void m.delete(k),
+    key: (i: number) => [...m.keys()][i] ?? null,
+    get length() {
+      return m.size
     },
   }
 }
@@ -79,24 +85,30 @@ describe('loadBest / saveBest', () => {
   afterEach(() => vi.unstubAllGlobals())
   it('存取往返并取整', () => {
     const st = fakeStorage()
-    vi.stubGlobal('localStorage', st)
-    expect(loadBest()).toBeNull()
-    expect(saveBest(212.6)).toBe(true)
-    expect(st.getItem(BEST_KEY)).toBe('213')
-    expect(loadBest()).toBe(213)
+    const store = createToolStorage(TOOL_NS, st)
+    expect(loadBest(store)).toBeNull()
+    expect(saveBest(212.6, store)).toBe(true)
+    expect(st.getItem(`${TOOL_NS}_${BEST_STORE_KEY}`)).toBe('213')
+    expect(loadBest(store)).toBe(213)
   })
   it('脏数据返回 null', () => {
     const st = fakeStorage()
-    vi.stubGlobal('localStorage', st)
-    st.setItem(BEST_KEY, 'abc')
-    expect(loadBest()).toBeNull()
-    st.setItem(BEST_KEY, '-3')
-    expect(loadBest()).toBeNull()
+    const store = createToolStorage(TOOL_NS, st)
+    st.setItem(`${TOOL_NS}_${BEST_STORE_KEY}`, '"abc"')
+    expect(loadBest(store)).toBeNull()
+    st.setItem(`${TOOL_NS}_${BEST_STORE_KEY}`, '-3')
+    expect(loadBest(store)).toBeNull()
+  })
+  it('迁移旧键', () => {
+    const st = fakeStorage()
+    st.setItem(BEST_KEY, '250')
+    expect(loadBest(createToolStorage(TOOL_NS, st))).toBe(250)
+    expect(st.getItem(BEST_KEY)).toBeNull()
   })
   it('存储抛错或不存在时不崩', () => {
-    vi.stubGlobal('localStorage', fakeStorage(true))
-    expect(loadBest()).toBeNull()
-    expect(saveBest(100)).toBe(false)
+    const store = createToolStorage(TOOL_NS, fakeStorage(true))
+    expect(loadBest(store)).toBeNull()
+    expect(saveBest(100, store)).toBe(false)
     vi.stubGlobal('localStorage', undefined)
     expect(loadBest()).toBeNull()
     expect(saveBest(100)).toBe(false)

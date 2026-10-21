@@ -1,4 +1,5 @@
 // 尺子：刻度计算与校准比例的存取（与 Vue 解耦）
+import { createToolStorage, type ToolStorage } from '../../shared/toolStorage'
 
 /** 1 英寸等于多少毫米 */
 export const MM_PER_INCH = 25.4
@@ -12,9 +13,11 @@ export const COIN_MM = 25
 export const MIN_PX_PER_MM = 1
 /** 合理比例上限（像素/毫米） */
 export const MAX_PX_PER_MM = 12
-/** localStorage 键前缀 */
-export const STORAGE_PREFIX = 'arkli:ruler:'
-/** 校准比例的存储键后缀 */
+/** 工具持久缓存的命名空间 */
+export const TOOL_NS = 'ruler'
+/** 旧版 localStorage 里校准比例的完整键（仅用于迁移） */
+export const LEGACY_SCALE_KEY = 'arkli:ruler:scale'
+/** 校准比例的缓存键 */
 export const SCALE_KEY = 'scale'
 /** 英寸刻度的最小分度（1/16 英寸） */
 export const INCH_DIVISION = 16
@@ -33,12 +36,6 @@ export interface Tick {
   kind: TickKind
   /** 主刻度的数字标签（仅 major 有） */
   label?: string
-}
-
-/** 键值存储的最小接口（便于测试注入） */
-export interface KvStorage {
-  getItem(key: string): string | null
-  setItem(key: string, value: string): void
 }
 
 /**
@@ -113,37 +110,36 @@ export function formatLength(px: number, pxPerMm: number, unit: RulerUnit): stri
 }
 
 /**
- * 读取已保存的校准比例。
+ * 读取已保存的校准比例；首次读取时迁移旧键。
  *
- * @param storage 存储对象，缺省时返回 null
+ * @param store 持久缓存，默认本工具命名空间
  * @returns 合法比例；没存过、损坏或存储不可用时为 null
  */
-export function loadScale(storage: KvStorage | undefined): number | null {
-  try {
-    const raw = storage?.getItem(STORAGE_PREFIX + SCALE_KEY)
-    if (raw == null) return null
-    const v = Number(raw)
-    return isValidScale(v) ? v : null
-  } catch {
-    return null
-  }
+export function loadScale(store: ToolStorage = createToolStorage(TOOL_NS)): number | null {
+  store.adoptLegacy(LEGACY_SCALE_KEY, SCALE_KEY)
+  const v = Number(store.get<unknown>(SCALE_KEY, null))
+  return store.has(SCALE_KEY) && isValidScale(v) ? v : null
 }
 
 /**
  * 保存校准比例。
  *
- * @param storage 存储对象
  * @param scale 像素/毫米比例
- * @returns 是否写入成功（比例非法或存储抛错时为 false）
+ * @param store 持久缓存，默认本工具命名空间
+ * @returns 是否写入成功（比例非法或存储不可用时为 false）
  */
-export function saveScale(storage: KvStorage | undefined, scale: number): boolean {
-  if (!isValidScale(scale)) return false
-  try {
-    storage?.setItem(STORAGE_PREFIX + SCALE_KEY, String(scale))
-    return !!storage
-  } catch {
-    return false
-  }
+export function saveScale(scale: number, store: ToolStorage = createToolStorage(TOOL_NS)): boolean {
+  return isValidScale(scale) && store.set(SCALE_KEY, scale)
+}
+
+/**
+ * 校验缓存的十六进制颜色（#rgb 或 #rrggbb）。
+ *
+ * @param v 缓存值
+ * @returns 合法返回 true
+ */
+export function isHexColor(v: unknown): v is string {
+  return typeof v === 'string' && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(v)
 }
 
 /** 游标微调的步长，单位毫米 */

@@ -4,6 +4,8 @@ import BottomActions from '@/shared/BottomActions.vue'
 import ModelPicker from '@/shared/ModelPicker.vue'
 import { computed, onBeforeUnmount, onDeactivated, ref, shallowRef } from 'vue'
 import { showFailToast, showSuccessToast, showToast } from 'vant'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { copyText } from '@/shared/clipboard'
 import { EDIT_BASIC, pickImages, saveBlob, type PickedImage } from '@/shared/image-io'
 import { shootPhoto } from '@/shared/shootPhoto'
@@ -21,6 +23,8 @@ const CSV_MIME = 'text/csv;charset=utf-8'
 
 /** 本工具 id（与 registry 一致） */
 const TOOL_ID = 'table-extract'
+/** 本工具的持久缓存 */
+const store = createToolStorage(TOOL_ID)
 /** 本工具的 AI 目录（用文字识别任务）：模型状态只读，下载、删除、校验都在 AI 中心 */
 const catalog = useAiCatalog(TOOL_ID)
 /** 提供者是否已探测过；探测前不提示“无可用模型”，免得闪一下 */
@@ -31,7 +35,7 @@ const modelReady = computed(() => catalog.current.value?.status === 'ready')
 let controller: AbortController | null = null
 
 /** 当前入口：图片识别 / 粘贴文字 */
-const tab = ref<'image' | 'text'>('image')
+const tab = usePersistedRef<'image' | 'text'>(store, 'tab', 'image', (v) => v === 'image' || v === 'text')
 /** 已选图片 */
 const image = shallowRef<PickedImage | null>(null)
 /** 识别中 */

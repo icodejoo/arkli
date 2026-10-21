@@ -131,50 +131,17 @@ export function envelopePoints(spec: ToneSpec): EnvPoint[] {
   ]
 }
 
-/** 最小存储结构 */
-export interface BoolStorage {
-  /** 读 */
-  getItem(key: string): string | null
-  /** 写 */
-  setItem(key: string, value: string): void
-}
-
 /**
- * 读布尔开关；没存过、存储不可用都回退默认值。
+ * 把旧版开关原文（'1' / '0'）转成布尔，供 `adoptLegacy` 迁移用；其他值丢弃。
  *
- * @param storage 存储对象，可缺省
- * @param key 键
- * @param fallback 默认值
- * @returns 开关值
- * @example
- * loadFlag(localStorage, VIBRATE_KEY, true)
+ * @param raw 旧键里的原文
+ * @returns 布尔值；无法识别返回 undefined
+ * @example parseLegacyFlag('1') // true
  */
-export function loadFlag(storage: BoolStorage | undefined, key: string, fallback: boolean): boolean {
-  try {
-    const raw = storage?.getItem(key)
-    if (raw === '1') return true
-    if (raw === '0') return false
-  } catch {
-    // 存储不可用时用默认值
-  }
-  return fallback
-}
-
-/**
- * 存布尔开关；存储不可用时静默忽略。
- *
- * @param storage 存储对象，可缺省
- * @param key 键
- * @param value 开关值
- * @example
- * saveFlag(localStorage, SOUND_KEY, false)
- */
-export function saveFlag(storage: BoolStorage | undefined, key: string, value: boolean): void {
-  try {
-    storage?.setItem(key, value ? '1' : '0')
-  } catch {
-    // 存储不可用时忽略
-  }
+export function parseLegacyFlag(raw: string): boolean | undefined {
+  if (raw === '1') return true
+  if (raw === '0') return false
+  return undefined
 }
 
 /** 可提前结算的动画定时器 */

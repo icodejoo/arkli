@@ -6,12 +6,16 @@ import { showFailToast, showSuccessToast, showToast } from 'vant'
 import { isNativeAvailable } from '@/native/bridge'
 import { compressVideo, mediaInfo, pickVideo, saveCachedFile, type CompressPreset, type CompressResult, type MediaInfo, type PickedVideo } from '@/native/media'
 import { share } from '@/native/system'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { formatBytes } from '@/shared/image-calc'
 import { formatDuration, percentOf } from '../video-audio/logic'
 import {
   changeText, checkAudioKept, estimateBytes, isCancelled, isNotSmaller, msgOf, NOT_SMALLER_TEXT, preWarning, PRESETS,
 } from './logic'
 
+/** 本工具的持久缓存 */
+const store = createToolStorage('video-compress')
 /** 无宿主时的提示 */
 const TIP_NO_HOST = '视频压缩需要在 App 内使用。'
 /** 压缩产物 mime */
@@ -30,7 +34,7 @@ const video = ref<PickedVideo | null>(null)
 /** 视频信息 */
 const info = ref<MediaInfo | null>(null)
 /** 当前预设 */
-const preset = ref<CompressPreset>('medium')
+const preset = usePersistedRef<CompressPreset>(store, 'preset', 'medium', (v) => PRESETS.some((p) => p.key === v))
 /** 是否正在压缩 */
 const running = ref(false)
 /** 进度百分比 */

@@ -67,3 +67,6 @@ export function generateNumbers(opts: RandomOptions, src: RandomSource = cryptoS
   if (sort) ints.sort((a, b) => a - b)
   return ints.map((v) => (v / scale).toFixed(decimals))
 }
+
+/** 持久缓存命名空间 */
+export const STORE_NS = 'random-number'

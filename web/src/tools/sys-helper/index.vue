@@ -5,6 +5,8 @@ import { showFailToast, showSuccessToast, showToast } from 'vant'
 import { isNativeAvailable } from '@/native/bridge'
 import { openSettings } from '@/native/system'
 import { copyText } from '@/shared/clipboard'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import CellPicker from '@/shared/CellPicker.vue'
 import type { CellOption } from '@/shared/cellPicker'
 import {
@@ -30,6 +32,8 @@ import {
   type CmdResult,
 } from './logic'
 
+/** 本工具的持久缓存 */
+const store = createToolStorage('sys-helper')
 /** 有宿主时才显示开发者选项按钮 */
 const hasNative = isNativeAvailable()
 /** 屏幕分辨率（CSS 像素 × 像素比，仅供参考） */
@@ -50,11 +54,11 @@ const sizeH = ref(screenH)
 /** 伪装电量 */
 const level = ref(50)
 /** 伪装状态 */
-const status = ref(3)
+const status = usePersistedRef(store, 'status', 3, (v) => BATTERY_STATUS_OPTIONS.some((o) => o.value === v))
 /** 是否模拟接入电源 */
-const ac = ref(false)
+const ac = usePersistedRef(store, 'ac', false, (v) => typeof v === 'boolean')
 /** 动画倍数 */
-const scale = ref(0.5)
+const scale = usePersistedRef(store, 'scale', 0.5, (v) => ANIM_PRESETS.some((o) => o.value === Number(v)))
 
 /** 把输入框的字符串/数字统一转成数字 */
 function num(v: unknown): number {

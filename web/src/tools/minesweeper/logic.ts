@@ -17,6 +17,9 @@ export interface Level {
   mines: number
 }
 
+/** 持久缓存命名空间 */
+export const STORE_NS = 'minesweeper'
+
 /** 三档难度：初级、中级、高级（竖屏友好，高级为 30 行 16 列） */
 export const LEVELS: readonly Level[] = [
   { id: 'easy', name: '初级', rows: 9, cols: 9, mines: 10 },

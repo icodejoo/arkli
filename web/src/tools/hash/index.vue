@@ -3,6 +3,8 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { showFailToast, showSuccessToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { clipboardWrite } from '@/native/system'
 import { BIG_FILE_BYTES, copyWithFallback, formatHex, HASH_ALGOS, hashFile, hashText, matchExpected, type HashDigests } from './logic'
 
@@ -11,14 +13,17 @@ const DEBOUNCE_MS = 150
 /** 一兆字节，用来显示文件大小 */
 const MB = 1024 * 1024
 
+/** 持久缓存 */
+const store = createToolStorage('hash')
+
 /** 数据来源：文本 / 文件 */
-const source = ref<'text' | 'file'>('text')
+const source = usePersistedRef<'text' | 'file'>(store, 'source', 'text', (v) => v === 'text' || v === 'file')
 /** 文本输入 */
 const input = ref('')
 /** 防抖后的文本 */
 const settled = ref('')
 /** 大写 hex */
-const upper = ref(false)
+const upper = usePersistedRef(store, 'upper', false, (v) => typeof v === 'boolean')
 /** 期望值（用来比对） */
 const expected = ref('')
 /** 已选文件 */

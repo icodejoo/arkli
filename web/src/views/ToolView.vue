@@ -5,9 +5,8 @@ import { showConfirmDialog } from 'vant'
 import { useRoute, useRouter } from 'vue-router'
 import { showToast } from 'vant'
 import { isNativeAvailable } from '@/native/bridge'
-import CameraIcon from '~icons/cil/camera?width=1em&height=1em'
-import KeyboardIcon from '~icons/cil/keyboard?width=1em&height=1em'
-import { MODE_CAMERA, MODE_QUERY, findTool } from '@/tools/registry'
+import { findTool } from '@/tools/registry'
+import { TOOL_SETTING_ROUTE } from '@/router'
 import PinToolSheet from '@/shared/PinToolSheet.vue'
 import { copyText } from '@/shared/clipboard'
 import {
@@ -18,7 +17,6 @@ import {
   MENU_KEY_REFRESH,
   MENU_KEY_SETTINGS,
   MENU_KEY_STAR,
-  SETTINGS_ROUTE,
   TOAST_COPY_FAILED,
   TOAST_FLOAT_BUSY,
   floatReplaceMessage,
@@ -35,6 +33,7 @@ import { shareIconSrc } from '@/shared/shareSheetIcons'
 import { useFloatStore, decideFloat } from '@/stores/float'
 import { useLiveTools } from '@/shared/floatLive'
 import { ToolStage } from '@/shared/ToolStage'
+import BlankSetting from '@/views/ToolSettingView.vue'
 
 /** 工具 id 到异步组件的缓存：重复 defineAsyncComponent 会得到不同的组件对象，keep-alive 就命中不了 */
 const asyncTools = new Map<string, Component>()
@@ -72,18 +71,8 @@ const starred = computed(() => favorites.has(props.id))
 const meta = computed(() => findTool(props.id))
 /** 当前路由 */
 const route = useRoute()
-/** 工具是否支持摄像头模式切换 */
-const hasCamera = computed(() => !!meta.value?.camera)
-/** 当前是否在拍照识别模式 */
-const cameraOn = computed(() => route.query[MODE_QUERY] === MODE_CAMERA)
-
-/** 在普通模式与拍照识别模式间切换（replace，不堆历史） */
-function toggleCamera(): void {
-  const query = { ...route.query }
-  if (cameraOn.value) delete query[MODE_QUERY]
-  else query[MODE_QUERY] = MODE_CAMERA
-  router.replace({ query })
-}
+/** 当前是否在工具设置页（此时工具首页只隐藏、不卸载，状态保留） */
+const inSetting = computed(() => route.name === TOOL_SETTING_ROUTE)
 /** 浮窗 store */
 const floatStore = useFloatStore()
 /** 保活的工具 id 列表：前台工具 + 被浮起的工具（状态机见 shared/floatLive.ts） */
@@ -98,6 +87,17 @@ const live = useLiveTools(() => props.id)
 function resolveTool(id: string): Component | null {
   const m = findTool(id)
   return m ? asyncToolOf(m.id, m.load) : null
+}
+
+/**
+ * 按 id 取工具的设置页组件；工具没声明 `setting` 时用空白页。
+ *
+ * @param id 工具 id
+ * @returns 设置页组件
+ */
+function resolveSetting(id: string): Component {
+  const m = findTool(id)
+  return m?.setting ? asyncToolOf(`setting:${m.id}`, m.setting) : BlankSetting
 }
 
 /** 点“浮窗”：忙碌只提示；已有别的浮窗先确认替换；然后浮起并回到上一页 */
@@ -160,7 +160,8 @@ async function onSharePick(option: MenuActionItem): Promise<void> {
       refreshApp()
       return
     case MENU_KEY_SETTINGS:
-      router.push(SETTINGS_ROUTE)
+      shareSheet.value = false
+      router.push({ name: TOOL_SETTING_ROUTE, params: { id: props.id } })
       return
     case MENU_KEY_STAR:
       toggleStar()
@@ -211,14 +212,6 @@ watchEffect(() => {
       <template v-if="meta" #right>
         <!-- 工具页可用 teleport 往这里放自己的标题栏按钮（如筛选） -->
         <span id="shell-nav-actions" class="shell__slot" />
-        <component
-          :is="cameraOn ? KeyboardIcon : CameraIcon"
-          v-if="hasCamera"
-          :class="['shell__star', 'shell__cam']"
-          role="button"
-          :aria-label="cameraOn ? '切回查询' : '拍照识别'"
-          @click.stop="toggleCamera"
-        />
         <!-- 小程序风格胶囊：左「…」唤起底部分享面板，右收藏 -->
         <div class="shell__capsule">
           <button type="button" class="shell__capsule-btn" aria-label="分享" @click.stop="shareSheet = true">
@@ -240,7 +233,11 @@ watchEffect(() => {
     <pin-tool-sheet v-if="meta" v-model:show="pinSheet" :tool="meta" />
     <main class="shell__body">
       <!-- 工具舞台：前台工具 + 被浮起的工具各自保活，其余离开即卸载；工具之间互跳（取色器 → 颜色助手）再返回仍保留状态 -->
-      <tool-stage v-if="meta" :ids="live" :active-id="props.id" :resolve="resolveTool" />
+      <div v-show="!inSetting">
+        <tool-stage v-if="meta" :ids="live" :active-id="props.id" :resolve="resolveTool" />
+      </div>
+      <!-- 设置舞台：只保活当前工具的设置页，切到别的工具就卸载（首页舞台里被浮起的工具另当别论） -->
+      <tool-stage v-if="meta" :ids="[props.id]" :active-id="inSetting ? props.id : ''" :resolve="resolveSetting" />
       <van-empty v-else description="没有找到这个工具" />
     </main>
   </div>

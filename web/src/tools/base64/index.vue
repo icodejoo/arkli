@@ -4,19 +4,23 @@ import BottomActions from '@/shared/BottomActions.vue'
 import { computed, ref, watch } from 'vue'
 import { showFailToast, showSuccessToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { decodeText, encodeText } from './logic'
 
 /** 防抖毫秒数：输入较大时避免每个字符都重算 */
 const DEBOUNCE_MS = 150
 
+/** 本工具的持久缓存 */
+const store = createToolStorage('base64')
 /** 方向：编码 / 解码 */
-const mode = ref<'encode' | 'decode'>('encode')
+const mode = usePersistedRef<'encode' | 'decode'>(store, 'mode', 'encode', (v) => v === 'encode' || v === 'decode')
 /** 输入 */
 const input = ref('')
 /** 用 URL 安全字符集（仅编码生效，解码自动识别） */
-const urlSafe = ref(false)
+const urlSafe = usePersistedRef(store, 'urlSafe', false, (v) => typeof v === 'boolean')
 /** 保留 = 填充（仅编码生效） */
-const padding = ref(true)
+const padding = usePersistedRef(store, 'padding', true, (v) => typeof v === 'boolean')
 /** 实际参与计算的输入（防抖后） */
 const settled = ref('')
 /** 防抖定时器 */

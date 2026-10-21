@@ -1,14 +1,20 @@
 <script setup lang="ts">
 // 房贷计算器：商贷 / 公积金 / 组合贷，等额本息或等额本金，附逐月还款表（分批加载，长表不卡）
 import { computed, ref } from 'vue'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
+import { oneOf } from '@/shared/persistValidators'
 import CellPicker from '@/shared/CellPicker.vue'
 import type { CellOption } from '@/shared/cellPicker'
 import {
   calcCombined,
   calcLoan,
   formatCents,
+  KIND_VALUES,
   MAX_YEARS,
+  METHOD_VALUES,
   MONTHS_PER_YEAR,
+  STORE_NS,
   yuanToCents,
   type LoanInput,
   type LoanResult,
@@ -40,9 +46,11 @@ const METHOD_OPTIONS: readonly CellOption[] = [
 ]
 
 /** 贷款类型 */
-const kind = ref<Kind>('biz')
+/** 持久缓存 */
+const store = createToolStorage(STORE_NS)
+const kind = usePersistedRef<Kind>(store, 'kind', 'biz', oneOf(KIND_VALUES))
 /** 还款方式 */
-const method = ref<RepayMethod>('equal-payment')
+const method = usePersistedRef<RepayMethod>(store, 'method', 'equal-payment', oneOf(METHOD_VALUES))
 /** 商贷输入 */
 const biz = ref<LoanForm>({ wan: '100', rate: '3.5', years: '30' })
 /** 公积金输入 */

@@ -4,14 +4,18 @@ import BottomActions from '@/shared/BottomActions.vue'
 import { computed, ref, watch } from 'vue'
 import { showToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { createSegmenter, joinSelected, selectAllWords, toggleIndex, tokenize } from './logic'
 
+/** 本工具的持久缓存 */
+const store = createToolStorage('word-split')
 /** 输入文本 */
 const text = ref('')
 /** 选中的片段下标 */
 const selected = ref<Set<number>>(new Set())
 /** 是否用空格分隔选中的词 */
-const spaced = ref(false)
+const spaced = usePersistedRef(store, 'spaced', false, (v) => typeof v === 'boolean')
 /** 分词器（环境不支持时为 null，按字拆） */
 const segmenter = createSegmenter()
 

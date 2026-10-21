@@ -1,6 +1,12 @@
-// 反应力测试：随机等待、成绩统计、等级评语、历史最好存 localStorage
+// 反应力测试：随机等待、成绩统计、等级评语、历史最好存持久缓存
+import { createToolStorage, type ToolStorage } from '../../shared/toolStorage'
 
-/** 本地存储的 key */
+/** 工具持久缓存的命名空间 */
+export const TOOL_NS = 'reaction-test'
+/** 历史最好成绩的缓存键 */
+export const BEST_STORE_KEY = 'best'
+
+/** 旧版 localStorage 的 key（仅用于迁移） */
 export const BEST_KEY = 'arkli:reaction-test:best'
 /** 随机等待下限（毫秒） */
 export const WAIT_MIN_MS = 1500
@@ -109,34 +115,28 @@ export function isNewBest(ms: number, best: number | null): boolean {
 }
 
 /**
- * 读取历史最好成绩，读失败或数据异常返回 null。
+ * 读取历史最好成绩，读失败或数据异常返回 null；首次读取时迁移旧键。
  *
+ * @param store 持久缓存，默认本工具命名空间
  * @returns 毫秒数或 null
  * @example
  * const best = loadBest()
  */
-export function loadBest(): number | null {
-  try {
-    const v = Number(localStorage.getItem(BEST_KEY))
-    return Number.isFinite(v) && v > 0 ? v : null
-  } catch {
-    return null
-  }
+export function loadBest(store: ToolStorage = createToolStorage(TOOL_NS)): number | null {
+  store.adoptLegacy(BEST_KEY, BEST_STORE_KEY)
+  const v = Number(store.get<unknown>(BEST_STORE_KEY, null))
+  return Number.isFinite(v) && v > 0 ? v : null
 }
 
 /**
  * 保存历史最好成绩，失败时静默忽略。
  *
  * @param ms 毫秒数
+ * @param store 持久缓存，默认本工具命名空间
  * @returns 是否写入成功
  * @example
  * saveBest(210)
  */
-export function saveBest(ms: number): boolean {
-  try {
-    localStorage.setItem(BEST_KEY, String(Math.round(ms)))
-    return true
-  } catch {
-    return false
-  }
+export function saveBest(ms: number, store: ToolStorage = createToolStorage(TOOL_NS)): boolean {
+  return store.set(BEST_STORE_KEY, Math.round(ms))
 }

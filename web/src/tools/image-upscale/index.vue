@@ -7,6 +7,9 @@ import ModelPicker from '@/shared/ModelPicker.vue'
 import { computed, onBeforeUnmount, ref, shallowRef } from 'vue'
 import { showFailToast, showSuccessToast, showToast } from 'vant'
 import { outputName } from '@/shared/image-calc'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
+import { oneOf } from '@/shared/persistValidators'
 import { shootPhoto } from '@/shared/shootPhoto'
 import { EDIT_BASIC, pickImages, saveBlob, type PickedImage } from '@/shared/image-io'
 import { aiUpscale, AiNotReadyError, fetchAiResult } from '@/native/ai'
@@ -21,10 +24,14 @@ const TOOL_ID = 'image-upscale'
 /** 模型状态 */
 const { ready, checked, loading: checking, refresh, markNotReady } = useAiModel('upscale')
 
+/** 本工具的持久缓存 */
+const store = createToolStorage(TOOL_ID)
+/** 可选放大倍数 */
+const SCALE_VALUES: readonly number[] = [2, 4]
 /** 已选图片 */
 const image = shallowRef<PickedImage | null>(null)
 /** 放大倍数 */
-const scale = ref<UpscaleScale>(2)
+const scale = usePersistedRef<UpscaleScale>(store, 'scale', 2, oneOf(SCALE_VALUES))
 /** 处理中 */
 const busy = ref(false)
 /** 保存中 */

@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createToolStorage } from '../../shared/toolStorage'
 import {
   addScore, createState, defaultName, loadState, MAX_HISTORY, MAX_PLAYERS, MAX_STEP, normalizeStep, rankPlayers,
-  renamePlayer, resetScores, sanitizeState, saveState, setPlayerCount, STORAGE_KEY, undo,
+  renamePlayer, resetScores, sanitizeState, saveState, setPlayerCount, STATE_KEY, STORAGE_KEY, TOOL_NS, undo,
 } from './logic'
 
 describe('createState / defaultName', () => {
@@ -165,28 +166,40 @@ function fakeStorage(throws = false) {
       if (throws) throw new Error('quota')
       m.set(k, v)
     },
+    removeItem: (k: string) => void m.delete(k),
+    key: (i: number) => [...m.keys()][i] ?? null,
+    get length() {
+      return m.size
+    },
   }
 }
 
 describe('loadState / saveState', () => {
   afterEach(() => vi.unstubAllGlobals())
   it('存取往返', () => {
-    vi.stubGlobal('localStorage', fakeStorage())
+    const store = createToolStorage(TOOL_NS, fakeStorage())
     const s = addScore(createState(3), 1, 6)
-    expect(saveState(s)).toBe(true)
-    expect(loadState()).toEqual(s)
+    expect(saveState(s, store)).toBe(true)
+    expect(loadState(store)).toEqual(s)
   })
-  it('无数据或坏 JSON 返回默认', () => {
+  it('无数据或坏数据返回默认', () => {
     const st = fakeStorage()
-    vi.stubGlobal('localStorage', st)
-    expect(loadState()).toEqual(createState())
-    st.setItem(STORAGE_KEY, '{bad')
-    expect(loadState()).toEqual(createState())
+    const store = createToolStorage(TOOL_NS, st)
+    expect(loadState(store)).toEqual(createState())
+    st.setItem(`${TOOL_NS}_${STATE_KEY}`, '{bad')
+    expect(loadState(store)).toEqual(createState())
+  })
+  it('迁移旧键', () => {
+    const st = fakeStorage()
+    const s = addScore(createState(3), 1, 6)
+    st.setItem(STORAGE_KEY, JSON.stringify(s))
+    expect(loadState(createToolStorage(TOOL_NS, st))).toEqual(s)
+    expect(st.getItem(STORAGE_KEY)).toBeNull()
   })
   it('存储抛错时不崩', () => {
-    vi.stubGlobal('localStorage', fakeStorage(true))
-    expect(loadState()).toEqual(createState())
-    expect(saveState(createState())).toBe(false)
+    const store = createToolStorage(TOOL_NS, fakeStorage(true))
+    expect(loadState(store)).toEqual(createState())
+    expect(saveState(createState(), store)).toBe(false)
   })
   it('localStorage 不存在时不崩', () => {
     vi.stubGlobal('localStorage', undefined)

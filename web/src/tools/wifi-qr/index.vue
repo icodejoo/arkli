@@ -5,12 +5,16 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { showFailToast, showSuccessToast, showToast } from 'vant'
 import CellPicker from '@/shared/CellPicker.vue'
 import type { CellOption } from '@/shared/cellPicker'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { isNativeAvailable } from '@/native/bridge'
 import { openSettings } from '@/native/system'
 import { canvasToBlob, saveBlob } from '@/shared/image-io'
 import { drawQr, makeQr } from '../qrcode-gen/logic'
 import { AUTH_OPTIONS, buildWifiPayload, validateWifi, type WifiAuth } from './logic'
 
+/** 本工具的持久缓存 */
+const store = createToolStorage('wifi-qr')
 /** 画布目标边长 */
 const CANVAS_SIZE = 512
 /** 二维码边距（模块） */
@@ -25,11 +29,11 @@ const ssid = ref('')
 /** 密码 */
 const password = ref('')
 /** 加密类型 */
-const auth = ref<WifiAuth>('WPA')
+const auth = usePersistedRef<WifiAuth>(store, 'auth', 'WPA', (v) => AUTH_OPTIONS.some((o) => o.id === v))
 /** 加密方式选项 */
 const AUTH_PICK_OPTIONS: CellOption[] = AUTH_OPTIONS.map((o) => ({ value: o.id, label: o.label }))
 /** 是否隐藏 */
-const hidden = ref(false)
+const hidden = usePersistedRef(store, 'hidden', false, (v) => typeof v === 'boolean')
 /** 画布元素 */
 const canvas = ref<HTMLCanvasElement | null>(null)
 /** 保存中 */

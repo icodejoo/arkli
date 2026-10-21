@@ -3,15 +3,20 @@
 import { computed, ref } from 'vue'
 import { showFailToast, showSuccessToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
+import { oneOf } from '@/shared/persistValidators'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { CATEGORIES, COMMANDS, type Category } from './data'
 import { countByCategory, isDanger, searchCommands } from './logic'
 
 /** 「全部」分类的标记 */
 const ALL = ''
+/** 本工具的持久缓存 */
+const store = createToolStorage('linux-manual')
 /** 搜索关键词 */
 const query = ref('')
 /** 当前分类，空串表示全部 */
-const cat = ref<Category | typeof ALL>(ALL)
+const cat = usePersistedRef<Category | typeof ALL>(store, 'cat', ALL, oneOf([ALL, ...CATEGORIES]))
 /** 展开中的命令名 */
 const opened = ref<string[]>([])
 

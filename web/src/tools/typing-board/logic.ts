@@ -1,4 +1,5 @@
 // 打字板（含原手持弹幕）：全屏大字展示，文字没超出屏幕就静止，超出就横向滚动；配色预设、闪烁、最近文案（与 Vue 解耦）
+import type { ToolStorage } from '@/shared/toolStorage'
 
 /** 文字长度上限 */
 export const TEXT_MAX = 200
@@ -26,7 +27,7 @@ export const WEIGHTS = [400, 700, 900] as const
 export const STAGE_PAD = 16
 /** 最近文案保留条数 */
 export const RECENT_MAX = 6
-/** 最近文案的存储键（沿用原手持弹幕的键，历史记录不丢） */
+/** 最近文案旧的 localStorage 完整键名（沿用原手持弹幕的键，用于一次性迁移） */
 export const RECENT_KEY = 'arkli:danmaku:recent'
 /** 对齐方式 */
 export type Align = 'left' | 'center' | 'right'
@@ -52,11 +53,10 @@ export const PRESETS: readonly Preset[] = [
   { name: '黑白', fg: '#ffffff', bg: '#000000', text: '你好' },
 ]
 
-/** 键值存储的最小接口 */
-export interface KvStorage {
-  getItem(key: string): string | null
-  setItem(key: string, value: string): void
-}
+/** #rrggbb 颜色的匹配规则 */
+const HEX_COLOR_RE = /^#[0-9a-f]{6}$/i
+/** 最近文案在持久缓存里的键 */
+const RECENT_STORE_KEY = 'recent'
 
 /**
  * 限制数值范围，非有限数取下限。
@@ -152,32 +152,45 @@ export function pushRecent(list: readonly string[], text: string, max = RECENT_M
 }
 
 /**
- * 读最近文案。
+ * 读最近文案（首次会把旧键迁移过来）。
  *
- * @param storage 存储对象
+ * @param store 打字板的持久缓存
  * @returns 字符串数组；没有、损坏或存储不可用时为空数组
  */
-export function loadRecent(storage: KvStorage | undefined): string[] {
-  try {
-    const raw = storage?.getItem(RECENT_KEY)
-    if (!raw) return []
-    const v: unknown = JSON.parse(raw)
-    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').slice(0, RECENT_MAX) : []
-  } catch {
-    return []
-  }
+export function loadRecent(store: ToolStorage): string[] {
+  store.adoptLegacy(RECENT_KEY, RECENT_STORE_KEY)
+  const v = store.get<unknown>(RECENT_STORE_KEY, [])
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').slice(0, RECENT_MAX) : []
 }
 
 /**
  * 存最近文案；失败时静默。
  *
- * @param storage 存储对象
+ * @param store 打字板的持久缓存
  * @param list 要保存的列表
  */
-export function saveRecent(storage: KvStorage | undefined, list: readonly string[]): void {
-  try {
-    storage?.setItem(RECENT_KEY, JSON.stringify(list.slice(0, RECENT_MAX)))
-  } catch {
-    // 存储满了或被禁用，忽略
-  }
+export function saveRecent(store: ToolStorage, list: readonly string[]): void {
+  store.set(RECENT_STORE_KEY, list.slice(0, RECENT_MAX))
+}
+
+/**
+ * 是否 #rrggbb 颜色串（持久化颜色的校验用）。
+ *
+ * @param v 待判断的值
+ * @returns 合法返回 true
+ */
+export function isHexColor(v: unknown): v is string {
+  return typeof v === 'string' && HEX_COLOR_RE.test(v)
+}
+
+/**
+ * 是否在闭区间内的数字（持久化滑块的校验用）。
+ *
+ * @param v 待判断的值
+ * @param min 下限
+ * @param max 上限
+ * @returns 合法返回 true
+ */
+export function inRange(v: unknown, min: number, max: number): v is number {
+  return typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max
 }

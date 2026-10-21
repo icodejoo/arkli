@@ -1,5 +1,6 @@
 // 网速测试的纯逻辑：延迟采样与统计、速率格式化、历史记录读写
 import { netTcp, type NetCallFn } from '@/native/net'
+import { createToolStorage, type ToolStorage } from '@/shared/toolStorage'
 
 /** 延迟测试目标主机（Cloudflare 公共 DNS） */
 export const LATENCY_HOST = '1.1.1.1'
@@ -17,7 +18,11 @@ export const SPEED_MAX_BYTES = 25_000_000
 export const SPEED_DURATION_MS = 8000
 /** 历史记录保留条数 */
 export const HISTORY_MAX = 10
-/** 历史记录在 localStorage 里的键 */
+/** 工具持久缓存的命名空间 */
+export const TOOL_NS = 'speed-test'
+/** 历史记录的缓存键 */
+export const HISTORY_STORE_KEY = 'history'
+/** 旧版 localStorage 里历史记录的键（仅用于迁移） */
 export const HISTORY_KEY = 'arkli.speed-test.history.v1'
 
 /** 每兆比特对应的比特数 */
@@ -149,12 +154,6 @@ export interface HistoryEntry {
   bps: number | null
 }
 
-/** 最小存储接口，便于测试 */
-export interface StorageLike {
-  getItem(key: string): string | null
-  setItem(key: string, value: string): void
-}
-
 /**
  * 把新记录放到最前，只保留最近 N 条，不改原数组。
  *
@@ -175,19 +174,21 @@ function numOrNull(v: unknown): number | null | undefined {
 }
 
 /**
- * 解析 localStorage 里的历史 JSON，丢掉不合规的条目。
+ * 解析缓存里的历史，丢掉不合规的条目。
  *
- * @param raw 存储的原文，可空
+ * @param raw 已解析的数组，或 JSON 原文；可空
  * @returns 历史数组（至多 {@link HISTORY_MAX} 条）；坏数据为空数组
  * @example parseHistory('[]') // []
  */
-export function parseHistory(raw: string | null): HistoryEntry[] {
+export function parseHistory(raw: unknown): HistoryEntry[] {
   if (!raw) return []
-  let data: unknown
-  try {
-    data = JSON.parse(raw)
-  } catch {
-    return []
+  let data: unknown = raw
+  if (typeof raw === 'string') {
+    try {
+      data = JSON.parse(raw)
+    } catch {
+      return []
+    }
   }
   if (!Array.isArray(data)) return []
   const out: HistoryEntry[] = []
@@ -204,35 +205,27 @@ export function parseHistory(raw: string | null): HistoryEntry[] {
 }
 
 /**
- * 读历史；存储不可用时返回空数组。
+ * 读历史；存储不可用时返回空数组；首次读取时迁移旧键。
  *
- * @param storage 存储，默认 localStorage
+ * @param store 持久缓存，默认本工具命名空间
  * @returns 历史（新→旧）
  * @example const h = loadHistory()
  */
-export function loadHistory(storage?: StorageLike): HistoryEntry[] {
-  try {
-    return parseHistory((storage ?? localStorage).getItem(HISTORY_KEY))
-  } catch {
-    return []
-  }
+export function loadHistory(store: ToolStorage = createToolStorage(TOOL_NS)): HistoryEntry[] {
+  store.adoptLegacy(HISTORY_KEY, HISTORY_STORE_KEY)
+  return parseHistory(store.get<unknown>(HISTORY_STORE_KEY, null))
 }
 
 /**
  * 写历史；存储不可用时静默忽略。
  *
  * @param list 历史
- * @param storage 存储，默认 localStorage
+ * @param store 持久缓存，默认本工具命名空间
  * @returns 是否写入成功
  * @example saveHistory(list)
  */
-export function saveHistory(list: HistoryEntry[], storage?: StorageLike): boolean {
-  try {
-    ;(storage ?? localStorage).setItem(HISTORY_KEY, JSON.stringify(list.slice(0, HISTORY_MAX)))
-    return true
-  } catch {
-    return false
-  }
+export function saveHistory(list: HistoryEntry[], store: ToolStorage = createToolStorage(TOOL_NS)): boolean {
+  return store.set(HISTORY_STORE_KEY, list.slice(0, HISTORY_MAX))
 }
 
 /**

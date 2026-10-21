@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   addStroke, appendPoint, canRedo, canUndo, canvasScale, clampWidth, clearStack, createStack, exportName,
-  isHexColor, MAX_EXPORT_EDGE, MAX_POINTS, pixelSize, redo, undo, type Stroke,
+  isHexColor, isValidWidth, MAX_EXPORT_EDGE, MAX_POINTS, pixelSize, redo, undo, type Stroke,
 } from './logic'
 
 /** 造一条笔画 */
@@ -118,5 +118,15 @@ describe('canvasScale / pixelSize', () => {
 describe('exportName', () => {
   it('格式固定', () => {
     expect(exportName(new Date(2026, 0, 2, 3, 4, 5))).toBe('sketch-20260102-030405.png')
+  })
+})
+
+describe('isValidWidth', () => {
+  it('只认范围内的有限数，非法缓存回落默认', () => {
+    expect(isValidWidth(6)).toBe(true)
+    expect(isValidWidth(0)).toBe(false)
+    expect(isValidWidth(61)).toBe(false)
+    expect(isValidWidth(NaN)).toBe(false)
+    expect(isValidWidth('6')).toBe(false)
   })
 })

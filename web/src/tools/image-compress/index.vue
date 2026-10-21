@@ -2,10 +2,11 @@
 // 图片压缩（含格式转换）：JPEG / WebP / PNG，质量、最长边、目标体积、PNG 缩色。
 // App 内走原生 native.image.compress；桌面浏览器没有宿主时退回 Canvas，两条路径共用界面与结果列表。
 import BottomActions from '@/shared/BottomActions.vue'
-import { computed, onBeforeUnmount, reactive, ref, shallowRef } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, shallowRef, watch } from 'vue'
 import { showFailToast, showSuccessToast, showToast } from 'vant'
 import ImageThumbList from '@/shared/ImageThumbList.vue'
 import CellPicker from '@/shared/CellPicker.vue'
+import { createToolStorage } from '@/shared/toolStorage'
 import type { CellOption } from '@/shared/cellPicker'
 import { shootPhoto } from '@/shared/shootPhoto'
 import { changeText, fitMaxEdge, FORMAT_MIME, formatBytes, outputName } from '@/shared/image-calc'
@@ -28,12 +29,12 @@ import {
   capabilities,
   COLORS_MAX,
   COLORS_MIN,
-  defaultOptions,
   describeFailed,
   EDGE_PRESETS,
   isBigger,
   PALETTE_HINT,
   progressText,
+  sanitizeOptions,
   QUALITY_MAX,
   QUALITY_MIN,
   resultNote,
@@ -89,10 +90,16 @@ const { call, on, cancelAll } = useNative()
 const images = ref<PickedImage[]>([])
 /** 最长边选项：0 表示不限 */
 const EDGE_OPTIONS = EDGE_PRESETS.map((e) => ({ value: e, label: e ? String(e) : '不限' }))
-/** 选项 */
-const opts = reactive(defaultOptions())
+/** 持久缓存 */
+const store = createToolStorage('image-compress')
+/** 选项缓存键 */
+const OPTS_KEY = 'opts'
 /** 当前 WebView 能否编码 WebP（原生路径恒可） */
 const webpOk = native || webpEncodeSupported()
+/** 选项（读缓存回填，目标体积除外） */
+const opts = reactive(sanitizeOptions(store.get<unknown>(OPTS_KEY, null), webpOk))
+// 选项变化即落盘；目标体积是输入框内容，不存
+watch(opts, ({ targetKb: _omit, ...rest }) => void store.set(OPTS_KEY, rest), { deep: true })
 /** 输出格式选项；WebP 在不支持编码时禁用 */
 const FORMAT_OPTIONS = computed<CellOption[]>(() => [
   { value: 'jpeg', label: 'JPEG' },

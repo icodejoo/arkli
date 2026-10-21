@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { buildList, calcItem, describeDays, parseDay, parseStored, validateEvent, type CountdownEvent } from './logic'
+import { createToolStorage, type StorageLike } from '@/shared/toolStorage'
+import { buildList, calcItem, describeDays, EVENTS_KEY, LEGACY_EVENTS_KEY, loadEvents, parseDay, parseStored, saveEvents, validateEvent, type CountdownEvent } from './logic'
 
 const ev = (date: string, yearly = false, id = date): CountdownEvent => ({ id, name: 'x', date, yearly })
 const T = parseDay('2024-03-10')!
@@ -54,5 +55,42 @@ describe('validateEvent / parseStored', () => {
     expect(parseStored(null)).toEqual([])
     expect(parseStored('{')).toEqual([])
     expect(parseStored(JSON.stringify([ev('2024-01-01'), { id: 1 }]))).toHaveLength(1)
+  })
+})
+
+/** 内存存储 */
+function memory(): StorageLike & { map: Map<string, string> } {
+  const map = new Map<string, string>()
+  return {
+    map,
+    get length() {
+      return map.size
+    },
+    key: (i) => [...map.keys()][i] ?? null,
+    getItem: (k) => map.get(k) ?? null,
+    setItem: (k, v) => void map.set(k, v),
+    removeItem: (k) => void map.delete(k),
+  }
+}
+
+describe('loadEvents / saveEvents', () => {
+  it('存取往返', () => {
+    const store = createToolStorage('countdown', memory())
+    expect(loadEvents(store)).toEqual([])
+    saveEvents(store, [ev('2024-01-01')])
+    expect(loadEvents(store)).toEqual([ev('2024-01-01')])
+  })
+  it('迁移旧键并丢弃坏条目', () => {
+    const m = memory()
+    m.setItem(LEGACY_EVENTS_KEY, JSON.stringify([ev('2024-01-01'), { id: 1 }]))
+    const store = createToolStorage('countdown', m)
+    expect(loadEvents(store)).toHaveLength(1)
+    expect(m.map.has(LEGACY_EVENTS_KEY)).toBe(false)
+    expect(m.map.has(`countdown_${EVENTS_KEY}`)).toBe(true)
+  })
+  it('缓存不是数组时回落空列表', () => {
+    const m = memory()
+    m.setItem(`countdown_${EVENTS_KEY}`, '"oops"')
+    expect(loadEvents(createToolStorage('countdown', m))).toEqual([])
   })
 })

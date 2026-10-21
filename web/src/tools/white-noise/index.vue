@@ -6,8 +6,12 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { showToast } from 'vant'
 import CellPicker from '@/shared/CellPicker.vue'
 import type { CellOption } from '@/shared/cellPicker'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { BUFFER_SECONDS, clampVolume, DEFAULT_VOLUME, fillNoise, formatRemaining, MS_PER_MIN, NOISES, remainingMs, resumeEndAt, TIMER_OPTIONS, type NoiseKind } from './logic'
 
+/** 本工具的持久缓存 */
+const store = createToolStorage('white-noise')
 /** 音频不可用提示 */
 const TIP_NO_AUDIO = '这个环境不支持音频播放'
 /** 倒计时刷新间隔（毫秒） */
@@ -16,13 +20,13 @@ const TICK_MS = 500
 const GAIN_SMOOTH = 0.05
 
 /** 当前噪声类型 */
-const kind = ref<NoiseKind>('rain')
+const kind = usePersistedRef<NoiseKind>(store, 'kind', 'rain', (v) => NOISES.some((n) => n.kind === v))
 /** 音量 0~100 */
-const volume = ref(Math.round(DEFAULT_VOLUME * 100))
+const volume = usePersistedRef(store, 'volume', Math.round(DEFAULT_VOLUME * 100), (v) => typeof v === 'number' && v >= 0 && v <= 100)
 /** 是否正在播放 */
 const playing = ref(false)
 /** 定时关闭分钟数，0 为不定时 */
-const timerMin = ref(0)
+const timerMin = usePersistedRef(store, 'timerMin', 0, (v) => v === 0 || TIMER_OPTIONS.includes(v))
 /** 定时选项：0 为不定时 */
 const TIMER_PICK_OPTIONS: CellOption[] = [{ value: 0, label: '不定时' }, ...TIMER_OPTIONS.map((m) => ({ value: m, label: `${m} 分钟` }))]
 /** 关闭时刻 */

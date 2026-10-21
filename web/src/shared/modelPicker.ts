@@ -6,8 +6,11 @@
 import type { ModelStateName, ModelStatus } from '@/native/model'
 import type { ModelLayer } from '@/tools/registry'
 import type { CatalogItem } from './aiCatalog'
+import { createToolStorage, type ToolStorage } from './toolStorage'
 
-/** 选择结果在 localStorage 里的键前缀，后接工具 id */
+/** 选择结果的持久缓存命名空间，键为工具 id（localStorage 里形如 `model-choice_translate`） */
+export const CHOICE_NS = 'model-choice'
+/** 旧版选择结果的键前缀（后接工具 id，值为原文），读取时一次性迁移 */
 export const CHOICE_KEY_PREFIX = 'arkli.modelChoice.'
 
 /** 顶部下载提示文案 */
@@ -191,25 +194,31 @@ export function buildExtraItem(info: ExtraRowInfo, st: (Pick<ModelStatus, 'total
   return { id: info.id, modelId: info.modelId, layer: 'L1', title: info.title, desc: buildDesc(info.desc, status, st), status, progress: progressOf(st) }
 }
 
-/** 精简的存储接口，便于测试注入 */
-export type ChoiceStorage = Pick<Storage, 'getItem' | 'setItem'>
+/** 选择结果的默认持久缓存 */
+const choiceStore = createToolStorage(CHOICE_NS)
 
-/** 读持久化的选择；任何异常都当作没有 */
-export function readChoice(toolId: string, storage?: ChoiceStorage): string | null {
-  try {
-    return (storage ?? localStorage).getItem(CHOICE_KEY_PREFIX + toolId)
-  } catch {
-    return null
-  }
+/**
+ * 读持久化的选择（顺带迁移旧键）；任何异常都当作没有。
+ *
+ * @param toolId 工具 id
+ * @param store 持久缓存，默认 model-choice 命名空间（测试注入）
+ * @returns 选择值；没存过为 null
+ */
+export function readChoice(toolId: string, store: ToolStorage = choiceStore): string | null {
+  store.adoptLegacy(CHOICE_KEY_PREFIX + toolId, toolId, (raw) => raw)
+  const v = store.get<unknown>(toolId, null)
+  return typeof v === 'string' ? v : null
 }
 
-/** 写持久化的选择；失败忽略（仅偏好） */
-export function writeChoice(toolId: string, id: string, storage?: ChoiceStorage): void {
-  try {
-    ;(storage ?? localStorage).setItem(CHOICE_KEY_PREFIX + toolId, id)
-  } catch {
-    // 无存储环境，忽略
-  }
+/**
+ * 写持久化的选择；失败忽略（仅偏好）。
+ *
+ * @param toolId 工具 id
+ * @param id 选择值
+ * @param store 持久缓存，默认 model-choice 命名空间（测试注入）
+ */
+export function writeChoice(toolId: string, id: string, store: ToolStorage = choiceStore): void {
+  store.set(toolId, id)
 }
 
 /** 选择器的一个分组：多类模型同屏分开选时，每类一组 */

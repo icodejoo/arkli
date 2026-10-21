@@ -3,6 +3,9 @@
 import BottomActions from '@/shared/BottomActions.vue'
 import CellPicker from '@/shared/CellPicker.vue'
 import type { CellOption } from '@/shared/cellPicker'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
+import { isBool, oneOf } from '@/shared/persistValidators'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { showToast } from 'vant'
 import ImageResultList from '@/shared/ImageResultList.vue'
@@ -25,14 +28,16 @@ const JPEG_QUALITY = 0.92
 /** 文件名与序号之间的分隔符 */
 const INDEX_SEP = '_'
 
+/** 本工具的持久缓存 */
+const store = createToolStorage('image-grid')
 /** 当前图片 */
 const image = ref<PickedImage | null>(null)
 /** 网格规格 */
-const grid = ref('3x3')
+const grid = usePersistedRef(store, 'grid', '3x3', oneOf(GRID_OPTIONS))
 /** 是否先居中裁成正方形 */
-const square = ref(true)
+const square = usePersistedRef(store, 'square', true, isBool)
 /** 输出格式 */
-const format = ref<'png' | 'jpeg'>('png')
+const format = usePersistedRef<'png' | 'jpeg'>(store, 'format', 'png', oneOf(FORMAT_OPTIONS))
 /** 结果与批处理状态 */
 const { results, busy, progress, saving, process, saveAll, clear } = useImageResults()
 

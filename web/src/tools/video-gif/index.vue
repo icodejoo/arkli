@@ -5,6 +5,8 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { showFailToast, showSuccessToast, showToast } from 'vant'
 import { isNativeAvailable } from '@/native/bridge'
 import { extractFrames, mediaInfo, pickVideo, type MediaInfo, type PickedVideo } from '@/native/media'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { formatBytes } from '@/shared/image-calc'
 import { createCanvas, releaseCanvas, saveBlob } from '@/shared/image-io'
 import { GifWriter } from '../gif-tool/gif-encoder'
@@ -14,6 +16,8 @@ import {
   isCancelled, makePlan, MAX_DURATION_MS, MIN_DURATION_MS, maxStartMs, msgOf, overallPercent,
 } from './logic'
 
+/** 本工具的持久缓存 */
+const store = createToolStorage('video-gif')
 /** 无宿主时的提示 */
 const TIP_NO_HOST = '视频转 GIF 需要在 App 内使用。'
 /** 滑杆步长：起点 0.1 秒 */
@@ -34,9 +38,9 @@ const startMs = ref(0)
 /** 时长（毫秒） */
 const durationMs = ref(DEFAULT_DURATION_MS)
 /** 帧率 */
-const fps = ref(DEFAULT_FPS)
+const fps = usePersistedRef(store, 'fps', DEFAULT_FPS, (v) => typeof v === 'number' && v >= FPS_MIN && v <= FPS_MAX)
 /** 最大边 */
-const maxEdge = ref<number>(DEFAULT_EDGE)
+const maxEdge = usePersistedRef<number>(store, 'maxEdge', DEFAULT_EDGE, (v) => (EDGE_OPTIONS as readonly number[]).includes(v))
 /** 是否正在转换 */
 const running = ref(false)
 /** 当前阶段文字 */

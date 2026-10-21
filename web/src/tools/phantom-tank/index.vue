@@ -7,9 +7,12 @@ import ImageResultList from '@/shared/ImageResultList.vue'
 import CellPicker from '@/shared/CellPicker.vue'
 import type { CellOption } from '@/shared/cellPicker'
 import { useImageResults } from '@/shared/useImageResults'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
+import { inRange, oneOf } from '@/shared/persistValidators'
 import { fitMaxEdge } from '@/shared/image-calc'
 import { canvasToBlob, createCanvas, loadBitmap, EDIT_BASIC, pickImages, releaseCanvas, type PickedImage } from '@/shared/image-io'
-import { clampContrast, composePhantom, CONTRAST_DEFAULT, CONTRAST_MAX, CONTRAST_MIN, coverRect, MAX_EDGE } from './logic'
+import { clampContrast, composePhantom, CONTRAST_DEFAULT, CONTRAST_MAX, CONTRAST_MIN, coverRect, MAX_EDGE, PREVIEW_BG_VALUES, STORE_NS } from './logic'
 
 /** 输出文件名前缀 */
 const NAME_PREFIX = 'phantom'
@@ -20,10 +23,12 @@ const CONTRAST_SCALE = 100
 const surface = ref<PickedImage | null>(null)
 /** 里图（黑底可见） */
 const inner = ref<PickedImage | null>(null)
+/** 持久缓存 */
+const store = createToolStorage(STORE_NS)
 /** 里图对比度（滑杆整数值） */
-const contrastRaw = ref(CONTRAST_DEFAULT * CONTRAST_SCALE)
+const contrastRaw = usePersistedRef(store, 'contrast', CONTRAST_DEFAULT * CONTRAST_SCALE, (x) => inRange(x, { min: CONTRAST_MIN * CONTRAST_SCALE, max: CONTRAST_MAX * CONTRAST_SCALE }))
 /** 预览背景：white / black */
-const previewBg = ref<'white' | 'black'>('white')
+const previewBg = usePersistedRef<'white' | 'black'>(store, 'previewBg', 'white', oneOf(PREVIEW_BG_VALUES))
 /** 预览背景选项 */
 const PREVIEW_BG_OPTIONS: CellOption[] = [
   { value: 'white', label: '白底' },

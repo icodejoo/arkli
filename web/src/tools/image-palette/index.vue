@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 取色器：上面是图片预览区，底部动作栏（左相册、右拍照）；提取图片主色（median-cut），长按图片取色并显示放大镜；点色块全屏显示，点一行复制 HEX，点右侧箭头带着颜色去颜色助手
 import BottomActions from '@/shared/BottomActions.vue'
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { showFailToast, showSuccessToast, showToast } from 'vant'
 import ColorFullscreen from '@/shared/ColorFullscreen.vue'
@@ -9,6 +9,9 @@ import { cameraItemToPicked, captureCamera, clearCamera, isAlbum, isCancelled } 
 import { copyText } from '@/shared/clipboard'
 import { loupeAbove } from '@/shared/color-picker'
 import { fitMaxEdge } from '@/shared/image-calc'
+import { inRange } from '@/shared/persistValidators'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { drawScaled, loadBitmap, EDIT_BASIC, pickImages, releaseCanvas, type PickedImage } from '@/shared/image-io'
 import {
   getPixel,
@@ -36,10 +39,12 @@ import {
   ZOOM_MIN,
 } from './logic'
 
+/** 本工具的持久缓存 */
+const store = createToolStorage('image-palette')
 /** 当前图片 */
 const image = ref<PickedImage | null>(null)
 /** 主色数量 */
-const count = ref(PALETTE_DEFAULT)
+const count = usePersistedRef(store, 'count', PALETTE_DEFAULT, (v) => inRange(v, { min: PALETTE_MIN, max: PALETTE_MAX }))
 /** 主色结果 */
 const palette = ref<PaletteColor[]>([])
 /** 点选的颜色 */
@@ -105,26 +110,11 @@ function extract(): void {
   palette.value = sample ? medianCut(sample.data, count.value) : []
 }
 
-/** 读存下来的放大倍数，存储不可用时用默认值 */
-function readZoom(): number {
-  try {
-    return loadZoom(window.localStorage.getItem(ZOOM_KEY))
-  } catch {
-    return ZOOM_DEFAULT
-  }
-}
-
-/** 放大镜倍数，可调，改动后记住 */
-const zoom = ref(readZoom())
+/** 放大镜倍数，可调，改动后记住（旧版存在 localStorage 的单独键里，一次性迁入） */
+store.adoptLegacy(ZOOM_KEY, 'zoom', loadZoom)
+const zoom = usePersistedRef(store, 'zoom', ZOOM_DEFAULT, (v) => inRange(v, { min: ZOOM_MIN, max: ZOOM_MAX }))
 /** 当前倍数对应的取样窗口边长（原图像素） */
 const win = computed(() => loupeWindow(zoom.value))
-watch(zoom, (v) => {
-  try {
-    window.localStorage.setItem(ZOOM_KEY, String(v))
-  } catch {
-    // 存储不可用时只在本次生效
-  }
-})
 
 /** 图片容器、图片与放大镜画布的 DOM */
 const viewRef = ref<HTMLElement | null>(null)

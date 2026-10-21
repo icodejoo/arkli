@@ -325,3 +325,6 @@ export function toggleAt(auto: Marker[], edits: Edits, x: number, y: number, rad
   if (hit.kind === 'added') return { added: edits.added.filter((_, i) => i !== hit.index), removed: edits.removed }
   return { added: edits.added, removed: edits.removed.concat([auto[hit.index]]) }
 }
+
+/** 持久缓存命名空间 */
+export const STORE_NS = 'object-count'

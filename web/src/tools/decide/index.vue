@@ -4,10 +4,16 @@ import BottomActions from '@/shared/BottomActions.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { prefersReducedMotion } from '@/shared/motion'
 import { parseOptions } from '@/shared/options'
+import { createToolStorage } from '@/shared/toolStorage'
 import { MAX_SLICES, MIN_SLICES, spinWheel, wheelGradient } from './logic'
 
-/** localStorage 键 */
-const STORAGE_KEY = 'arkli:decide:text'
+/** 旧 localStorage 键（迁移用） */
+const LEGACY_KEY = 'arkli:decide:text'
+/** 新缓存键 */
+const TEXT_KEY = 'text'
+/** 持久缓存 */
+const store = createToolStorage('decide')
+store.adoptLegacy(LEGACY_KEY, TEXT_KEY, (raw) => raw)
 /** 默认选项：给第一次打开的人一个能直接转的例子 */
 const DEFAULT_TEXT = '去\n不去'
 /** 半圈角度 */
@@ -15,17 +21,8 @@ const HALF_TURN = 180
 /** 转盘动画时长（毫秒），要和样式里的 transition 一致 */
 const SPIN_MS = 4000
 
-/** 读取上次输入 */
-function load(): string {
-  try {
-    return localStorage.getItem(STORAGE_KEY) ?? DEFAULT_TEXT
-  } catch {
-    return DEFAULT_TEXT
-  }
-}
-
 /** 选项输入 */
-const text = ref(load())
+const text = ref(store.get(TEXT_KEY, DEFAULT_TEXT))
 /** 转盘累计角度 */
 const angle = ref(0)
 /** 是否在转 */
@@ -55,11 +52,7 @@ const wheelStyle = computed(() => ({ background: wheelBg.value, transform: `rota
 // 选项变化时存盘，并清掉旧结果
 watch(text, (v) => {
   chosen.value = null
-  try {
-    localStorage.setItem(STORAGE_KEY, v)
-  } catch {
-    // 忽略
-  }
+  store.set(TEXT_KEY, v)
 })
 
 /**

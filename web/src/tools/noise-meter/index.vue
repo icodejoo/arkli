@@ -8,7 +8,7 @@ import { isNativeAvailable } from '@/native/bridge'
 import { onNoiseSample, startNoise, stopNoise } from '@/native/noise'
 import { openSettings, requestPermission } from '@/native/system'
 import {
-  applyOffset, CHART_WINDOW_MS, chartPoints, clampOffset, createPauseGate, formatDb, gaugeFraction, GAUGE_RANGE, loadOffset, noiseLevel, OFFSET_RANGE,
+  applyOffset, CHART_WINDOW_MS, createNoiseStore, chartPoints, clampOffset, createPauseGate, formatDb, gaugeFraction, GAUGE_RANGE, loadOffset, noiseLevel, OFFSET_RANGE,
   RingBuffer, ringCapacity, saveOffset, SAMPLE_INTERVAL_MS, StatsTracker, type NoiseStatsView, type Tone,
 } from './logic'
 
@@ -34,7 +34,9 @@ const starting = ref(false)
 /** 权限被拒 */
 const denied = ref(false)
 /** 校准偏移（dB） */
-const offset = ref(loadOffset())
+/** 噪音测量的持久缓存（含旧键迁移） */
+const store = createNoiseStore()
+const offset = ref(loadOffset(store))
 /** 原生给的最新原始值（未叠偏移） */
 const rawDb = ref<number | null>(null)
 /** 原生给的最新峰值（未叠偏移） */
@@ -193,7 +195,7 @@ async function onOpenSettings(): Promise<void> {
 /** 滑杆调整校准：夹取、保存、重绘 */
 function onOffset(v: number): void {
   offset.value = clampOffset(v)
-  saveOffset(offset.value)
+  saveOffset(offset.value, store)
   scheduleDraw()
 }
 

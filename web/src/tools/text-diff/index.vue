@@ -1,10 +1,14 @@
 <script setup lang="ts">
 // 文本对比：两段文字按行或按字符对比，删除 / 新增高亮并统计
 import { computed, ref } from 'vue'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { diffText, type DiffMode } from './logic'
 
+/** 本工具的持久缓存 */
+const store = createToolStorage('text-diff')
 /** 对比模式 */
-const mode = ref<DiffMode>('line')
+const mode = usePersistedRef<DiffMode>(store, 'mode', 'line', (v) => v === 'line' || v === 'char')
 /** 原文 */
 const oldText = ref('')
 /** 新文 */

@@ -7,6 +7,7 @@ import { computed, onBeforeUnmount, onDeactivated, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { showFailToast, showSuccessToast } from 'vant'
 import BottomActions from '@/shared/BottomActions.vue'
+import { createToolStorage } from '@/shared/toolStorage'
 import { useFloatBusy } from '@/shared/useFloatPause'
 import ModelPicker from '@/shared/ModelPicker.vue'
 import { copyText } from '@/shared/clipboard'
@@ -36,10 +37,12 @@ function goAiCenter(): void {
   void router.push(AI_CENTER_PATH)
 }
 
+/** 本工具的持久缓存 */
+const store = createToolStorage(TOOL_ID)
 /** 输入文字 */
 const input = ref('')
 /** 源/目标语言（从本地偏好恢复） */
-const pair = ref(readPair())
+const pair = ref(readPair(store))
 /** 译文 */
 const result = ref('')
 /** 译文区元素与它的高度（页面高度 - pageY - 操作栏 - 16） */
@@ -122,7 +125,7 @@ function fixPair(): void {
 }
 fixPair()
 watch([constraints, supported, autoOk], fixPair)
-watch(pair, (v) => writePair(v))
+watch(pair, (v) => writePair(store, v))
 onBeforeUnmount(() => controller?.abort())
 // 进入时预热所选模型；换模型先卸旧的再预热新的；离开（停用或卸载）时卸载回收内存。只跟随声明了会话能力的提供者
 const warmup = useModelWarmup(

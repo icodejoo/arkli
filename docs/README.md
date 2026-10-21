@@ -28,6 +28,7 @@
 - [本地模型下载管理](design/model-download.md) — native.model.* 的清单格式、退役模型回收（retired）、下载器安全设计、状态机、外部目录导入、真机验证与后续优化。active。
 - [统一 AI 协议](design/ai-protocol.md) — AiRouter 选提供者、统一入口 native.ai.invoke 的分派（旧方法为别名）、能力=端口不变量、报价 offers（任务+入口+约束）与按约束校验输入、生命周期从提供者派生、文本生成预设与按次采样（第 6 步）、前端 AI 目录与 aiInvoke、后续步骤。OCR 作为第一个按新协议接入的任务（M8）与“新增一个 AI 任务的 checklist”，logo 符号接入记录（`logoSymbol`：互斥拒绝并发、让位、驻留方式判据、卸载先取消、取消延迟），以及 AI 中心“参数调整”（`AiTunable`、`native.ai.params.*`、补参优先级、契约不变量 8~11）。active。
 - [端侧联网调研（Qwen3.5-0.8B）](design/agent-research.md) — 固定流水线而非自由 ReAct：拆问题→维基搜索→带出处回答；预算、搜索源、未验证项。draft。
+- [随机点名 3D 滚筒](design/roll-call-3d.md) — three.js 多环滚筒：只抽 1 人、结果先定动画只表演、选中弹出加粒子、无 WebGL 直接出文字。draft。
 - [模型选择器](design/model-picker.md) — AI 工具的模型选择：工具声明 tasks、目录自动算可选项、四种状态、选择存提供者 id 与旧值迁移；参数调整只在 AI 中心、工具页禁碰。文字识别页只读目录、缺模型提示条。active。
 - [图片类工具](design/tools/image.md) — 21 项。draft。
 - [抠图（人像 / 通用）](design/tools/matting.md) — MODNet 与 U2Net-p 两个本地 MNN 模型，外加实验模型 PP-MattingV2 / BiRefNet-lite；选型与真机数据、`native.ai.matting` 协议、取消限制、模型 release 已发布（单包 zip）。active。

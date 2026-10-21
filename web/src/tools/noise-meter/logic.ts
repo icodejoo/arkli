@@ -1,4 +1,5 @@
 // 噪音测量：等级划分、校准偏移、统计、环形缓冲与折线坐标（纯逻辑）。分贝值是未校准的近似值，仅供参考
+import { createToolStorage, type StorageLike, type ToolStorage } from '@/shared/toolStorage'
 
 /** 噪音等级的色调，页面据此取颜色 */
 export type Tone = 'ok' | 'warn' | 'bad'
@@ -20,8 +21,12 @@ export const DB_RANGE = { min: 0, max: 140 } as const
 export const GAUGE_RANGE = { min: 20, max: 120 } as const
 /** 折线图保留的时长（毫秒） */
 export const CHART_WINDOW_MS = 60_000
+/** 持久缓存命名空间 */
+export const STORE_NS = 'noise-meter'
 /** 校准偏移的存储键 */
-export const OFFSET_KEY = 'arkli.noise-meter.offset'
+export const OFFSET_KEY = 'offset'
+/** 旧版校准偏移的完整存储键 */
+export const LEGACY_OFFSET_KEY = 'arkli.noise-meter.offset'
 /** 推送间隔（毫秒） */
 export const SAMPLE_INTERVAL_MS = 100
 
@@ -70,42 +75,37 @@ export function applyOffset(db: number, offset: number): number {
   return Math.min(DB_RANGE.max, Math.max(DB_RANGE.min, db + offset))
 }
 
-/** 取本地存储，不可用时为 null */
-function defaultStorage(): Pick<Storage, 'getItem' | 'setItem'> | null {
-  try {
-    return window.localStorage
-  } catch {
-    return null
-  }
+/**
+ * 创建噪音测量的持久缓存，并迁移旧版校准偏移。
+ *
+ * @param backend 存储后端，缺省 localStorage（测试可注入）
+ * @returns 持久缓存实例
+ */
+export function createNoiseStore(backend?: StorageLike | null): ToolStorage {
+  const store = createToolStorage(STORE_NS, backend)
+  store.adoptLegacy(LEGACY_OFFSET_KEY, OFFSET_KEY, (raw) => clampOffset(Number(raw)))
+  return store
 }
 
 /**
  * 读取保存的校准偏移。
  *
- * @param storage 存储对象，缺省用 localStorage（仅测试注入）
- * @returns 偏移（dB），读不到返回 0
+ * @param store 持久缓存
+ * @returns 偏移（dB），读不到或不是数字返回 0
  */
-export function loadOffset(storage: Pick<Storage, 'getItem'> | null = defaultStorage()): number {
-  try {
-    const raw = storage?.getItem(OFFSET_KEY)
-    return raw == null ? 0 : clampOffset(Number(raw))
-  } catch {
-    return 0
-  }
+export function loadOffset(store: ToolStorage): number {
+  const v = store.get<unknown>(OFFSET_KEY, 0)
+  return typeof v === 'number' ? clampOffset(v) : 0
 }
 
 /**
  * 保存校准偏移，存储不可用时静默忽略。
  *
  * @param offset 偏移（dB）
- * @param storage 存储对象，缺省用 localStorage（仅测试注入）
+ * @param store 持久缓存
  */
-export function saveOffset(offset: number, storage: Pick<Storage, 'setItem'> | null = defaultStorage()): void {
-  try {
-    storage?.setItem(OFFSET_KEY, String(clampOffset(offset)))
-  } catch {
-    // 存储满或被禁用，忽略
-  }
+export function saveOffset(offset: number, store: ToolStorage): void {
+  store.set(OFFSET_KEY, clampOffset(offset))
 }
 
 /**

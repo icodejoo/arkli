@@ -6,7 +6,10 @@ import CellPicker from '@/shared/CellPicker.vue'
 import type { CellOption } from '@/shared/cellPicker'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { createLongPress } from '@/views/useLongPress'
-import { createGame, formatTime, isClockTicking, LEVELS, minesLeft, reveal, toggleFlag, type Game, type Level } from './logic'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
+import { isBool, oneOf } from '@/shared/persistValidators'
+import { createGame, formatTime, isClockTicking, LEVELS, minesLeft, STORE_NS, reveal, toggleFlag, type Game, type Level } from './logic'
 
 /** 计时刷新间隔（毫秒） */
 const TICK_MS = 1000
@@ -16,14 +19,18 @@ const NUM_COLORS = ['', '#1e6fff', '#2e9e4f', '#e03131', '#1c3d99', '#a61e4d', '
 /** 难度选项 */
 const LEVEL_OPTIONS: readonly CellOption[] = LEVELS.map((l) => ({ value: l.id, label: l.name }))
 
-/** 当前难度 */
-const level = ref<Level>(LEVELS[0])
+/** 持久缓存 */
+const store = createToolStorage(STORE_NS)
+/** 难度标识的缓存校验 */
+const isLevelId = oneOf(LEVELS.map((l) => l.id))
+/** 当前难度（读缓存，缓存不合法回落初级） */
+const level = ref<Level>(LEVELS.find((l) => l.id === store.get('level', 'easy')) ?? LEVELS[0])
 /** 对局 */
 const game = ref<Game>(createGame(level.value))
 /** 已用秒数 */
 const seconds = ref(0)
 /** 点按改为插旗（无长按条件时的备选） */
-const flagMode = ref(false)
+const flagMode = usePersistedRef(store, 'flagMode', false, isBool)
 /** 计时器句柄 */
 let timer: ReturnType<typeof setInterval> | undefined
 
@@ -33,6 +40,7 @@ let timer: ReturnType<typeof setInterval> | undefined
  */
 function setLevel(id: Level['id']): void {
   level.value = LEVELS.find((l) => l.id === id) ?? LEVELS[0]
+  if (isLevelId(level.value.id)) store.set('level', level.value.id)
 }
 
 /** 长按插旗 */

@@ -1,11 +1,16 @@
-// 随机点名：名单解析与抽签（纯函数，随机函数可注入）
+// 随机点名：名单解析与抽签（随机函数可注入），名单存持久缓存
+import { createToolStorage, type ToolStorage } from '../../shared/toolStorage'
 
 /** 随机函数：返回 [0,1) */
 export type Rand = () => number
 
 /** 一次最多抽几人的上限 */
 export const MAX_PICK = 20
-/** 名单存储键 */
+/** 工具持久缓存的命名空间 */
+export const TOOL_NS = 'roll-call'
+/** 名单的缓存键 */
+export const NAMES_STORE_KEY = 'names'
+/** 旧版 localStorage 键（仅用于迁移） */
 export const NAMES_KEY = 'arkli:roll-call:names'
 
 /** 一次抽签的结果 */
@@ -68,29 +73,34 @@ export function drawNames(names: readonly string[], count: number, noRepeat: boo
 }
 
 /**
- * 读取已存名单，失败返回空串。
+ * 读取已存名单，失败返回空串；首次读取时迁移旧键。
  *
+ * @param store 持久缓存，默认本工具命名空间
  * @returns 名单原文
  */
-export function loadNames(): string {
-  try {
-    return localStorage.getItem(NAMES_KEY) ?? ''
-  } catch {
-    return ''
-  }
+export function loadNames(store: ToolStorage = createToolStorage(TOOL_NS)): string {
+  store.adoptLegacy(NAMES_KEY, NAMES_STORE_KEY, (raw) => raw)
+  const v = store.get<unknown>(NAMES_STORE_KEY, '')
+  return typeof v === 'string' ? v : ''
 }
 
 /**
  * 保存名单原文，失败静默忽略。
  *
  * @param text 名单原文
+ * @param store 持久缓存，默认本工具命名空间
  * @returns 是否写入成功
  */
-export function saveNames(text: string): boolean {
-  try {
-    localStorage.setItem(NAMES_KEY, text)
-    return true
-  } catch {
-    return false
-  }
+export function saveNames(text: string, store: ToolStorage = createToolStorage(TOOL_NS)): boolean {
+  return store.set(NAMES_STORE_KEY, text)
+}
+
+/**
+ * 校验缓存的抽取人数：1 到 MAX_PICK 的整数。
+ *
+ * @param v 缓存值
+ * @returns 合法返回 true
+ */
+export function isValidCount(v: unknown): v is number {
+  return typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= MAX_PICK
 }

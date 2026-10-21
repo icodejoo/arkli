@@ -4,8 +4,12 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { showToast } from 'vant'
 import { isNativeAvailable } from '@/native/bridge'
 import { setTorch } from '@/native/system'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
 import { clampStrobeHz, DEFAULT_STROBE_HZ, MAX_STROBE_HZ, MIN_STROBE_HZ, sosSteps, strobeSteps, type TorchStep } from './logic'
 
+/** 本工具的持久缓存 */
+const store = createToolStorage('torch')
 /** 模式 */
 type Mode = 'steady' | 'sos' | 'strobe'
 
@@ -25,9 +29,9 @@ const TIP_NO_FLASH = '这台设备没有可用的后置闪光灯。'
 const TIP_FAILED = '手电筒打开失败，可能被其他应用占用了相机。'
 
 /** 当前模式 */
-const mode = ref<Mode>('steady')
+const mode = usePersistedRef<Mode>(store, 'mode', 'steady', (v) => MODES.some((m) => m.id === v))
 /** 频闪频率 */
-const hz = ref(DEFAULT_STROBE_HZ)
+const hz = usePersistedRef(store, 'hz', DEFAULT_STROBE_HZ, (v) => typeof v === 'number' && v >= MIN_STROBE_HZ && v <= MAX_STROBE_HZ)
 /** 是否在运行（常亮时等同于灯亮） */
 const running = ref(false)
 /** 灯当前是否亮着（SOS / 频闪时随节奏变化） */

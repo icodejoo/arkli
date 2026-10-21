@@ -115,3 +115,34 @@ export function calcDiscount(input: DiscountInput): DiscountResult {
   const effectiveZhe = o > 0 ? Math.round((finalCents / o) * 1000) / 100 : 10
   return { finalCents, savedCents: o - finalCents, effectiveZhe }
 }
+
+/** 工具持久缓存的命名空间 */
+export const TOOL_NS = 'split-bill'
+/** 可选标签页 */
+export const TABS = ['tip', 'aa', 'discount'] as const
+/** 标签页取值 */
+export type BillTab = (typeof TABS)[number]
+/** 折扣叠加顺序取值 */
+export const ORDERS = ['rate-first', 'reduce-first'] as const
+/** 折扣叠加顺序 */
+export type DiscountOrder = (typeof ORDERS)[number]
+
+/**
+ * 校验缓存的标签页。
+ *
+ * @param v 缓存值
+ * @returns 合法返回 true
+ */
+export function isBillTab(v: unknown): v is BillTab {
+  return (TABS as readonly unknown[]).includes(v)
+}
+
+/**
+ * 校验缓存的折扣叠加顺序。
+ *
+ * @param v 缓存值
+ * @returns 合法返回 true
+ */
+export function isDiscountOrder(v: unknown): v is DiscountOrder {
+  return (ORDERS as readonly unknown[]).includes(v)
+}

@@ -1,6 +1,11 @@
-// 记分牌：2~8 人加减分、自定义步长、历史撤销、排名；状态存 localStorage
+// 记分牌：2~8 人加减分、自定义步长、历史撤销、排名；状态存持久缓存
+import { createToolStorage, type ToolStorage } from '../../shared/toolStorage'
 
-/** 本地存储的 key */
+/** 工具持久缓存的命名空间 */
+export const TOOL_NS = 'scoreboard'
+/** 状态的缓存键 */
+export const STATE_KEY = 'state'
+/** 旧版 localStorage 的 key（仅用于迁移） */
 export const STORAGE_KEY = 'arkli:scoreboard:state'
 /** 最少人数 */
 export const MIN_PLAYERS = 2
@@ -217,34 +222,28 @@ export function sanitizeState(raw: unknown): BoardState {
 }
 
 /**
- * 从 localStorage 读状态；读取或解析失败时返回默认状态。
+ * 读状态；读取失败或数据损坏时返回默认状态；首次读取时迁移旧键。
  *
+ * @param store 持久缓存，默认本工具命名空间
  * @returns 状态
  * @example
  * const state = loadState()
  */
-export function loadState(): BoardState {
-  try {
-    const text = localStorage.getItem(STORAGE_KEY)
-    return text ? sanitizeState(JSON.parse(text)) : createState()
-  } catch {
-    return createState()
-  }
+export function loadState(store: ToolStorage = createToolStorage(TOOL_NS)): BoardState {
+  store.adoptLegacy(STORAGE_KEY, STATE_KEY)
+  const v = store.get<unknown>(STATE_KEY, null)
+  return v == null ? createState() : sanitizeState(v)
 }
 
 /**
- * 把状态写进 localStorage，失败（隐私模式、配额）时静默忽略。
+ * 把状态写进持久缓存，失败（隐私模式、配额）时静默忽略。
  *
  * @param s 要保存的状态
+ * @param store 持久缓存，默认本工具命名空间
  * @returns 是否写入成功
  * @example
  * saveState(state)
  */
-export function saveState(s: BoardState): boolean {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(s))
-    return true
-  } catch {
-    return false
-  }
+export function saveState(s: BoardState, store: ToolStorage = createToolStorage(TOOL_NS)): boolean {
+  return store.set(STATE_KEY, s)
 }

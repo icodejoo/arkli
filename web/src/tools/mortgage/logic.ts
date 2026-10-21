@@ -6,6 +6,13 @@
 /** 还款方式：equal-payment 等额本息，equal-principal 等额本金 */
 export type RepayMethod = 'equal-payment' | 'equal-principal'
 
+/** 持久缓存命名空间 */
+export const STORE_NS = 'mortgage'
+/** 可选贷款类型值 */
+export const KIND_VALUES = ['biz', 'fund', 'combo'] as const
+/** 可选还款方式值 */
+export const METHOD_VALUES: readonly RepayMethod[] = ['equal-payment', 'equal-principal']
+
 /** 一笔贷款的输入 */
 export interface LoanInput {
   /** 贷款本金，单位：分（整数） */

@@ -4,20 +4,26 @@ import BottomActions from '@/shared/BottomActions.vue'
 import { ref } from 'vue'
 import { showToast } from 'vant'
 import { copyText } from '@/shared/clipboard'
-import { generateNumbers, MAX_COUNT, MAX_DECIMALS } from './logic'
+import { createToolStorage } from '@/shared/toolStorage'
+import { usePersistedRef } from '@/shared/usePersistedRef'
+import { inRange, isBool } from '@/shared/persistValidators'
+import { generateNumbers, MAX_COUNT, MAX_DECIMALS, STORE_NS } from './logic'
+
+/** 持久缓存 */
+const store = createToolStorage(STORE_NS)
 
 /** 下界（用字符串接输入，避免输入中途被转成 0） */
 const min = ref('1')
 /** 上界 */
 const max = ref('100')
 /** 个数 */
-const count = ref(5)
+const count = usePersistedRef(store, 'count', 5, (x) => inRange(x, { min: 1, max: MAX_COUNT }))
 /** 小数位数 */
-const decimals = ref(0)
+const decimals = usePersistedRef(store, 'decimals', 0, (x) => inRange(x, { min: 0, max: MAX_DECIMALS }))
 /** 允许重复 */
-const allowDuplicates = ref(true)
+const allowDuplicates = usePersistedRef(store, 'allowDuplicates', true, isBool)
 /** 排序 */
-const sort = ref(false)
+const sort = usePersistedRef(store, 'sort', false, isBool)
 /** 结果 */
 const results = ref<string[]>([])
 /** 错误提示 */
