@@ -1,6 +1,7 @@
 /// <reference types="unplugin-icons/types/vue" />
 import type { Component } from 'vue'
 import IconAi from '~icons/arkli/ai'
+import IconAudioLinesAnim from '~icons/arkli/audio-lines-anim'
 import IconCamera from '~icons/arkli/camera'
 import IconCheckCheck from '~icons/arkli/check-check'
 import IconCircleHelp from '~icons/arkli/circle-help'
@@ -41,6 +42,7 @@ import { CUSTOM_ICON_PREFIX } from './bottomActions'
  */
 export const BOTTOM_ACTION_ICON_MAP: Readonly<Record<string, Component>> = {
   'arkli:ai': IconAi,
+  'arkli:audio-lines-anim': IconAudioLinesAnim,
   'arkli:camera': IconCamera,
   'arkli:check-check': IconCheckCheck,
   'arkli:circle-help': IconCircleHelp,

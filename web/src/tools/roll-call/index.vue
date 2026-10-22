@@ -535,7 +535,7 @@ onBeforeUnmount(() => {
     <bottom-actions
       :main-loading="mainBtn.loading"
       ai
-      :actions="{ import: true, voice: { disabled: ocrBusy || rolling, text: listening ? '停止' : '语音', color: listening ? 'var(--van-danger-color)' : undefined } }"
+      :actions="{ import: true, voice: { disabled: ocrBusy || rolling, text: listening ? '停止' : '语音', icon: listening ? 'arkli:audio-lines-anim' : undefined, color: listening ? 'var(--van-danger-color)' : undefined } }"
       album
       photo
       main
