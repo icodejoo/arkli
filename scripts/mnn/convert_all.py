@@ -5,7 +5,7 @@
 
 用法：
   python -I convert_all.py                       转各模型的默认变体（不含 sdxs，它要先 fetch.py sdxs 下约 1.8GB，需显式指定）
-  python -I convert_all.py siglip2 ocr           只转指定模型
+  python -I convert_all.py siglip2 ocr6          只转指定模型
   python -I convert_all.py nllb --variant nllb=w8   指定变体（可重复；变体名见 recipes.json）
   python -I convert_all.py --list                列出模型、变体与产物 id
   python -I convert_all.py --force               已有产物也重转
@@ -175,19 +175,6 @@ def write_package_files(rec, var, dst, overwrite_model_json=True):
             f.write(text)
 
 
-def write_ocr_dict(rec_onnx, dst):
-    """从 PP-OCR 识别模型 onnx 的元数据字段 character 取识别字典，写成 ppocr_keys.txt（一行一字，LF，末尾换行）。"""
-    import onnxruntime as ort
-    so = ort.SessionOptions()
-    so.log_severity_level = 3
-    meta = ort.InferenceSession(rec_onnx, so, providers=["CPUExecutionProvider"]).get_modelmeta().custom_metadata_map
-    chars = meta.get("character")
-    if not chars:
-        die(f"{rec_onnx} 的元数据里没有 character 字段，无法生成识别字典")
-    with open(os.path.join(dst, OCR_DICT_NAME), "w", encoding="utf-8", newline=LF) as f:
-        f.write(chars if chars.endswith(LF) else chars + LF)
-
-
 def write_ocr_dict_yaml(rec_yml, dst):
     """从 PP-OCRv6 识别模型的 inference.yml（PostProcess.character_dict）写 ppocr_keys.txt（一行一字，LF，末尾换行）。
     需要 PyYAML（开发机可选依赖，未写进 requirements.txt）；条目必须全是单行非空字符串，否则报错。"""
@@ -247,8 +234,6 @@ def convert_model(key, rec, vname, force):
         shutil.copyfile(src, os.path.join(dst, os.path.basename(src)))
     # 没有 --force 且所有 .mnn 都跳过：不改写已有的 model.json（它可能含手工确认过、已登记 sha 的内容）
     write_package_files(rec, var, dst, overwrite_model_json=converted or force)
-    if rec.get("ocr_dict"):
-        write_ocr_dict(resolve(rec["ocr_dict"]), dst)
     if rec.get("ocr_dict_yaml"):
         write_ocr_dict_yaml(resolve(rec["ocr_dict_yaml"]), dst)
     with open(os.path.join(dst, INFO_NAME), "w", encoding="utf-8") as f:

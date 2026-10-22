@@ -1,0 +1,50 @@
+--- a/file-utils.cc
++++ b/file-utils.cc
+@@ -25,8 +25,13 @@
+ }
+ 
+ std::vector<char> ReadFile(const std::string &filename) {
+-  std::ifstream input(filename, std::ios::binary);
+-  std::vector<char> buffer(std::istreambuf_iterator<char>(input), {});
++  // 按文件大小一次分配再整块读：istreambuf_iterator 逐字节构造会让 vector 容量翻倍增长，大模型文件会多占上百 MB 临时内存
++  std::ifstream input(filename, std::ios::binary | std::ios::ate);
++  if (!input) return {};
++  std::streamsize size = input.tellg();
++  input.seekg(0, std::ios::beg);
++  std::vector<char> buffer(static_cast<size_t>(size));
++  if (size > 0) input.read(buffer.data(), size);
+   return buffer;
+ }
+ 
+--- a/online-zipformer2-transducer-model.cc
++++ b/online-zipformer2-transducer-model.cc
+@@ -40,20 +40,29 @@
+       sess_opts_(GetSessionOptions(config)),
+       config_(config),
+       allocator_{} {
++  // 外置权重：模型旁存在 <模型>.weight 时交给 MNN 按需读取，不再把整份权重读进内存（降加载峰值）；不存在则保持原行为
++  auto set_external = [this](const std::string &model) {
++    std::string weight = model + ".weight";
++    sess_opts_.pManager->setExternalFile(FileExists(weight) ? weight : "");
++  };
+   {
++    set_external(config.transducer.encoder);
+     auto buf = ReadFile(config.transducer.encoder);
+     InitEncoder(buf.data(), buf.size());
+   }
+ 
+   {
++    set_external(config.transducer.decoder);
+     auto buf = ReadFile(config.transducer.decoder);
+     InitDecoder(buf.data(), buf.size());
+   }
+ 
+   {
++    set_external(config.transducer.joiner);
+     auto buf = ReadFile(config.transducer.joiner);
+     InitJoiner(buf.data(), buf.size());
+   }
++  sess_opts_.pManager->setExternalFile("");
+ }
+ 
+ template <typename Manager>

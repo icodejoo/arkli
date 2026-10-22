@@ -147,10 +147,10 @@ fun downloadTo(url: String, dst: File) {
 // ---------------------------------------------------------------------------
 // MNN 运行库（Qwen3.5 / 识物 / 翻译 / 语音共用）：libMNN.so + 我们的 JNI 封装 libarkli-mnn.so + sherpa-mnn 的 JNI（arm64-v8a）。
 // 两个 so 由 native/mnn/build.sh 从钉死的 MNN 提交编出；libMNN.so 已发布在 release mnn-478c10e-v1，
-// libarkli-mnn.so 在 M2 加了 C ABI（arkli_mnn_capi），新版放在 release mnn-478c10e-v2。
-// M7：语音识别改用 sherpa-mnn，它的 JNI（libsherpa-mnn-jni.so，由 native/mnn/build-sherpa-mnn.sh 编出）也并入 v2，
-// 所以 v2 release 要放三个文件：libMNN.so、libarkli-mnn.so、libsherpa-mnn-jni.so。
-// v2 release 由用户上传，上传前本地靠 .gradle 缓存构建（缓存文件名 <sha256>-<库名>，已被 .gitignore 忽略）。
+// libarkli-mnn.so 在 M2 加了 C ABI（arkli_mnn_capi），现行版放在 release mnn-478c10e-v3。
+// M7：语音识别改用 sherpa-mnn，它的 JNI（libsherpa-mnn-jni.so，由 native/mnn/build-sherpa-mnn.sh 编出）也并入同一 release，
+// 所以 v3 release 要放三个文件：libMNN.so、libarkli-mnn.so、libsherpa-mnn-jni.so。
+// release 由用户上传；上传前本地靠 .gradle 缓存构建（缓存文件名 <sha256>-<库名>，已被 .gitignore 忽略）。
 // 这里构建时按需下载并校验 sha256。改了 so 就要同步改下面的 sha256，并更新 docs/research/qwen35-mnn-model.md。
 // ---------------------------------------------------------------------------
 
@@ -164,7 +164,7 @@ val mnnReleaseBase = "https://github.com/icodejoo/arkli/releases/download/mnn-47
 val mnnLibs = mapOf(
     "libMNN.so" to "9cc1ff8b8b039431913a37ad1853dfa51162b41ae8b90927507204397096a353",
     "libarkli-mnn.so" to "accbe024d2a56b09ab34b2edaefdfe9b8a07f0eedee688d49b2473ea8b026bc2",
-    "libsherpa-mnn-jni.so" to "aa79262fa17431bf513c7c4ac9855df02d09c1fe364396c0d8032df652a0c339",
+    "libsherpa-mnn-jni.so" to "be0e68ab0ecdf4fcdb0638e326d163d3921dc832fa6e94949b8a248f870f4ee7", // 外置权重补丁版（2026-10-22 已覆盖上传 v3 并核对 sha256）
 )
 
 /** MNN 运行库缓存目录 */

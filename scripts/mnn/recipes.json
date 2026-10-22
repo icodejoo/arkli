@@ -12,7 +12,7 @@
       ],
       "copy": [],
       "variants": {
-        "w8": {"id": "siglip2-mnn-w8", "quant": ["--weightQuantBits", "8"]},
+        "w8": {"id": "siglip2-mnn-w8", "quant": ["--weightQuantBits", "8", "--saveExternalData"]},
         "w6hqq": {"id": "siglip2-mnn-w6hqq", "quant": ["--weightQuantBits", "6", "--hqq"]},
         "fp32": {"id": "siglip2-mnn-fp32", "quant": []}
       }
@@ -75,28 +75,9 @@
       ],
       "copy": ["asr:tokens.txt"],
       "variants": {
-        "w8": {"id": "asr-zipformer-zh-en-mnn-w8", "quant": ["--weightQuantBits", "8"]},
+        "w8": {"id": "asr-zipformer-zh-en-mnn-w8", "quant": ["--weightQuantBits", "8", "--saveExternalData"]},
         "w4b32hqq": {"id": "asr-zipformer-zh-en-mnn-w4", "quant": ["--weightQuantBits", "4", "--weightQuantBlock", "32", "--hqq"]},
         "fp32": {"id": "asr-zipformer-zh-en-mnn-fp32", "quant": []}
-      }
-    },
-    "ocr": {
-      "group": "ocr",
-      "display_name": "本地文字识别模型（PP-OCRv5）",
-      "license": "apache-2.0",
-      "release_tag": "ocr-mnn-v1",
-      "default": "fp16",
-      "graphs": [
-        {"name": "det", "input": "dl:ocr/ch_PP-OCRv5_det_mobile.onnx", "output": "det.mnn"},
-        {"name": "rec", "input": "dl:ocr/ch_PP-OCRv5_rec_mobile.onnx", "output": "rec.mnn"},
-        {"name": "cls", "input": "dl:ocr/ch_PP-LCNet_x0_25_textline_ori_cls_mobile.onnx", "output": "cls.mnn"}
-      ],
-      "copy": ["data:ocr/LICENSE-Apache-2.0.txt", "data:ocr/NOTICE.txt"],
-      "ocr_dict": "dl:ocr/ch_PP-OCRv5_rec_mobile.onnx",
-      "variants": {
-        "fp16": {"id": "ppocrv5-mnn-fp16", "quant": ["--fp16"]},
-        "fp32": {"id": "ppocrv5-mnn-fp32", "quant": []},
-        "w8": {"id": "ppocrv5-mnn-w8", "quant": ["--weightQuantBits", "8"]}
       }
     },
     "ocr6": {
@@ -108,12 +89,12 @@
       "graphs": [
         {"name": "det", "input": "dl:ocr6/det/inference.onnx", "output": "det.mnn"},
         {"name": "rec", "input": "dl:ocr6/rec/inference.onnx", "output": "rec.mnn"},
-        {"name": "cls", "input": "dl:ocr/ch_PP-LCNet_x0_25_textline_ori_cls_mobile.onnx", "output": "cls.mnn"}
+        {"name": "cls", "input": "dl:ocr6/cls/ch_PP-LCNet_x0_25_textline_ori_cls_mobile.onnx", "output": "cls.mnn"}
       ],
       "copy": ["data:ocr6/LICENSE-Apache-2.0.txt", "data:ocr6/NOTICE.txt"],
       "ocr_dict_yaml": "dl:ocr6/rec/inference.yml",
       "variants": {
-        "fp16": {"id": "ppocrv6-small-mnn-fp16", "quant": ["--fp16"]},
+        "fp16": {"id": "ppocrv6-small-mnn-fp16", "quant": ["--fp16", "--saveExternalData"]},
         "fp32": {"id": "ppocrv6-small-mnn-fp32", "quant": []}
       }
     },
@@ -189,7 +170,7 @@
       "variants": {
         "w8": {
           "id": "sdxs512-mnn-w8",
-          "quant": ["--weightQuantBits", "8"],
+          "quant": ["--weightQuantBits", "8", "--saveExternalData"],
           "quant_by_graph": {"vae_decoder": []},
           "quant_label": "mnn-w8",
           "quant_desc": "MNN 8-bit weight quantization for text_encoder and unet; vae_decoder kept as fp32",

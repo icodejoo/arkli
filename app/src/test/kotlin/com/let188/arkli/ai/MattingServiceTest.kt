@@ -155,7 +155,10 @@ class MattingServiceTest {
     @Test
     fun experimentalModes_requireTheirOwnFiles() {
         assertEquals(listOf("ppmattingv2_w8.mnn", "NOTICE.txt", "LICENSE-Apache-2.0.txt"), MattingService.requiredFilesOf(MattingMode.PPMATTING))
-        assertEquals(listOf("birefnet_lite512_w8.mnn", "NOTICE.txt", "LICENSE-MIT.txt"), MattingService.requiredFilesOf(MattingMode.BIREFNET))
+        // 外置权重的模式把 .weight 列入必需文件，整包模式不列
+        assertEquals(listOf("birefnet_lite512_w8.mnn", "birefnet_lite512_w8.mnn.weight", "NOTICE.txt", "LICENSE-MIT.txt"), MattingService.requiredFilesOf(MattingMode.BIREFNET))
+        assertEquals(listOf("modnet512_fp32.mnn", "modnet512_fp32.mnn.weight", "NOTICE.txt", "LICENSE-Apache-2.0.txt"), MattingService.requiredFilesOf(MattingMode.PORTRAIT))
+        assertEquals(listOf("u2netp_f16.mnn", "NOTICE.txt", "LICENSE-Apache-2.0.txt"), MattingService.requiredFilesOf(MattingMode.GENERAL))
         assertTrue(service(fullDir(MattingMode.BIREFNET), FakeBackend(), mode = MattingMode.BIREFNET).isModelReady())
         assertFalse(service(fullDir(MattingMode.PPMATTING), FakeBackend(), mode = MattingMode.BIREFNET).isModelReady())
     }

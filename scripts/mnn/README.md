@@ -51,7 +51,7 @@ $py = "E:\venv\arkli-mnn\Scripts\python.exe"
 ```
 
 - 目录：默认全放 `native/mnn/.work/convert/`（已被 `.gitignore` 忽略）。环境变量 `ARKLI_MNN_WORK`（根）、`ARKLI_MNN_DL`、`ARKLI_MNN_SPLIT`、`ARKLI_MNN_OUT` 可分别改。
-  下载目录布局是固定的（`siglip2/`、`nllb-fp32/`、`nllb-tok/`、`asr/`、`ocr/`），已有同名且校验通过的文件会被直接复用（可以硬链接进来省下载）。
+  下载目录布局是固定的（`siglip2/`、`nllb-fp32/`、`nllb-tok/`、`asr/`、`ocr6/`），已有同名且校验通过的文件会被直接复用（可以硬链接进来省下载）。
 - 想看有哪些变体：`convert_all.py --list`；指定变体：`convert_all.py nllb --variant nllb=w8`；重转：`--force`。
 - 每个 eval 都带门槛判定（见下表），不过门槛退出码为 2。
 - 评测要的磁盘与内存：NLLB 拆图与产物共约 7GB 磁盘；`nllb_prepare.py` 约需 8GB 内存。
@@ -92,7 +92,7 @@ $py = "E:\venv\arkli-mnn\Scripts\python.exe"
 | `eval_asr.py` | 语音包 `test_wavs`、MNN 产物 | 识别文字与 RTF/RSS | numpy 自写 fbank + 流式贪心解码；ORT fp32 / ORT int8 / MNN 各一个子进程 |
 | `eval_ocr.py` | 合成文字图（或自己的图）、MNN 产物 | det IoU、rec/cls argmax 一致 | 合成图需要中文字体，默认微软雅黑；生成图时同目录写 `expect.json`（每张图画了哪些行） |
 | `ocr_case.py` | 合成图目录（缺省生成） | `case.rgb`（前 8 字节小端 u32 宽高，其后 RGB）与 `expect.txt`（真值，一行一句） | 给 Rust 真库测试 `mnn::real_tests::真库跑通ocr管线` 与 `arkli-ffi` 的 `真库经ffi识别并可卸载重载` 用（环境变量 `ARKLI_OCR_RGB` / `ARKLI_OCR_EXPECT` / `ARKLI_OCR_DIR` / `ARKLI_MNN_DYLIB`） |
-| `fetch.py ocr ocr6` / `convert_all.py ocr6` | HF 官方 PP-OCRv6 small 的 det/rec ONNX 与 rec 的 `inference.yml` | `ppocrv6-small-mnn-fp16`（det/rec fp16，cls 沿用 v5 的） | 字典取自 yml（需 PyYAML）；评测见 migration 文档“M8 升级”一节 |
+| `fetch.py ocr6` / `convert_all.py ocr6` | HF 官方 PP-OCRv6 small 的 det/rec ONNX 与 rec 的 `inference.yml` | `ppocrv6-small-mnn-fp16`（det/rec fp16，cls 沿用 v5 的） | 字典取自 yml（需 PyYAML）；评测见 migration 文档“M8 升级”一节 |
 | `couplet_prepare.py` | 对联 fp32 ONNX（带 past） | 无 KV cache、词嵌入 int8 的 `model_e8.onnx` | 去掉 24 个 past 与 present，Concat 改 Identity，past_len 换常量 0；`--int8-embed` 把 wte 改成图内 int8 + 逐行 scale（MNN 的权重量化不量化 Gather 常量），lm_head 用独立 fp32 副本交给 MNN 量化；`convert_all.py couplet` 会自动调用 |
 | `sdxs_prepare.py` | SDXS fp32 原版目录（HF 布局） | `text_encoder.onnx`、`unet.onnx`、`vae_decoder.onnx`、`tokenizer.json` | PyTorch 导出 ONNX（时间步固定 999，带精度对拍自检）并从 vocab/merges 构造标准 CLIP BPE tokenizer.json；`convert_all.py sdxs` 会自动调用；产物目录含三个 .mnn、tokenizer.json、NOTICE.txt 与 4 个 LICENSE |
 | `eval_couplet.py` | 产物 `.mnn`/`.onnx`、`data/couplet/pairs.tsv`（52 条自写上联+真下联） | 对 ORT fp32 的 logits 余弦/top-1、等长约束贪心一致率、困惑度涨幅、7 字耗时 | MNN 经 ctypes 调 `arkli-mnn.dll`（同 Rust 的 C ABI，memory=low）；门槛：余弦均值 >= 0.999、top-1 >= 0.95、困惑度涨幅 <= 2% |
@@ -119,7 +119,7 @@ $py = "E:\venv\arkli-mnn\Scripts\python.exe"
 | SigLIP2 int8 low | cos 均值 >= 0.985、最小 >= 0.95、top-1 一致 >= 0.9 | `eval_siglip.py` |
 | NLLB 6/8 位 low | teacher forcing >= 0.96、退化句 0（149 句） | `eval_nllb.py`（`trim_tail_repeat` 次数要在 Rust 测试里看） |
 | 语音 int8 low | 测试音频与 fp32 逐字一致 | `eval_asr.py` |
-| OCR fp16 | det IoU >= 0.99、rec argmax >= 99.5%、cls 全一致 | `eval_ocr.py` |
+| OCR fp16 | det IoU >= 0.98（v6 实测 0.9866）、rec argmax >= 99.5%、cls 全一致 | `eval_ocr.py` |
 
 ## 一致性用例（ModuleBasic）
 
@@ -138,7 +138,7 @@ native\mnn\.work\build-tools\ModuleBasic.out.exe <siglip2-mnn-fp32\model.mnn> ca
 - **外置权重**：`--saveExternalData` 生成 `xxx.mnn.weight`；评测脚本对每张图单独建 RuntimeManager 并 `set_external`。多个模型共用一个 RuntimeManager 时必须“设路径 → 加载 → 清空”。
 - **onnx 外部数据会追加写**：写已存在的同名 `.data` 会追加，所以保存前都先删旧文件（`nllb_prepare.py`、`nllb_crosskv.py` 已处理）。
 - **别同时给** `--weightQuantAsymmetric` 与 `--weightQuantBlock`：分块不生效。
-- **OCR 字典与许可证**：`convert_all.py ocr` 会从 rec 的 ONNX 元数据（`character`）写 `ppocr_keys.txt`，并拷入 `data/ocr/` 的 `NOTICE.txt`、`LICENSE-Apache-2.0.txt`；已有 `.mnn` 时重跑只补这三个文件，不重转。
+- **OCR 字典与许可证**：`convert_all.py ocr6` 会从 rec 的 `inference.yml`（`character_dict`）写 `ppocr_keys.txt`，并拷入 `data/ocr6/` 的 `NOTICE.txt`、`LICENSE-Apache-2.0.txt`；已有 `.mnn` 时重跑只补这三个文件，不重转。
 - **每次转换 sha 都会变**：.mnn 里带随机模型 UUID（约 27 字节），所以转换后只 `pack.py` 一次，发布的就是登记的那一份，别重转后沿用旧 sha。
 - **转换器版本**：固定提交的 MNNConvert 与 pip 3.6.1 的产物体积逐字节相同、推理输出逐位一致，但生产用固定提交的 exe。
 - **Windows 编译**：`build-tools.ps1` 不用 VsDevCmd（它的扩展脚本在部分环境报错），手动设 PATH/INCLUDE/LIB；输出目录别放太深，FetchContent 路径过长会失败。

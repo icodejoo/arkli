@@ -28,17 +28,8 @@ object SpeechConst {
     /** 词表文件名 */
     const val FILE_TOKENS = "tokens.txt"
 
-    /** 编码器最小字节数（MNN int8 仅权重，实际 155,527,912 B，低于此视为未传完） */
-    const val MIN_ENCODER_BYTES = 120_000_000L
-
-    /** 解码器最小字节数（实际 10,603,880 B） */
-    const val MIN_DECODER_BYTES = 8_000_000L
-
-    /** 连接器最小字节数（实际 2,623,028 B） */
-    const val MIN_JOINER_BYTES = 2_000_000L
-
-    /** 词表最小字节数（实际 58,806 B） */
-    const val MIN_TOKENS_BYTES = 10_000L
+    /** 必需文件的最小字节数：只要求非空；外置权重（.mnn.weight）不属必需文件，旧整包模型没有它 */
+    const val MIN_FILE_BYTES = 1L
 
     /** 采样率（Hz） */
     const val SAMPLE_RATE = 16_000
@@ -106,12 +97,12 @@ object SpeechConst {
  * ```
  */
 object SpeechPolicy {
-    /** 模型必须文件及其最小字节数 */
+    /** 模型必须文件及其最小字节数（仅要求非空） */
     private val REQUIRED = linkedMapOf(
-        SpeechConst.FILE_ENCODER to SpeechConst.MIN_ENCODER_BYTES,
-        SpeechConst.FILE_DECODER to SpeechConst.MIN_DECODER_BYTES,
-        SpeechConst.FILE_JOINER to SpeechConst.MIN_JOINER_BYTES,
-        SpeechConst.FILE_TOKENS to SpeechConst.MIN_TOKENS_BYTES,
+        SpeechConst.FILE_ENCODER to SpeechConst.MIN_FILE_BYTES,
+        SpeechConst.FILE_DECODER to SpeechConst.MIN_FILE_BYTES,
+        SpeechConst.FILE_JOINER to SpeechConst.MIN_FILE_BYTES,
+        SpeechConst.FILE_TOKENS to SpeechConst.MIN_FILE_BYTES,
     )
 
     /**
@@ -131,10 +122,10 @@ object SpeechPolicy {
     }
 
     /**
-     * 检查模型文件齐全性：缺失或小于最小字节数的文件名列表。
+     * 检查模型文件齐全性：缺失或为空的文件名列表。
      *
      * @param sizes 文件名 -> 实际字节数（不存在的文件不放进去或填 0）
-     * @return 缺失或残缺的文件名，空表示齐全
+     * @return 缺失或为空的文件名，空表示齐全
      */
     fun missingFiles(sizes: Map<String, Long>): List<String> =
         REQUIRED.filter { (name, min) -> (sizes[name] ?: 0L) < min }.keys.toList()
@@ -143,7 +134,7 @@ object SpeechPolicy {
      * 读取模型目录并检查齐全性。
      *
      * @param dir 模型目录
-     * @return 缺失或残缺的文件名，空表示齐全
+     * @return 缺失或为空的文件名，空表示齐全
      */
     fun missingFiles(dir: File): List<String> =
         missingFiles(REQUIRED.keys.associateWith { File(dir, it).let { f -> if (f.isFile) f.length() else 0L } })

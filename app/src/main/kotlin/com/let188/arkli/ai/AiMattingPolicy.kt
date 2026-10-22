@@ -14,6 +14,7 @@ import org.json.JSONObject
  * @property modelFile 模型文件名
  * @property displayName 提供者展示名
  * @property licenseFile 随模型包的许可证文件名（清单 files 里有，设备上必需）
+ * @property externalWeight 权重是否外置在 `<模型>.weight`（加载峰值内存更低，设备上必需该文件）
  */
 enum class MattingMode(
     val wire: String,
@@ -23,11 +24,13 @@ enum class MattingMode(
     val modelFile: String,
     val displayName: String,
     val licenseFile: String = LICENSE_APACHE,
+    val externalWeight: Boolean = false,
 ) {
     /** 人像：MODNet，fp32，输入 512 */
     PORTRAIT(
         "portrait", "local-matting-portrait", "matting-modnet-mnn-fp32",
         "models/matting-modnet-mnn-fp32", "modnet512_fp32.mnn", "本地人像抠图（MODNet）",
+        externalWeight = true,
     ),
 
     /** 通用：U2Net-p，f16，输入 320 */
@@ -46,6 +49,7 @@ enum class MattingMode(
     BIREFNET(
         "birefnet", "local-matting-birefnet", "matting-birefnet-lite512-mnn-w8",
         "models/matting-birefnet-lite512-mnn-w8", "birefnet_lite512_w8.mnn", "本地通用高精抠图（BiRefNet-lite 512，非人像）", "LICENSE-MIT.txt",
+        externalWeight = true,
     ),
     ;
 

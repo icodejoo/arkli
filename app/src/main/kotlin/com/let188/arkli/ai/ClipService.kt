@@ -136,7 +136,10 @@ class ClipService(
     }
 
     /** 会话指纹：路径|长度|修改时间，再并入会话级设置指纹 */
-    private fun keyOf(model: File): String = "${model.path}|${model.length()}|${model.lastModified()}" + settingsKey()
+    private fun keyOf(model: File): String {
+        val weight = File(model.path + WEIGHT_SUFFIX) // 外置权重（可能没有）：换了权重也要重载
+        return "${model.path}|${model.length()}|${model.lastModified()}|${weight.length()}:${weight.lastModified()}" + settingsKey()
+    }
 
     /** 确保词表与模型都已加载，返回词表元数据 */
     private fun ensureReady(model: File): ClipVocabMeta {
@@ -167,6 +170,9 @@ class ClipService(
     companion object {
         /** 模型标识，写进结果 */
         const val MODEL_ID = "siglip2-mnn-w8"
+
+        /** 外置权重后缀：`model.mnn` 的权重在 `model.mnn.weight`，Rust 侧自动带上；这里只用于重载指纹 */
+        const val WEIGHT_SUFFIX = ".weight"
 
         /** 解码阶段的最长边：先降采样省内存，最终缩到 224 由 Rust 完成 */
         const val DECODE_MAX_EDGE = 896

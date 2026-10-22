@@ -17,6 +17,8 @@ ANDROID_PLATFORM="android-26"
 MNN_SO_SHA256="9cc1ff8b8b039431913a37ad1853dfa51162b41ae8b90927507204397096a353"
 # 16KB 页对齐（Android 15+ 要求）
 LINK_FLAGS="-Wl,-z,max-page-size=16384"
+# 补丁已应用的标记串（出现在补丁给 file-utils.cc 加的注释里，改补丁注释时同步改）
+SHERPA_PATCH_MARK="按文件大小一次分配"
 
 # 构建期依赖：本地文件名|主地址|镜像地址|sha256（与 sherpa-mnn/cmake/*.cmake 里的一致，改版本时两边都要核对）
 HF_MIRROR="https://hf-mirror.com/csukuangfj/sherpa-onnx-cmake-deps/resolve/main"
@@ -58,6 +60,13 @@ mnn_so="${MNN_SO:-$here/out/libMNN.so}"
 src="$work/MNN-$MNN_COMMIT"
 ensure_mnn_source "$work"
 [ -d "$src/apps/frameworks/sherpa-mnn" ] || { echo "MNN 源码里没有 apps/frameworks/sherpa-mnn：$src" >&2; exit 1; }
+
+# 2.5) 给 sherpa-mnn 打补丁（外置权重 + ReadFile 一次分配，降语音模型加载峰值内存，改动说明见补丁头部与 docs）。
+#      已打过（标记串存在）就跳过；补丁对不上会直接失败，不静默继续。
+csrc="$src/apps/frameworks/sherpa-mnn/sherpa-mnn/csrc"
+if ! grep -q "$SHERPA_PATCH_MARK" "$csrc/file-utils.cc"; then
+    patch -p1 -d "$csrc" < "$here/patches/sherpa-mnn-ext-weight.patch"
+fi
 
 # 3) 构建期依赖缓存：下载 + 校验 sha256（校验不过就删掉停止）
 cache="$work/sherpa-mnn-deps"

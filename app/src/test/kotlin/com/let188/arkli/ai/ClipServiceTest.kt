@@ -142,6 +142,19 @@ class ClipServiceTest {
         assertEquals(listOf("vocab:1", "load:model.mnn", "classify:1", "unload", "load:model.mnn", "classify:1"), be.calls)
     }
 
+    /** 外置权重（model.mnn.weight）被替换时也要重载，只换权重不能继续用旧会话 */
+    @Test
+    fun classify_reloadsWhenExternalWeightReplaced() {
+        val m = tmp.newFile("model.mnn").apply { writeText("x") }
+        val w = tmp.newFile("model.mnn.weight").apply { writeText("w1") }
+        val be = FakeBackend()
+        val svc = ClipService(env(m), be, FakeCodec())
+        runBlocking { svc.classify(File("a.jpg"), 1) }
+        w.writeText("权重变长了")
+        runBlocking { svc.classify(File("a.jpg"), 1) }
+        assertEquals(listOf("vocab:1", "load:model.mnn", "classify:1", "unload", "load:model.mnn", "classify:1"), be.calls)
+    }
+
     @Test
     fun classify_brokenVocabIsInternal() {
         val m = tmp.newFile("model.mnn").apply { writeText("x") }

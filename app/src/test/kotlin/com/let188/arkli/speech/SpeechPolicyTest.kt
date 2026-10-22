@@ -22,12 +22,12 @@ class SpeechPolicyTest {
     @get:Rule
     val tmp = TemporaryFolder()
 
-    /** 全部文件达标的大小表 */
+    /** 全部文件非空的大小表 */
     private fun fullSizes() = mapOf(
-        SpeechConst.FILE_ENCODER to SpeechConst.MIN_ENCODER_BYTES,
-        SpeechConst.FILE_DECODER to SpeechConst.MIN_DECODER_BYTES,
-        SpeechConst.FILE_JOINER to SpeechConst.MIN_JOINER_BYTES,
-        SpeechConst.FILE_TOKENS to SpeechConst.MIN_TOKENS_BYTES,
+        SpeechConst.FILE_ENCODER to SpeechConst.MIN_FILE_BYTES,
+        SpeechConst.FILE_DECODER to SpeechConst.MIN_FILE_BYTES,
+        SpeechConst.FILE_JOINER to SpeechConst.MIN_FILE_BYTES,
+        SpeechConst.FILE_TOKENS to SpeechConst.MIN_FILE_BYTES,
     )
 
     /** 断言抛 BAD_PARAMS */
@@ -57,20 +57,18 @@ class SpeechPolicyTest {
         assertNotNull(e)
         assertEquals("models/${SpeechConst.MODEL_DIR}", e!!.dir)
         assertEquals("apache-2.0", e.license)
+        // 外置权重版：三个图文件各带一个 .mnn.weight，另有词表
         assertEquals(
-            setOf(SpeechConst.FILE_ENCODER, SpeechConst.FILE_DECODER, SpeechConst.FILE_JOINER, SpeechConst.FILE_TOKENS),
+            setOf(
+                SpeechConst.FILE_ENCODER, SpeechConst.FILE_DECODER, SpeechConst.FILE_JOINER, SpeechConst.FILE_TOKENS,
+                "${SpeechConst.FILE_ENCODER}.weight", "${SpeechConst.FILE_DECODER}.weight", "${SpeechConst.FILE_JOINER}.weight",
+            ),
             e.files.map { it.name }.toSet(),
         )
-        assertEquals(168_813_626L, e.totalBytes)
+        assertEquals(168_828_534L, e.totalBytes)
         assertEquals(e.totalBytes, e.files.sumOf { it.bytes })
-        // 清单登记的字节数不能低于“残缺判定”的最小值，否则下载好的文件会被判成未传完
-        val minOf = mapOf(
-            SpeechConst.FILE_ENCODER to SpeechConst.MIN_ENCODER_BYTES,
-            SpeechConst.FILE_DECODER to SpeechConst.MIN_DECODER_BYTES,
-            SpeechConst.FILE_JOINER to SpeechConst.MIN_JOINER_BYTES,
-            SpeechConst.FILE_TOKENS to SpeechConst.MIN_TOKENS_BYTES,
-        )
-        e.files.forEach { assertTrue("${it.name} 小于最小字节数", it.bytes >= minOf.getValue(it.name)) }
+        // 清单登记的文件都应非空，否则下载好的文件会被判成缺失
+        e.files.forEach { assertTrue("${it.name} 为空", it.bytes >= SpeechConst.MIN_FILE_BYTES) }
         assertTrue(e.files.all { f -> f.urls.all { NetPolicy.isAllowedDownload(it) } })
     }
 
@@ -102,21 +100,26 @@ class SpeechPolicyTest {
         assertTrue(SpeechPolicy.missingFiles(fullSizes()).isEmpty())
     }
 
-    /** 缺失与残缺文件都被列出 */
+    /** 缺失与空文件都被列出；外置权重的小图文件（几 KB~2MB）非空即通过 */
     @Test
-    fun missingFiles_missingAndTruncated() {
+    fun missingFiles_missingAndEmpty() {
         val sizes = fullSizes().toMutableMap()
         sizes.remove(SpeechConst.FILE_TOKENS)
-        sizes[SpeechConst.FILE_ENCODER] = SpeechConst.MIN_ENCODER_BYTES - 1
+        sizes[SpeechConst.FILE_ENCODER] = 0L
         assertEquals(listOf(SpeechConst.FILE_ENCODER, SpeechConst.FILE_TOKENS), SpeechPolicy.missingFiles(sizes))
+        sizes[SpeechConst.FILE_ENCODER] = 2_014_528L
+        sizes[SpeechConst.FILE_JOINER] = 2_800L
+        assertEquals(listOf(SpeechConst.FILE_TOKENS), SpeechPolicy.missingFiles(sizes))
     }
 
-    /** 目录版：空目录全缺，目录里放小文件算残缺 */
+    /** 目录版：空目录全缺，空文件算缺失，非空即通过 */
     @Test
     fun missingFiles_dir() {
         val dir = tmp.newFolder("m")
         assertEquals(4, SpeechPolicy.missingFiles(dir).size)
-        File(dir, SpeechConst.FILE_TOKENS).writeBytes(ByteArray(SpeechConst.MIN_TOKENS_BYTES.toInt()))
+        File(dir, SpeechConst.FILE_TOKENS).writeBytes(ByteArray(0))
+        assertTrue(SpeechConst.FILE_TOKENS in SpeechPolicy.missingFiles(dir))
+        File(dir, SpeechConst.FILE_TOKENS).writeBytes(ByteArray(1))
         assertFalse(SpeechConst.FILE_TOKENS in SpeechPolicy.missingFiles(dir))
         assertEquals(3, SpeechPolicy.missingFiles(dir).size)
     }

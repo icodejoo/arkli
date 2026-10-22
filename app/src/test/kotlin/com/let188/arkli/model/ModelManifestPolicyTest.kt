@@ -45,10 +45,13 @@ class ModelManifestPolicyTest {
         val e = m.find(ClipService.MODEL_ID)
         assertNotNull(e)
         assertEquals(CLIP_MODEL_DIR, e!!.dir)
-        assertEquals(CLIP_MODEL_FILE, e.files.single().name)
-        assertEquals(94_775_452L, e.totalBytes)
-        assertEquals("8af99950b0fb39c2df90e66d67181eecc4e538617fbfdc0242ee420b36ac60d5", e.files.single().sha256)
-        assertTrue(e.files.single().urls.all { NetPolicy.isAllowedDownload(it) })
+        // 外置权重版：图文件 + 同名 .weight（Rust 侧自动带上）
+        val model = e.files.single { it.name == CLIP_MODEL_FILE }
+        val weight = e.files.single { it.name == CLIP_MODEL_FILE + ".weight" }
+        assertEquals(94_777_956L, e.totalBytes)
+        assertEquals("e52fa643ffc2ebffe90148ab5d43f1f82fcd8536750d3878a318297ccb4a35cb", model.sha256)
+        assertEquals("7921a38ecdab60fd8ca8f2f023fbd8a07eff516d3af80d3489ce6ec56d001d8e", weight.sha256)
+        assertTrue(e.files.all { f -> f.urls.all { NetPolicy.isAllowedDownload(it) } })
     }
 
     @Test

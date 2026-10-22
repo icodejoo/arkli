@@ -4,7 +4,7 @@
 本脚本绝不执行下载来的任何内容；解压 tar 用 tarfile 的 data 过滤器，拒绝越界路径。
 
 用法：
-  python -I fetch.py siglip2 nllb asr ocr sdxs 下载指定分组（sdxs 约 1.8GB）（缺省：转换用分组，不含 baseline 与 sdxs，这两个需显式指定）
+  python -I fetch.py siglip2 nllb asr ocr6 sdxs 下载指定分组（sdxs 约 1.8GB）（缺省：转换用分组，不含 baseline 与 sdxs，这两个需显式指定）
   python -I fetch.py baseline                  评测对照用的现网模型（q4_half、NLLB int4、语音 int8），体积不小，按需
   python -I fetch.py --list                    只列出分组与文件，不下载
 环境变量 ARKLI_MNN_DL 可改下载目录；已存在且校验通过的文件直接跳过（所以可以把旧下载物硬链接进来复用）。
@@ -65,16 +65,11 @@ FILES = {
         (f"asr/asr-fp32.tar.bz2", 584120230, "7e82f0a26f2bf8630141ebec658760b0fa585575fea2fee3d8edc4d3cb637b88",
          [f"{GH_ASR}/{ASR_PREFIX}-2026-06-05.tar.bz2"]),
     ],
-    "ocr": [
-        ("ocr/ch_PP-OCRv5_det_mobile.onnx", 4819576, "4d97c44a20d30a81aad087d6a396b08f786c4635742afc391f6621f5c6ae78ae",
-         [f"{MS_OCR}/det/ch_PP-OCRv5_det_mobile.onnx"]),
-        ("ocr/ch_PP-OCRv5_rec_mobile.onnx", 16631306, "5825fc7ebf84ae7a412be049820b4d86d77620f204a041697b0494669b1742c5",
-         [f"{MS_OCR}/rec/ch_PP-OCRv5_rec_mobile.onnx"]),
-        ("ocr/ch_PP-LCNet_x0_25_textline_ori_cls_mobile.onnx", 1018508, "54379ae5174d026780215fc748a7f31910dee36818e63d49e17dc598ecc82df7",
-         [f"{MS_OCR}/cls/ch_PP-LCNet_x0_25_textline_ori_cls_mobile.onnx"]),
-    ],
-    # PP-OCRv6 small（官方 HF 仓库，Apache-2.0）：det / rec 的 ONNX 与 rec 的 inference.yml（字典在里面）；cls 沿用 ocr 组的 v5 方向分类
+    # PP-OCRv6 small（官方 HF 仓库，Apache-2.0）：det / rec 的 ONNX 与 rec 的 inference.yml（字典在里面）；
+    # cls 用 RapidOCR 的 PP-LCNet_x0_25 方向分类（PP-OCRv6 没有独立的 cls）
     "ocr6": [
+        ("ocr6/cls/ch_PP-LCNet_x0_25_textline_ori_cls_mobile.onnx", 1018508, "54379ae5174d026780215fc748a7f31910dee36818e63d49e17dc598ecc82df7",
+         [f"{MS_OCR}/cls/ch_PP-LCNet_x0_25_textline_ori_cls_mobile.onnx"]),
         ("ocr6/det/inference.onnx", 9880512, "d73e0058b7a8086bbd57f3d10b8bcd4ff95363f67e06e2762b5e814fe9c9410e",
          hf("PaddlePaddle/PP-OCRv6_small_det_onnx", "inference.onnx")),
         ("ocr6/det/inference.yml", 885, "193f435274bf9f0b5f71a929bbfbcf148282df7e633b34e7c373e8f44741b516",
@@ -134,7 +129,7 @@ FILES = {
     ],
 }
 # 缺省下载的分组（baseline 体积大且只用于对照、sdxs 约 1.8GB 且只给 logo 工具用，都需显式指定）
-DEFAULT_GROUPS = ["siglip2", "nllb", "asr", "ocr", "ocr6", "couplet"]
+DEFAULT_GROUPS = ["siglip2", "nllb", "asr", "ocr6", "couplet"]
 # 要解压的包：tar 相对路径 -> 解压目录
 EXTRACT = {"asr/asr-fp32.tar.bz2": "asr/fp32", "asr/asr-int8.tar.bz2": "asr/int8"}
 

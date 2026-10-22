@@ -240,7 +240,9 @@ class LogoService(
         /** 设备上必需的文件名，与清单里 files 一致 */
         val REQUIRED_FILES: List<String> = listOf(
             "text_encoder.mnn",
+            "text_encoder.mnn.weight",
             "unet.mnn",
+            "unet.mnn.weight",
             "vae_decoder.mnn",
             "tokenizer.json",
             "NOTICE.txt",

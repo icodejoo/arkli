@@ -29,12 +29,12 @@
       "displayName": "本地识物模型（SigLIP2，MNN 版）",
       "version": "1",
       "dir": "models/siglip2-mnn-w8",
-      "totalBytes": 94775452,
+      "totalBytes": 94777956,
       "license": "apache-2.0",
       "archive": {
         "name": "siglip2-mnn-w8-1.zip",
-        "bytes": 86502640,
-        "sha256": "ef833a0f48d79674312f69589e48b39892924b7b3292552a3daeba431209a148",
+        "bytes": 86474363,
+        "sha256": "99ce77ca12cec70bf45173c71fedfa061ac01a5a245f45bcdd0b3dde1cd1a3de",
         "role": "archive",
         "urls": [
           "https://github.com/icodejoo/arkli/releases/download/siglip2-mnn-v1/siglip2-mnn-w8-1.zip"
@@ -43,9 +43,15 @@
       "files": [
         {
           "name": "model.mnn",
-          "bytes": 94775452,
-          "sha256": "8af99950b0fb39c2df90e66d67181eecc4e538617fbfdc0242ee420b36ac60d5",
+          "bytes": 305808,
+          "sha256": "e52fa643ffc2ebffe90148ab5d43f1f82fcd8536750d3878a318297ccb4a35cb",
           "role": "model"
+        },
+        {
+          "name": "model.mnn.weight",
+          "bytes": 94472148,
+          "sha256": "7921a38ecdab60fd8ca8f2f023fbd8a07eff516d3af80d3489ce6ec56d001d8e",
+          "role": "weights"
         }
       ]
     },
@@ -145,12 +151,12 @@
       "displayName": "本地语音输入模型（zipformer 中英，MNN 版）",
       "version": "1",
       "dir": "models/asr-zipformer-zh-en-mnn-w8",
-      "totalBytes": 168813626,
+      "totalBytes": 168828534,
       "license": "apache-2.0",
       "archive": {
         "name": "asr-zipformer-zh-en-mnn-w8-1.zip",
-        "bytes": 155227742,
-        "sha256": "01d5de427b2a199e2a7f0630a134c11143ffb8e0c3ac1fac923f850e148688f8",
+        "bytes": 155027237,
+        "sha256": "4d11b77752b41da889fb4b79ba030c345cd6573665a5c41249d3e18e664c747c",
         "role": "archive",
         "urls": [
           "https://github.com/icodejoo/arkli/releases/download/asr-mnn-v1/asr-zipformer-zh-en-mnn-w8-1.zip"
@@ -159,21 +165,39 @@
       "files": [
         {
           "name": "decoder.mnn",
-          "bytes": 10603880,
-          "sha256": "bf91f6513a4d05b3c1c4f06c034e51caddda8d503caba3ad6250bd016950e018",
+          "bytes": 54464,
+          "sha256": "fa3f6d315a0b6dfcb89660401a8c22d9a5db47c22f7b31e78f71b8c38eef547c",
           "role": "model"
+        },
+        {
+          "name": "decoder.mnn.weight",
+          "bytes": 10552326,
+          "sha256": "4651752bc5b872d6ef34fafef650472693fae6f5e8f466a1deaa4a1f91695b49",
+          "role": "weights"
         },
         {
           "name": "encoder.mnn",
-          "bytes": 155527912,
-          "sha256": "982314ac18794997a4e5d0ae8ff52bfcbf0299503caed8256fe469cab6b7af8f",
+          "bytes": 2014528,
+          "sha256": "6ed0b1cc93940cd491b1e49790bf09c917d8f2e2429f5030a27ae1b392745e4a",
           "role": "model"
         },
         {
+          "name": "encoder.mnn.weight",
+          "bytes": 153525348,
+          "sha256": "f9d3c21fcef9919b225e1229dd48764a34631e88e78fa70c03b26f115a9f33ad",
+          "role": "weights"
+        },
+        {
           "name": "joiner.mnn",
-          "bytes": 2623028,
-          "sha256": "47b490b2ae3abb402f54a35183ec07cd50bde180b5c55f12dd5241a116bba2e9",
+          "bytes": 2800,
+          "sha256": "7a5096b2eaae55ab88b93886e530bd55e0d010fffcc668d64802ef31dc0b950a",
           "role": "model"
+        },
+        {
+          "name": "joiner.mnn.weight",
+          "bytes": 2620262,
+          "sha256": "4419cfbfbaf6f0c16d8ee4aeb4b8916ad05ab5d3cca0185e7f8a369bbf27e3b9",
+          "role": "weights"
         },
         {
           "name": "tokens.txt",
@@ -252,12 +276,12 @@
       "displayName": "本地文字识别模型（PP-OCRv6 small，MNN 版）",
       "version": "1",
       "dir": "models/ppocrv6-small-mnn-fp16",
-      "totalBytes": 16221760,
+      "totalBytes": 16228366,
       "license": "apache-2.0",
       "archive": {
         "name": "ppocrv6-small-mnn-fp16-1.zip",
-        "bytes": 13102305,
-        "sha256": "816ffc79d517ef7703ddb18b5918df600789b49d31aa2bcf1084c2a3897fa314",
+        "bytes": 13083738,
+        "sha256": "4ef605bd91267cee692ccd13f1bd22cb8970ed02e8cbc93b1fa5712b38a3547f",
         "role": "archive",
         "urls": [
           "https://github.com/icodejoo/arkli/releases/download/ocr-mnn-v2/ppocrv6-small-mnn-fp16-1.zip"
@@ -266,27 +290,39 @@
       "files": [
         {
           "name": "LICENSE-Apache-2.0.txt",
-          "bytes": 11376,
-          "sha256": "3840c5c0c61c294264d2dd77b8777be6ddd90121ef4e0e64abcd22edea581d6e",
+          "bytes": 11577,
+          "sha256": "8ae60061cdd89d5b70a5d71b2816ecc0da0bee21947688bff4b39928512a45af",
           "role": "aux"
         },
         {
           "name": "NOTICE.txt",
-          "bytes": 1693,
-          "sha256": "a1e05b9cecc18868145e32543fd5fa034fbdd8a4865f9b18abb975f296308dab",
+          "bytes": 1718,
+          "sha256": "bdbe6fe5cda0c1f753bf57820b1816abeb3f29a5157b82eab353e7afacbee0f4",
           "role": "aux"
         },
         {
           "name": "cls.mnn",
-          "bytes": 516824,
-          "sha256": "58ac0a454c0414352e41450220f4249d7c542eef3dbcf62290756a0815480d7c",
+          "bytes": 26904,
+          "sha256": "50c10ffde5ca08d52988cfbed3587ed822031a1f085169ba4a03e320520b9eda",
           "role": "model"
         },
         {
+          "name": "cls.mnn.weight",
+          "bytes": 491096,
+          "sha256": "7531af8b0454708aef4272cdf8bec0c378b6857d397ada83f4578a37c8222de3",
+          "role": "weights"
+        },
+        {
           "name": "det.mnn",
-          "bytes": 4967972,
-          "sha256": "211314cc3cdfefb0b7589cd9126ef017f17688242934b7d1681625bcc9d1a487",
+          "bytes": 39656,
+          "sha256": "41516b87d12abe8051391c87fc2cc37f0a977e3b32af1251ea2c05559fa975db",
           "role": "model"
+        },
+        {
+          "name": "det.mnn.weight",
+          "bytes": 4931188,
+          "sha256": "09fb76f13133d6dc800a9c26154b836f4106730815834bc0d326b3e3d3d81f8d",
+          "role": "weights"
         },
         {
           "name": "ppocr_keys.txt",
@@ -296,9 +332,15 @@
         },
         {
           "name": "rec.mnn",
-          "bytes": 10648948,
-          "sha256": "68195df0fef601a25ffe1ff1f5d412211563be52d18b1fb4840394e7a9d14bd2",
+          "bytes": 50568,
+          "sha256": "c621eb321655a500c762053f974e217155e54680a6bc7f6a71fbce34eb45c127",
           "role": "model"
+        },
+        {
+          "name": "rec.mnn.weight",
+          "bytes": 10600712,
+          "sha256": "b63b27edcb2c23e97c2d3e98874fbb9481dd6a6dd29391a5dc687f78be43a112",
+          "role": "weights"
         }
       ]
     },
@@ -307,12 +349,12 @@
       "displayName": "本地人像抠图模型（MODNet，MNN 版）",
       "version": "1",
       "dir": "models/matting-modnet-mnn-fp32",
-      "totalBytes": 25899500,
+      "totalBytes": 25901204,
       "license": "apache-2.0",
       "archive": {
         "name": "matting-modnet-mnn-fp32-1.zip",
-        "bytes": 24039813,
-        "sha256": "3aa496bc798e21fa8282f58b92b0d8ff0b2134980acffe9984591c3682d4acb4",
+        "bytes": 24031167,
+        "sha256": "a0c74b728d6bb4785c2b9f273f1ff02dee662c5ae83cdb9f99903624b6b5f52d",
         "role": "archive",
         "urls": [
           "https://github.com/icodejoo/arkli/releases/download/matting-modnet-mnn-v1/matting-modnet-mnn-fp32-1.zip"
@@ -333,9 +375,15 @@
         },
         {
           "name": "modnet512_fp32.mnn",
-          "bytes": 25886772,
-          "sha256": "290f093b2a074b2bd6db6f549e83fa4151e6b75900e34605850b1c8b99e900c1",
+          "bytes": 43864,
+          "sha256": "85c387204e07ae8b59c0b0d0954df1143d0fdb39f0c414922f5c472e00ef78a2",
           "role": "model"
+        },
+        {
+          "name": "modnet512_fp32.mnn.weight",
+          "bytes": 25844612,
+          "sha256": "a1f5d85601f91fdb322e7807d7ea069db35c7fd761354472d397a06b3d4384d6",
+          "role": "weights"
         }
       ]
     },
@@ -418,14 +466,14 @@
       "id": "matting-birefnet-lite512-mnn-w8",
       "version": "1",
       "dir": "models/matting-birefnet-lite512-mnn-w8",
-      "totalBytes": 91348066,
+      "totalBytes": 91354754,
       "displayName": "本地通用高精抠图模型（BiRefNet-lite 512，MNN 版，不建议用于人像）",
       "license": "mit",
       "note": "通用（非人像）高精抠图：商品、宠物、物件边缘最干净；不建议用于人像，发丝不如人像模型。MIT（BiRefNet 原作者 ZhengPeng，512 重导出者 studioludens）。体积约 91MB，真机单张约 10 秒、峰值内存约 1.9GB。release matting-birefnet-lite512-mnn-v1 已于 2026-10-20 上传，线上 sha256 已核对。",
       "archive": {
         "name": "matting-birefnet-lite512-mnn-w8-1.zip",
-        "bytes": 68370210,
-        "sha256": "ca190b706f6566a25e1a035199b22739b1d533faa16327c9e31d3e9fb04af4d7",
+        "bytes": 68264860,
+        "sha256": "07c065704c480aefd6edf0397ab8b414bfce9a3e0fa44f43c735305ec0d68201",
         "role": "archive",
         "urls": [
           "https://github.com/icodejoo/arkli/releases/download/matting-birefnet-lite512-mnn-v1/matting-birefnet-lite512-mnn-w8-1.zip"
@@ -446,9 +494,15 @@
         },
         {
           "name": "birefnet_lite512_w8.mnn",
-          "bytes": 91345652,
-          "sha256": "d9d8373134208148dd505d773fb70d01cfa98cee9841cb624cf4bc8dc69e7ed5",
+          "bytes": 1967488,
+          "sha256": "35d2e2a1bfc52527810509f15efb8288ea0ce2ab1b17c31decc7b9e97e92dcd1",
           "role": "model"
+        },
+        {
+          "name": "birefnet_lite512_w8.mnn.weight",
+          "bytes": 89384852,
+          "sha256": "d22d574ac290501a1735f1ce30d6ce9cae0be1bcfff9284ba0180a440a27dedf",
+          "role": "weights"
         }
       ]
     },
@@ -518,12 +572,12 @@
       "displayName": "本地符号生成模型（SDXS-512 DreamShaper，MNN 8 位）",
       "version": "1",
       "dir": "models/sdxs512-mnn-w8",
-      "totalBytes": 553991973,
+      "totalBytes": 553997449,
       "license": "creativeml-openrail-m / openrail++（见随包 NOTICE）",
       "archive": {
         "name": "sdxs512-mnn-w8-1.zip",
-        "bytes": 440897857,
-        "sha256": "cc840d6f9a3571fefd0e32837a624074582ae642f2d1810ebc407491ec4a989f",
+        "bytes": 440804999,
+        "sha256": "8dce5176354405d73cd2e2b0ff2d63f350aa3661acb45ab7356046fc9c5807a3",
         "role": "archive",
         "urls": [
           "https://github.com/icodejoo/arkli/releases/download/logo-sdxs-mnn-v1/sdxs512-mnn-w8-1.zip"
@@ -562,9 +616,15 @@
         },
         {
           "name": "text_encoder.mnn",
-          "bytes": 238319872,
-          "sha256": "9fe71d58322dcc990a088d9b214e49bb257966cb62953cf366b152160fe7da22",
+          "bytes": 201784,
+          "sha256": "eba3259dc1ab47396722b1ae62136ca488b7e06aa154e0d10b924a15e3c792d2",
           "role": "model"
+        },
+        {
+          "name": "text_encoder.mnn.weight",
+          "bytes": 238120368,
+          "sha256": "86e83a5713a2650da8b23acf383c93454bdde9bd282500df658464c4dd6d65af",
+          "role": "weights"
         },
         {
           "name": "tokenizer.json",
@@ -574,14 +634,20 @@
         },
         {
           "name": "unet.mnn",
-          "bytes": 307091988,
-          "sha256": "ee58ac287dc6cd872589ace9008ec99e31b1c01d4285ccb727e82d01b531c24e",
+          "bytes": 318448,
+          "sha256": "3075772a41c854978c15d806b0a0f625e4868c1a1653fbe334b26fe96d446e8e",
           "role": "model"
+        },
+        {
+          "name": "unet.mnn.weight",
+          "bytes": 306776736,
+          "sha256": "3cbda220bf86b67420e66f29979cce3d8d02cdfcef1323d426d5215643ef21ed",
+          "role": "weights"
         },
         {
           "name": "vae_decoder.mnn",
           "bytes": 4904388,
-          "sha256": "0921096a48cad9ec45783d6437c572b05e9494df74554b6ab1dd139837e81974",
+          "sha256": "bbad0d0ef3a6e28bfba4a2e410f06e1f290dd347e4f71294f0c53799c514ed72",
           "role": "model"
         }
       ]

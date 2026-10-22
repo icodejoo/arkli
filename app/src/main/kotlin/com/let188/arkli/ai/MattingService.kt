@@ -395,13 +395,18 @@ class MattingService(
         /** 说明文件名（随模型下载） */
         private const val NOTICE_FILE = "NOTICE.txt"
 
+        /** 外置权重文件后缀：`model.mnn` 的权重在 `model.mnn.weight` */
+        private const val WEIGHT_SUFFIX = ".weight"
+
         /**
          * 某模式设备上必需的文件名，与清单里 files 一致。
          *
          * @param mode 模式
-         * @return 文件名列表：模型、说明、许可证
+         * @return 文件名列表：模型、（外置时的）权重文件、说明、许可证
          */
-        fun requiredFilesOf(mode: MattingMode): List<String> = listOf(mode.modelFile, NOTICE_FILE, mode.licenseFile)
+        fun requiredFilesOf(mode: MattingMode): List<String> =
+            listOf(mode.modelFile) + listOfNotNull(if (mode.externalWeight) mode.modelFile + WEIGHT_SUFFIX else null) +
+                listOf(NOTICE_FILE, mode.licenseFile)
 
         /**
          * 计算模型指纹：目录路径加每个必需文件的长度与修改时间。

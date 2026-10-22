@@ -272,7 +272,10 @@ class OcrService(
 
         /** 设备上必需的文件名，与清单里 files 一致 */
         val REQUIRED_FILES: List<String> =
-            listOf("det.mnn", "rec.mnn", "cls.mnn", "ppocr_keys.txt", "NOTICE.txt", "LICENSE-Apache-2.0.txt")
+            listOf(
+                "det.mnn", "det.mnn.weight", "rec.mnn", "rec.mnn.weight", "cls.mnn", "cls.mnn.weight",
+                "ppocr_keys.txt", "NOTICE.txt", "LICENSE-Apache-2.0.txt",
+            )
 
         /** 纳秒转毫秒 */
         private const val NANOS_PER_MS = 1_000_000L
