@@ -29,6 +29,7 @@ summary: 识物、翻译、语音、OCR 从 ONNX Runtime 迁到 MNN 是否可行
 - 原生：sherpa-mnn（MNN 仓库 `apps/frameworks/sherpa-mnn`，Apache-2.0）及它构建时拉取的 kaldi-native-fbank / kaldi-decoder / kaldifst / openfst / simple-sentencepiece（均 Apache-2.0）、eigen（MPL-2.0，仅头文件）。这些在现用的 sherpa-onnx AAR 里本来就有，不是新类别。
 - 下载（构建期，aria2）：NLLB fp32 原版（Xenova `encoder_model.onnx` 1,658,468,942 B、`decoder_model_merged.onnx` 1,865,158,686 B）、SigLIP2 `vision_model.onnx` 371,807,752 B、语音 fp32 包 584,120,230 B。sha256 见第 5 节。
 - 对外发布（**由用户执行上传**）：release `mnn-478c10e-v2`（三个 so：不变的 `libMNN.so` 4,899,952 B `9cc1ff8b…a353`、新 `libarkli-mnn.so` 71,592 B `b4c9bf34…0f40`、新 `libsherpa-mnn-jni.so` 2,690,520 B `aa79262f…c339`；同一下载前缀，缺一个都会构建失败）、`siglip2-mnn-v1`、`nllb-mnn-v1`、`asr-mnn-v1`、（OCR 接入时）`ocr-mnn-v1`。
+- **更新（2026-10-22）**：本节与 M7 的 sha 是当时的历史值。现行运行库在 release `mnn-478c10e-v3`，`libsherpa-mnn-jni.so` 已换成外置权重补丁版（2,691,072 B，sha256 `be0e68ab…4ee7`，旧整包版 `aa79262f…c339` 作废），asr、siglip2、ocr6（`ocr-mnn-v2`）、logo、两个抠图都已改为外置权重 zip 并上传核对，`ocr-mnn-v1`（PP-OCRv5）已删除。字节与 sha256 以 `models.json` 与 [status.md](../status.md) 的 release 总清单为准，做法见 `.claude/skills/mnn-model-memory/SKILL.md`。
 
 ## 2. 盘点（现状，file:line）
 

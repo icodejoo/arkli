@@ -103,7 +103,7 @@ summary: L2 本地文本模型 Qwen3.5-0.8B 的 MNN 权重与运行库：来源�
 |---|---|---|
 | `libMNN.so` | 4,899,952 | `9cc1ff8b8b039431913a37ad1853dfa51162b41ae8b90927507204397096a353` |
 | `libarkli-mnn.so`（JNI + C ABI v2：`arkli_mnn_config` 加 `power`；**2026-10-19 已原地覆盖上传到 `mnn-478c10e-v3`**；此前版本 71,592 字节 `b4c9bf34…9f40`、取消版 73,112 字节 `ede1c34e…a747` 已作废） | 73,176 | `accbe024d2a56b09ab34b2edaefdfe9b8a07f0eedee688d49b2473ea8b026bc2` |
-| `libsherpa-mnn-jni.so`（语音 sherpa-mnn JNI，release v2；Qwen 不用，随同一 release 发布） | 2,690,520 | `aa79262fa17431bf513c7c4ac9855df02d09c1fe364396c0d8032df652a0c339` |
+| `libsherpa-mnn-jni.so`（语音 sherpa-mnn JNI，外置权重补丁版，release v3；Qwen 不用，随同一 release 发布；2026-10-22 已覆盖上传并核对；此前整包版 2,690,520 字节 `aa79262f…c339` 已作废） | 2,691,072 | `be0e68ab0ecdf4fcdb0638e326d163d3921dc832fa6e94949b8a248f870f4ee7` |
 | `MNN-LICENSE.txt` | 11,346 | `a830d59c4f98d110e0540d0581efada06192ba6e798434307d1794b07a290302` |
 
 > 历史：release v1 里的 `libarkli-mnn.so` 是 37,752 字节、sha256 `a596c65c…bbf18f` 的纯 JNI 旧版（不含 C ABI 与“贪心采样/system 消息”改动）。

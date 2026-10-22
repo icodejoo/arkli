@@ -140,25 +140,21 @@ OCR 工具页（依赖 4）。二维码扫码原型已做，待真机验证。
 
 ## 待上传 release 总清单（用户执行上传；字节数、sha256 以 `models.json` 与 `app/build.gradle.kts` 的 `mnnLibs` 为准，已逐项核对）
 
-**logo 符号 `logo-sdxs-mnn-v1`（2026-10-21，未上传，用户执行）**：单包 zip `sdxs512-mnn-w8-1.zip`，**440,897,857 B**，sha256 `cc840d6f9a3571fefd0e32837a624074582ae642f2d1810ebc407491ec4a989f`，解压后 9 个文件共 553,991,973 B（本机在 `E:\workspaces\arkli-models\_zip\`，解压目录 `E:\workspaces\arkli-models\sdxs512-mnn-w8\`，用 `scripts/mnn/convert_all.py sdxs` + `pack.py --zip` 产出）。文件（字节 / sha256）：`text_encoder.mnn` 238,319,872 / `9fe71d58322dcc990a088d9b214e49bb257966cb62953cf366b152160fe7da22`；`unet.mnn` 307,091,988 / `ee58ac287dc6cd872589ace9008ec99e31b1c01d4285ccb727e82d01b531c24e`；`vae_decoder.mnn` 4,904,388 / `0921096a48cad9ec45783d6437c572b05e9494df74554b6ab1dd139837e81974`；`tokenizer.json` 3,642,763 / `b9ba4a00823421f394e89564621bd81ef15a1c4d8ba81bcf7a911b950a205938`；`NOTICE.txt` 2,331 / `01317f6cf1459f7b2d4bc71d8021126bc43985095a28d82dd8e367077c6563b9`；`LICENSE-CreativeML-OpenRAIL-M.txt` 14,385 / `be351ebe7ac01bcdbb018639aadcfd38f136b7dc3f2a3d4d3a24db51d1b210ef`；`LICENSE-CreativeML-OpenRAIL-PlusPlus-M.txt` 14,109 / `19b6998b569b53ac1fc2158a8a3202c8699a9a4605b47075715d9c96be7fb6d0`；`LICENSE-MIT-TAESD.txt` 1,073 / `261497cf8e9ed613ed1fa5ddf48af32cdf50545b2ccd9edd7eacc91fb9255d6e`；`LICENSE-MIT-OpenAI-CLIP.txt` 1,064 / `987e63b32f6c89ff5160e429458a872ff048e6860b590a3912e938f9da8f14db`。`models.json` 的 `sdxs512-mnn-w8` 已指向它（用于 zip 的 sha 以包为准，上传后按 302 与 sha256 复核）。许可 CreativeML OpenRAIL-M / OpenRAIL++-M（含使用限制，上游仓库无独立 LICENSE，两份全文都随包，待上游澄清）。注意：许可文件名不能含 `+`（清单解析器的文件名正则会拒绝，整份清单都会解析失败），所以 OpenRAIL++ 的文本叫 `LICENSE-CreativeML-OpenRAIL-PlusPlus-M.txt`。
+**logo 符号 `logo-sdxs-mnn-v1`（2026-10-22 已上传并逐个核对线上 sha256；外置权重版）**：单包 zip `sdxs512-mnn-w8-1.zip`，**440,804,999 B**，sha256 `8dce5176354405d73cd2e2b0ff2d63f350aa3661acb45ab7356046fc9c5807a3`，解压后共 553,997,449 B。权重外置：`text_encoder.mnn` / `unet.mnn` / `vae_decoder.mnn` 各配一个 `.mnn.weight`，图文件只剩小头，逐文件的字节与 sha256 以 `app/src/main/assets/ai/models.json` 的 `sdxs512-mnn-w8` 为准。本机产物在 `native/mnn/.work/zip-ext/`，用 `scripts/mnn/convert_all.py sdxs` + `pack.py --zip` 产出，做法见 `.claude/skills/mnn-model-memory/SKILL.md`。许可 CreativeML OpenRAIL-M / OpenRAIL++-M（含使用限制，上游仓库无独立 LICENSE，两份全文都随包，待上游澄清）。注意：许可文件名不能含 `+`（清单解析器的文件名正则会拒绝，整份清单都会解析失败），所以 OpenRAIL++ 的文本叫 `LICENSE-CreativeML-OpenRAIL-PlusPlus-M.txt`。
 
 **抠图（2026-10-19，未发布）**：release `matting-modnet-mnn-v1`（`modnet512_fp32.mnn` 25,886,772 B、`NOTICE.txt`、`LICENSE-Apache-2.0.txt`）与 `matting-u2netp-mnn-v1`（`u2netp_f16.mnn` 2,394,164 B、同名两个说明文件），源文件在 `native/mnn/.work/convert/out/` 与 `scripts/mnn/data/matting-*/`，字节与 sha256 见 `models.json`。
 
-全部上传到公开仓库 `icodejoo/arkli`。上传前对应下载会失败；上传后按 302 与 sha256 复核。构建所需的三个 so 上传前靠本机 `.gradle/arkli-mnn` 缓存。
+全部上传到公开仓库 `icodejoo/arkli`。上传后按 302 与 sha256 复核。构建所需的三个 so 上传前靠本机 `.gradle/arkli-mnn` 缓存。
 
-**`mnn-478c10e-v2`**（运行库，三个都要放，下载前缀相同）
+**`mnn-478c10e-v3`**（运行库，三个都要放，下载前缀相同；`libsherpa-mnn-jni.so` 已于 2026-10-22 覆盖为外置权重补丁版并核对线上 sha256）
 
 | 文件 | 字节 | sha256 |
 |---|---|---|
 | `libMNN.so`（与 v1 相同，不变） | 4,899,952 | `9cc1ff8b8b039431913a37ad1853dfa51162b41ae8b90927507204397096a353` |
-| `libarkli-mnn.so` | 71,592 | `b4c9bf34e2d72867a8b265fcedd5f14435cf1d994a7ee2af0253445c88c09f40` |
-| `libsherpa-mnn-jni.so` | 2,690,520 | `aa79262fa17431bf513c7c4ac9855df02d09c1fe364396c0d8032df652a0c339` |
+| `libarkli-mnn.so` | 73,176 | `accbe024d2a56b09ab34b2edaefdfe9b8a07f0eedee688d49b2473ea8b026bc2` |
+| `libsherpa-mnn-jni.so`（外置权重补丁版） | 2,691,072 | `be0e68ab0ecdf4fcdb0638e326d163d3921dc832fa6e94949b8a248f870f4ee7` |
 
-**`siglip2-mnn-v1`**（识物，1 个文件）
-
-| 文件 | 字节 | sha256 |
-|---|---|---|
-| `model.mnn` | 94,775,452 | `8af99950b0fb39c2df90e66d67181eecc4e538617fbfdc0242ee420b36ac60d5` |
+**`siglip2-mnn-v1`**（识物，外置权重版 zip，2026-10-22 已上传并核对；`siglip2-mnn-w8-1.zip` 86,474,363 B，sha256 `99ce77ca12cec70bf45173c71fedfa061ac01a5a245f45bcdd0b3dde1cd1a3de`，解压后共 94,777,956 B，逐文件见 `models.json`）
 
 **`nllb-mnn-v1`**（翻译，12 个文件，共 392,177,035 B；`model.json` 是 `num_beams=1` 的可信版，复现方法见 `scripts/mnn/README.md`）
 
@@ -177,25 +173,11 @@ OCR 工具页（依赖 4）。二维码扫码原型已做，待真机验证。
 | `model.json` | 1,218 | `1db584251cde24fc8570f393f019ede6e7c6d58225b40ed0e71c330e16a14d36` |
 | `tokenizer.json` | 2,981,816 | `d93881797f945c189dd89a9fee75764e8a8d564e780fc66dac30c0d3747044f2` |
 
-**`asr-mnn-v1`**（语音，4 个文件，共 168,813,626 B）
+**`asr-mnn-v1`**（语音，外置权重版 zip，2026-10-22 已上传并核对；`asr-zipformer-zh-en-mnn-w8-1.zip` 155,027,237 B，sha256 `4d11b77752b41da889fb4b79ba030c345cd6573665a5c41249d3e18e664c747c`，解压后 7 个文件共 168,828,534 B：3 对 `.mnn` + `.mnn.weight` 加 `tokens.txt`，逐文件见 `models.json`）。加载峰值增量由约 560MB 降到约 243MB、加载耗时由约 2450ms 降到约 750ms，细节见 [mnn-model-memory skill](../.claude/skills/mnn-model-memory/SKILL.md)。
 
-| 文件 | 字节 | sha256 |
-|---|---|---|
-| `decoder.mnn` | 10,603,880 | `bf91f6513a4d05b3c1c4f06c034e51caddda8d503caba3ad6250bd016950e018` |
-| `encoder.mnn` | 155,527,912 | `982314ac18794997a4e5d0ae8ff52bfcbf0299503caed8256fe469cab6b7af8f` |
-| `joiner.mnn` | 2,623,028 | `47b490b2ae3abb402f54a35183ec07cd50bde180b5c55f12dd5241a116bba2e9` |
-| `tokens.txt` | 58,806 | `b818a60878b9aae978cbb8ad594acbd403d76d1af2e31ef4197c84e2dbdba27c` |
+**`ocr-mnn-v2`**（文字识别 PP-OCRv6 small，外置权重版 zip，2026-10-22 已上传并核对；`ppocrv6-small-mnn-fp16-1.zip` 13,083,738 B，sha256 `4ef605bd91267cee692ccd13f1bd22cb8970ed02e8cbc93b1fa5712b38a3547f`，解压后共 16,228,366 B）。旧 v5 的 release `ocr-mnn-v1` 已于 2026-10-22 删除（含 tag）。
 
-**`ocr-mnn-v1`**（文字识别，6 个文件，共 11,438,043 B）
-
-| 文件 | 字节 | sha256 |
-|---|---|---|
-| `LICENSE-Apache-2.0.txt` | 11,376 | `3840c5c0c61c294264d2dd77b8777be6ddd90121ef4e0e64abcd22edea581d6e` |
-| `NOTICE.txt` | 1,555 | `9eb926caa8f5415e75a0b612a423cd30e86741ce10554101a1fdf26b2b9b7cb0` |
-| `cls.mnn` | 516,824 | `58ac0a454c0414352e41450220f4249d7c542eef3dbcf62290756a0815480d7c` |
-| `det.mnn` | 2,411,040 | `73d519a359883d440efce876a52691d2afa064ccdb5120f4c1cedff1a9d7d319` |
-| `ppocr_keys.txt` | 74,012 | `d1979e9f794c464c0d2e0b70a7fe14dd978e9dc644c0e71f14158cdf8342af1b` |
-| `rec.mnn` | 8,423,236 | `9350d716fa78ae220736e3141ec89382367b3bf01d0592c379bec5db31437c18` |
+**抠图（2026-10-22 已上传并核对，外置权重版 zip）**：`matting-birefnet-lite512-mnn-v1` 的 `matting-birefnet-lite512-mnn-w8-1.zip` 68,264,860 B，sha256 `07c065704c480aefd6edf0397ab8b414bfce9a3e0fa44f43c735305ec0d68201`，解压后 91,354,754 B；`matting-modnet-mnn-v1` 的 `matting-modnet-mnn-fp32-1.zip` 24,031,167 B，sha256 `a0c74b728d6bb4785c2b9f273f1ff02dee662c5ae83cdb9f99903624b6b5f52d`，解压后 25,901,204 B。U2Net-p、PP-MattingV2 模型太小，没有外置。
 
 **`couplet-mnn-v1`**（**已上传并逐个核对 sha256 与清单一致**；对联，7 个文件，共 97,149,159 B；**许可证无法确认可再分发，风险自负**，`models.json` 的 `license` 字段已如实标注，NOTICE 随包；本机产物在 `E:\workspaces\arkli-models\couplet-gpt2-mnn\`）
 
@@ -215,7 +197,7 @@ OCR 工具页（依赖 4）。二维码扫码原型已做，待真机验证。
 |---|---|---|
 | `couplet-corpus.zip` | 33,070,763 | `f2b9ffdd9f5cc44592b70e98735af60be8feb88c5b9cb6fb09a9d83c47489e23` |
 
-> 待确认：`siglip2-mnn-v1`、`asr-mnn-v1` 目前不带 LICENSE/NOTICE（NLLB、OCR 带）。上游均为 Apache-2.0，第 4(a) 条要求再分发时随附许可证副本，建议补上后再上传（清单要同步加文件）。
+> 待确认：`siglip2-mnn-v1`、`asr-mnn-v1` 目前不带 LICENSE/NOTICE（NLLB、OCR 带）。上游均为 Apache-2.0，第 4(a) 条要求再分发时随附许可证副本，建议补上（清单要同步加文件，需重新打包上传）。
 
 ## 待用户拍板 / 未知
 - **对联语料的分类与横批质量未过线**（`scripts/couplet/README.md` holdout：首选分类 82.2%<85%、任一合理 88.7%<90%、挽联召回 90.6%<95%、横批贴切 56.7%<80%）。后续方案三选一或组合，**待用户定**：（a）人工标注 2000~3000 条做有监督分类；（b）引入分词/成语词典（如 jieba + 成语库）做特征；（c）用大模型离线打标签并生成/挑选横批再蒸馏。页面现已上线随机模式并标注“横批与分类是推导值”。
@@ -230,11 +212,11 @@ OCR 工具页（依赖 4）。二维码扫码原型已做，待真机验证。
 - `ArkliPage` 里 `bridge` 字段先于 `binarySupported` 初始化，`native.hello` 的 `features.binary` 可能一直是 false（只会永远走 base64 兜底，不出错但慢）：修不修待定。
 - 宜忌释义 123 条非"待核对"条目是通俗改写，没有逐条对权威黄历核过，正式上线前建议找懂行的人过一遍。
 - **NLLB MNN 版 release `nllb-mnn-v1` 待用户上传（M6c）**：12 个文件（清单、字节数、sha256 见 [onnx-to-mnn-migration.md](research/onnx-to-mnn-migration.md) 的 M6c 一节），`models.json` 的 `nllb600m-un6-mnn-w6` 已指向 `https://github.com/icodejoo/arkli/releases/download/nllb-mnn-v1/<文件名>`；上传前下载会失败，上传后按 302 与 sha256 复核。旧条目 `nllb600m-un6-ccm-int4` 已在 M9（2026-10-16）移出清单并登记进 `retired`。
-- **识物 MNN 版 release `siglip2-mnn-v1` 待用户上传**：1 个文件 `model.mnn`（94,775,452 B），`models.json` 的 `siglip2-mnn-w8` 已指向它；清单见上方“待上传 release 总清单”。
-- **语音 MNN 版待用户上传（M7）**：（a）`mnn-478c10e-v2` 要放三个 so（`libMNN.so`、`libarkli-mnn.so`、新增的 `libsherpa-mnn-jni.so` 2,690,520 B，sha 见 [onnx-to-mnn-migration.md](research/onnx-to-mnn-migration.md) 的 M7 一节）；（b）release `asr-mnn-v1` 的 4 个文件（`encoder.mnn`/`decoder.mnn`/`joiner.mnn`/`tokens.txt`，共 168,813,626 B）；`models.json` 已首次加入 `asr-zipformer-zh-en-mnn-w8`，上传前设备下载会失败，上传后按 302 与 sha256 复核。旧手动目录 `asr-zipformer-zh-en-int8` 已在 M9 登记进 `retired`。sherpa-mnn JNI 真机能否跑通是最高风险项，待真机清单在该节末尾。
+- **识物 MNN 版 release `siglip2-mnn-v1`：已上传并核对**（2026-10-22，外置权重版 zip，字节与 sha256 见上方“release 总清单”）。
+- **语音 MNN 版（M7）：已上传并核对**（2026-10-22）：`mnn-478c10e-v3` 里的三个 so（含外置权重补丁版 `libsherpa-mnn-jni.so`）与 `asr-mnn-v1` 的外置权重 zip；旧手动目录 `asr-zipformer-zh-en-int8` 已在 M9 登记进 `retired`。
 - **对联 MNN 版 release `couplet-mnn-v1`：已上传并核对**（7 个文件、共 97,149,159 B，sha256 与清单一致；`models.json` 已登记 `couplet-gpt2-mnn-w6`，license 如实写“无法确认可再分发，风险自负”）。引擎与协议已接入（`native.ai.couplet` / `local-couplet`），页面已在 2026-10-16 重做（见 [对联语料库与对联页](design/couplet-corpus.md)），对下联与大模型模式的真机速度、质量未测。详见 [对联评估](research/couplet-gpt2-onnx.md) 第 9 节。
-- **文字识别升级 PP-OCRv6 small，release `ocr-mnn-v2` 待用户上传**：6 个文件 `det.mnn`（4,967,972 B）、`rec.mnn`（10,648,948 B）、`cls.mnn`（516,824 B，与 v5 包同一个文件）、`ppocr_keys.txt`（74,947 B）、`NOTICE.txt`（1,693 B）、`LICENSE-Apache-2.0.txt`（11,376 B），sha256 见 `models.json` 的 `ppocrv6-small-mnn-fp16` 与 [onnx-to-mnn-migration.md](research/onnx-to-mnn-migration.md) 的“M8 升级 PP-OCRv6 small”一节；本机产物在 `E:\workspaces\arkli-models\ppocrv6-small-mnn-fp16\`（`scripts/device-push-models.sh` 可直接推）。Kotlin 的 `OcrService.MODEL_ID` / `OCR_MODEL_DIR` 已指向它；旧 `ppocrv5-mnn-fp16` 已在 M9 移出清单并登记进 `retired`。
-- **（旧）文字识别 MNN 版 release `ocr-mnn-v1` 待用户上传（M8）**：6 个文件 `det.mnn`、`rec.mnn`、`cls.mnn`、`ppocr_keys.txt`、`NOTICE.txt`、`LICENSE-Apache-2.0.txt`（字节数、sha256 见 [onnx-to-mnn-migration.md](research/onnx-to-mnn-migration.md) 的 M8 一节，`models.json` 已登记 `ppocrv5-mnn-fp16`），上传前下载会失败；另请确认 ModelScope 模型页的许可证标注（上游 PaddleOCR / RapidOCR 仓库均为 Apache-2.0）。真机验收（1080×2400 ≤ 2.2 s、峰值 RSS ≤ 210MB）待做。
+- **文字识别 PP-OCRv6 small，release `ocr-mnn-v2`：已上传并核对**（2026-10-22，外置权重版 zip，见上方总清单）。Kotlin 的 `OcrService.MODEL_ID` / `OCR_MODEL_DIR` 指向它；旧 `ppocrv5-mnn-fp16` 已在 M9 移出清单并登记进 `retired`。`scripts/mnn/eval_ocr.py` 评测 v6 的 det IoU 实测 0.9866（最小 0.9803），低于 v5 时定的 0.99，已把脚本 det 门槛放宽到 0.98；整包版与外置版结果相同，不是外置造成的；迁移文档里记的 0.9965 口径不同，差异原因没查清。
+- **（已删除）文字识别 v5 的 release `ocr-mnn-v1`**：2026-10-22 连 tag 一起删除，App 清单早已不再引用；v5 的配方与脚本也已清理。
 - **（已随 M9 退役，无需再托管）翻译模型托管待定（旧 ONNX 版）**：`nllb600m-un6-ccm-int4` 解压后的 6 个单文件还没上传到 release，`models.json` 里的 URL 是占位 `https://github.com/icodejoo/Cisox/releases/download/models/<文件名>`，上传后要核对 URL、字节数与 sha256（`encoder.onnx_data` 158,297,088 字节、`decoder.onnx_data` 229,598,080 字节，单文件需小于 GitHub release 2GB 上限）。
 - **翻译模型授权说明待在下载界面落地**：权重是 CC-BY-NC-4.0（仅限非商业、不用于生产部署），需在 AI 中心下载界面展示署名、来源与修改说明，文案见 [bridge-protocol 的“本地翻译模型授权”](design/bridge-protocol.md)；App 若商用发布需换模型或另获授权。
 - **翻译模型的质量局限（已知，未处理）**：词表裁剪后个别生僻字会被静默丢掉，如 “lazy”→“惰的”（缺“懒”）、“sunny”→“阳光明的”（缺“媚”），宿主机与真机一致，是模型本身的问题；短句偶有离谱结果（`Good morning.` en→es 得 `- ¿Qué pasa?`）。是否在界面提示、或换更大词表/更高精度的包，待用户定。

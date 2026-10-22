@@ -12,7 +12,7 @@ summary: MNN 官方没有 whisper 发布物，但 sherpa-mnn 已带 whisper 离�
 ## 1. 结论先行
 
 1. **MNN 官方没有 whisper 发布物，也没有计划。** alibaba/MNN 里没有 whisper 专用示例或模型库；官方 HF 组织 `taobao-mnn` 下没有 whisper 与独立 ASR 模型，只有 Qwen2-Audio / Omni 等多模态大模型 [一手 S1、S6、S20]。有人在 #4276 请求转换 whisper-distil-large-v3.5 等，维护者回复“暂无计划，欢迎 PR”并关闭 [一手 S6]。
-2. **但路是通的**：MNN 仓库里的 sherpa-mnn（sherpa-onnx 的 MNN 改版）**整套搬进了 whisper 离线识别**（模型、贪心解码、前处理、Kotlin `OfflineRecognizer`）[一手 S2~S4、S19]。我们现在装机的 `libsherpa-mnn-jni.so`（2,690,520 B）里已经有 `OfflineRecognizer` 的 JNI 与 whisper 相关字符串，**接 whisper 不需要重编原生库** [一手 S17，本机缓存 so 的 strings 核对]。
+2. **但路是通的**：MNN 仓库里的 sherpa-mnn（sherpa-onnx 的 MNN 改版）**整套搬进了 whisper 离线识别**（模型、贪心解码、前处理、Kotlin `OfflineRecognizer`）[一手 S2~S4、S19]。我们现在装机的 `libsherpa-mnn-jni.so`（2,691,072 B，外置权重补丁版，补丁只动 ReadFile 与 setExternalFile，不影响 whisper 相关符号；补丁前整包版为 2,690,520 B）里已经有 `OfflineRecognizer` 的 JNI 与 whisper 相关字符串，**接 whisper 不需要重编原生库** [一手 S17，本机缓存 so 的 strings 核对]。
 3. **现成 MNN 文件有，来源是个人账号**：HF `developerabu/whisper-{tiny,tiny-en,base,small}-mnn`。tiny 的编码器我下载后核对了内嵌元数据，与 sherpa-mnn 读的字段一致（99 种语言，无粤语）[一手 S7]。缺点：作者个人账号、无 README、tiny 仓库无许可证声明、转换方式不公开（只能推断是 w8）。
 4. **质量是硬伤**：whisper-tiny 中文 FLEURS 字错率约 **40.5%**、CommonVoice9 约 52.4%（base 为 34.1% / 44.9%，small 为 20.8% / 29.4%）[一手 S12，PDF 文本提取，见 3.3 的口径说明]；英文 LibriSpeech clean/other 词错率 7.54 / 17.15 [一手 S13]。我们现在的 X-ASR zipformer（480ms 流式）同口径是 3.14 / 7.57，且中文在 WenetSpeech 上 7~9% [一手 S14]。**tiny 在中、英两头都比现用方案差，中文差距是数量级的。**
 5. **建议：不替换，也不为中文引入。** 唯一说得过去的用途是“多语种/离线文件转写”这类现用模型覆盖不到的场景，但那种场景下 tiny 的多语种质量（多数非英语种词错率 > 50%）也不够，真要做应上 base/small 或 SenseVoice / Qwen3-ASR（第 7 节）。如果用户仍想验证，POC 很便宜（第 9 节）。
@@ -69,7 +69,7 @@ HF 上 `openai/whisper-tiny` 的 fp32 权重 `model.safetensors` 为 151,061,672
 
 **MNN 各精度体积**：w8 的实测只有社区 tiny 的约 102MB（上表，来源与量化方式有推断成分）；fp16 约 76MB（tiny）、fp32 约 152MB **[推算：由 fp32 减半/原值]**，无一手 MNN 数据。词嵌入表在解码器里占大头（fp32 79.7MB、fp16 约 39.8MB、int8 约 19.9MB，[推算]），MNNConvert 是否会量化这一张表**未核实**；若能量化，tiny 解码器可从 90MB 降到约 30MB 量级 [推算]。
 
-对比：现用语音包 `asr-zipformer-zh-en-mnn-w8` 共 168,813,626 B [一手 S17]。**whisper-tiny w8（约 102MB）比现用小约 66MB；base w8（约 163MB）与现用持平。**
+对比：现用语音包 `asr-zipformer-zh-en-mnn-w8` 解压后共 168,828,534 B（外置权重版，2026-10-22 起；此前整包版 168,813,626 B）[一手 S17]。**whisper-tiny w8（约 102MB）比现用小约 66MB；base w8（约 163MB）与现用持平。**
 
 ### 3.2 多语言与粤语
 
@@ -237,7 +237,7 @@ HF 上 `openai/whisper-tiny` 的 fp32 权重 `model.safetensors` 为 151,061,672
 - S14：HF `GilgameshWind/X-ASR-zh-en` 模型卡（Evaluation 表、许可）。
 - S15：HF `Qwen/Qwen3-ASR-0.6B` 模型卡；alibaba/MNN PR #4478（Qwen3-ASR 导出与运行时）。
 - S16：FunAudioLLM/SenseVoice README；MNN 仓库 `offline-sense-voice-model.cc`（存在性）。
-- S17：本项目文档：`docs/research/onnx-to-mnn-migration.md`（M7 语音、真机 RTF 0.20、`asr-mnn-v1` 清单）、`docs/status.md`；本机缓存 `libsherpa-mnn-jni.so`（sha `aa79262f…c339`）的符号字符串核对。
+- S17：本项目文档：`docs/research/onnx-to-mnn-migration.md`（M7 语音、真机 RTF 0.20、`asr-mnn-v1` 清单）、`docs/status.md`；本机缓存 `libsherpa-mnn-jni.so`（核对时为整包版 sha `aa79262f…c339`，现行外置版 sha `be0e68ab…4ee7`）的符号字符串核对。
 - S18：MNN `tools/audio/include/audio/audio.hpp`（`whisper_fbank`）；MNN PR #4963。
 - S19：`apps/frameworks/sherpa-mnn/sherpa-mnn/kotlin-api/OfflineRecognizer.kt`。
 - S20：HF `taobao-mnn` 组织模型列表（按 whisper/asr 等关键词检索，无结果；有 Qwen2-Audio、Qwen2.5-Omni 等）。
