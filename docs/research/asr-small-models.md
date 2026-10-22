@@ -237,3 +237,53 @@ eval_asr.py 新增了 `<0xXX>` 字节回退合并（`join_tokens`，对不含此
 3. 许可证：包内标 Apache-2.0，但训练数据条款未核实；官方 WER 未找到。
 4. 未验证：sherpa-mnn 加载（`modelType=zipformer2` 应与 X-ASR 一致，BPE 字节回退在 sherpa 里是否被正确解码**未核实**）、目标机速度与端点行为。
 5. 产物在 `E:\asr-multi-zh-dl\out\<变体>\`，评测输出在 `E:\asr-multi-zh-dl\ev\`（仓库外，未登记 sha、未上传）。w8 三文件 sha 前 12 位：encoder `aa98a44c8625`、decoder `4951f38347cf`、joiner `ac005c577995`。
+
+## 9. paraformer-tiny 专项（2026-10-21，用户指定）
+
+### 9.1 “paraformer-tiny”到底是什么
+
+FunASR 官方模型库（`model_zoo/modelscope_models.md`）里**名字叫 Paraformer-tiny 的只有一个**：`speech_paraformer-tiny-commandword_asr_nat-zh-cn-16k-vocab544-pytorch`，**5.2M 参数、词表 544、训练数据 200 小时、纯中文、离线**，页面自述“支持普通话命令词识别”。它是命令词模型，**不能做听写**，直接排除。
+
+通用的小号 paraformer 只有这几个（体积 = 参数量，来自同一张表或 sherpa-onnx release 清单）：
+
+| 模型 | 语言 | 流式 | 体积 | 备注 |
+|---|---|---|---|---|
+| FunASR `Paraformer-online`（vocab8404） | 中英 | 是 | 68M 参数 | 没有 sherpa-onnx 导出，官方 ONNX/MNN 均未见；要自己从 ModelScope 拉权重再导出，本机 ModelScope 不通，**未核实**能否取到 |
+| sherpa-onnx `paraformer-zh-small-2024-03-09` | 中（含英文单词） | **否（离线）** | tar 78MB，仅 `model.int8.onnx` 81.8MB | 第三方（crazyant）从 ModelScope 导出，不是 FunASR 官方发布 |
+| sherpa-onnx `streaming-paraformer-bilingual-zh-en` / `trilingual-zh-cantonese-en` | 中英 / 中粤英 | 是 | tar 各约 1047MB（含 fp32，int8 约 226MB） | 即 220M 大号 `paraformer-large-online`，**一点也不小**，比 X-ASR（w8 168MB）还大 |
+| 其余 `paraformer-zh*` | 中 | 否 | int8 约 217~234MB，fp32 约 820MB+ | 大号 |
+
+结论：**不存在“小而流式的中英 paraformer”**。唯一小的通用模型是离线的 zh-small。
+
+### 9.2 许可证
+
+FunASR `MODEL_LICENSE` v1.1（读原文）：允许使用、复制、修改、分享（含微调衍生）；条件是**保留来源与作者署名、保留模型名**；免责；禁止恶意诋毁，违反即自动终止授权；准据法一栏留空。**未写“禁止商用”，也没写允许商用**，措辞不含商业条款，能否放进商用 App 分发属灰区，建议找法务确认。zh-small 是第三方转出的 ONNX，包内 README 只说来源于 ModelScope 的 crazyant 仓库，**自己的许可未核实**。
+
+### 9.3 MNN / sherpa-mnn 支持
+
+- MNN 官方仓库（钉死提交 478c10e8）`apps/frameworks/sherpa-mnn` 有 paraformer：`online-paraformer-*`、`offline-paraformer-*`、`streaming-paraformer-c-api.c` 示例，推理走 `MNN::Express::Module`。所以流式/离线 paraformer 在 sherpa-mnn 里**有实现**（未上机验证）。
+- 本项目随包的 Kotlin 只有 `OnlineRecognizer`（含 `OnlineParaformerModelConfig`，即流式 paraformer 可配）；**没有 OfflineRecognizer**。zh-small 是离线模型，要接就得补 Kotlin 的离线识别类和 VAD 分段，工作量不小，且丢掉流式出字。
+- 没找到现成的 MNN 版 paraformer（MNN 模型库、MNN-LLM/TaoAvatar、ModelScope MNN 组织均未见；ModelScope/HF 本机不通，只能靠搜索，**未完全核实**）。
+
+### 9.4 转换与精度实测（zh-small）
+
+候选只有 zh-small，所以只做它。仓库外产物：`E:\asr-paraformer-small-dl\`（包解压、`out/`、评测用 venv）。脚本：`scripts/mnn/probe_paraformer_small.py`（算子统计+转换）、`scripts/mnn/eval_paraformer_small.py`（评测）。
+
+1. 包内**只有 int8 ONNX，没有 fp32**，是 ORT 动态量化图（`MatMulInteger` 222 个、`DynamicQuantizeLinear` 211 个）。sherpa-mnn 自带 README 明确说“不要直接转换 int8 的 onnx”。fp32 要从 ModelScope 重新导出，本机不通，没做。
+2. 仍然试了：MNNConvert 直接吃它，**转换“成功”**，plain 84,127,232 字节（gzip -9 后 75,518,118）、`--fp16` 76,798,812 字节（gzip -9 后 68,528,189）。权重是 int8，所以怎么转都不会小于 int8 ONNX 的 81.8MB。
+3. 精度：单图 offline 模型，评测用 numpy 自写 fbank（汉明窗、样本×32768）+ LFR 7/6 + CMVN，整图 logits 逐帧 argmax。ORT int8 基准识别正常（6 条自带音频，含四川/天津/河南口音与中英混说 `yesterday was星期一today is tuesday明天是星期三`，无标点，英文小写，口语语气词“啊/嗯/呢”都转写）。**MNN 两个变体 6/6 全部不一致**：输出一串“在在在……”，预测器给出的 token 数也不对（同一条 ORT 27 个、MNN 45 个）。说明 MNNConvert 对动态量化算子（MatMulInteger + DynamicQuantizeLinear）的翻译在数值上是错的，不是喂数问题（输入前端与 ORT 路径共用同一份特征，ORT 能正确出字）。
+4. 没做的补救：把 int8 反量化回 fp32 再转 MNN w8（要改写 222 个 MatMulInteger 子图），以及从 ModelScope 重新导出 fp32。理由：即便修好，w8 体积约 80MB（权重量级与 int8 相当）**不比 multi-zh-hans w8（72MB）小**，而且是离线模型，投入不值。
+5. 速度参考（桌面、ORT int8，单条 5~8 秒音频）：0.05~0.07s，RTF 约 0.01，很快，但是离线整句识别。
+
+### 9.5 与 X-ASR 对比与推荐
+
+| | X-ASR（现用） | paraformer-zh-small |
+|---|---|---|
+| 体积 | w8 168.8MB | int8 ONNX 81.8MB；MNN 直转 84MB / fp16 77MB（**数值错误，不可用**） |
+| 流式 | 是 | **否** |
+| 中英 | 是，带标点 | 中文为主，能出英文单词，无标点 |
+| MNN 转换 | 已完成 | 直转产出错误结果；fp32 源缺失 |
+| 工程接入 | `OnlineRecognizer` 已有 | 需新增离线识别 Kotlin + VAD |
+
+**推荐：不推荐。** “paraformer-tiny”是命令词模型；通用的小 paraformer 只有离线的 zh-small，体积没有明显优势（约 80MB 对 multi-zh-hans 72MB），无标点，且直转 MNN 数值已坏。流式 paraformer 官方只有 226MB~1GB 的大号。要继续省体积，仍以第 1 节的 small-bilingual（精度差）或 X-ASR 4bit 量化两条路线为主。
+未核实项：FunASR 68M `Paraformer-online` 能否从 ModelScope 取到并导出、zh-small 的第三方许可、sherpa-mnn 加载 paraformer 的真机表现。
