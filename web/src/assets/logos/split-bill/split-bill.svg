@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3B6CF6"/><stop offset="0.5" stop-color="#8B5CF6"/><stop offset="1" stop-color="#D946EF"/></linearGradient></defs><rect width="512" height="512" rx="121" fill="url(#g)"/>
+<rect x="76" y="76" width="360" height="360" rx="44" fill="#fff"/>
+<rect x="100" y="100" width="312" height="92" rx="26" fill="#1F2937"/>
+<g fill="none" stroke="#F9FAFB" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"><path d="M125,126H177M151,126V172"/><path d="M195,126H247M221,126V172M195,172H247"/><path d="M271,172V126H297Q313,126 313,142Q313,157 297,157H271"/><path d="M383,132Q383,126 369,126H353Q339,126 339,140Q339,149 353,149H369Q383,149 383,158Q383,172 369,172H353Q339,172 339,166"/></g>
+<rect x="100" y="212" width="92" height="92" rx="22" fill="#E5EAF3"/>
+<rect x="208" y="212" width="92" height="92" rx="22" fill="#E5EAF3"/>
+<rect x="100" y="320" width="92" height="92" rx="22" fill="#E5EAF3"/>
+<rect x="208" y="320" width="92" height="92" rx="22" fill="#E5EAF3"/>
+<rect x="316" y="212" width="96" height="200" rx="22" fill="#FFA726"/>
+<g fill="none" stroke="#4FC3F7" stroke-width="9" stroke-linecap="round" transform="translate(0,0)"><path d="M164,240L128,276"/><circle cx="132" cy="245" r="9"/><circle cx="160" cy="271" r="9"/></g>
+<path d="M232,236L276,280M276,236L232,280" stroke="#1F2937" stroke-width="12" stroke-linecap="round"/>
+<path d="M124,366H168" stroke="#4FC3F7" stroke-width="11" stroke-linecap="round"/><circle cx="146" cy="346" r="6.5" fill="#4FC3F7"/><circle cx="146" cy="386" r="6.5" fill="#4FC3F7"/>
+<path d="M232,356H276M232,376H276" stroke="#1F2937" stroke-width="11" stroke-linecap="round"/>
+<g transform="translate(0,0)" fill="none" stroke="#fff" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"><path d="M388,284Q388,276 364,276Q340,276 340,290Q340,304 364,312Q388,320 388,334Q388,348 364,348Q340,348 340,340"/><path d="M364,262V362" stroke-width="10"/></g>
+</svg>
